@@ -1,0 +1,601 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  ATHLETE
+  TRAINER
+  ADMIN
+}
+
+enum SetType {
+  WORKING
+  WARMUP
+  FEEDER
+}
+
+enum SetTechnique {
+  NONE
+  DROP_SET
+  BACK_OFF
+  REST_PAUSE
+  CLUSTER_SET
+  MUSCLE_ROUND
+  MYOREP
+}
+
+enum MuscleGroup {
+  CHEST
+  BACK
+  SHOULDERS
+  BICEPS
+  TRICEPS
+  FOREARMS
+  QUADS
+  HAMSTRINGS
+  GLUTES
+  CALVES
+  ABS
+  FULL_BODY
+  OTHER
+}
+
+enum TrainingGoal {
+  HYPERTROPHY
+  STRENGTH
+  FAT_LOSS
+  ENDURANCE
+  HEALTH
+  PERFORMANCE
+}
+
+enum DietGoal {
+  BULK
+  CUT
+  MAINTENANCE
+  RECOMP
+  HEALTH
+}
+
+// ─────────────────────────────────────────────
+// AUTH & PROFILE
+// ─────────────────────────────────────────────
+
+model User {
+  id           String  @id @default(uuid())
+  email        String  @unique
+  passwordHash String?
+  role         Role    @default(ATHLETE)
+  isActive     Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  profile        Profile?
+  trainerProfile TrainerProfile?
+
+  createdPrograms    Program[]
+  trainingLogs       TrainingLog[]
+
+  nutritionPlans     NutritionPlan[]
+  dailyNutritionLogs DailyNutritionLog[]
+
+  asTrainer  Consultation[] @relation("TrainerConsultations")
+  asAthlete  Consultation[] @relation("AthleteConsultations")
+
+  posts         Post[]
+  likes         Like[]
+  comments      Comment[]
+  following     Follow[] @relation("Follower")
+  followers     Follow[] @relation("Following")
+  notifications Notification[]
+
+  gameProfile     GameProfile?
+  achievements    UserAchievement[]
+  missionProgress MissionProgress[]
+  challenges      ChallengeParticipant[]
+
+  gym UserGym?
+}
+
+model Profile {
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  name        String
+  avatar      String?
+  bio         String?
+  birthDate   DateTime?
+  sex         String?
+  weightKg    Float?
+  heightCm    Float?
+  goal        TrainingGoal?
+  experience  String?
+  daysPerWeek Int?
+  isPrivate   Boolean   @default(false)
+  gymName     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model TrainerProfile {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  cref             String?
+  specialties      String[]
+  acceptingClients Boolean  @default(true)
+  bio              String?
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// WORKOUTS
+// ─────────────────────────────────────────────
+
+model Exercise {
+  id          String      @id @default(uuid())
+  name        String
+  muscleGroup MuscleGroup
+  equipment   String?
+  description String?
+  gifUrl      String?
+  videoUrl    String?
+  isCustom    Boolean     @default(false)
+  createdById String?
+  sourceId    String?
+
+  trainingExercises TrainingExercise[]
+}
+
+model Program {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  goal        TrainingGoal?
+  isTemplate  Boolean       @default(false)
+  isPublic    Boolean       @default(false)
+  createdById String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  createdBy     User               @relation(fields: [createdById], references: [id])
+  workouts      Workout[]
+  prescriptions PrescribedProgram[]
+}
+
+model Workout {
+  id        String    @id @default(uuid())
+  programId String?
+  name      String
+  order     Int?
+  notes     String?
+  createdAt DateTime  @default(now())
+
+  program   Program?           @relation(fields: [programId], references: [id])
+  exercises TrainingExercise[]
+  logs      TrainingLog[]
+}
+
+model TrainingExercise {
+  id          String  @id @default(uuid())
+  workoutId   String
+  exerciseId  String
+  order       Int
+  targetSets  Int
+  targetReps  String
+  targetRIR   Int?
+  targetRPE   Float?
+  restSeconds Int?
+  notes       String?
+
+  workout  Workout  @relation(fields: [workoutId], references: [id])
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+  setLogs  SetLog[]
+}
+
+model TrainingLog {
+  id          String    @id @default(uuid())
+  userId      String
+  workoutId   String?
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  durationMin Int?
+  notes       String?
+  isPosted    Boolean   @default(false)
+
+  user    User     @relation(fields: [userId], references: [id])
+  workout Workout? @relation(fields: [workoutId], references: [id])
+  sets    SetLog[]
+  post    Post?
+}
+
+model SetLog {
+  id                 String       @id @default(uuid())
+  trainingLogId      String
+  trainingExerciseId String?
+  exerciseId         String
+  setNumber          Int
+  setType            SetType      @default(WORKING)
+  technique          SetTechnique @default(NONE)
+  repsCompleted      Int
+  weightKg           Float
+  rir                Int?
+  rpe                Float?
+  isPersonalRecord   Boolean      @default(false)
+  notes              String?
+
+  trainingLog      TrainingLog       @relation(fields: [trainingLogId], references: [id])
+  trainingExercise TrainingExercise? @relation(fields: [trainingExerciseId], references: [id])
+}
+
+model PersonalRecord {
+  id           String   @id @default(uuid())
+  userId       String
+  exerciseId   String
+  weightKg     Float
+  reps         Int
+  estimated1RM Float?
+  achievedAt   DateTime @default(now())
+
+  @@unique([userId, exerciseId])
+}
+
+// ─────────────────────────────────────────────
+// NUTRITION
+// ─────────────────────────────────────────────
+
+model Food {
+  id          String  @id @default(uuid())
+  name        String
+  brand       String?
+  calories    Float
+  proteinG    Float
+  carbsG      Float
+  fatG        Float
+  fiberG      Float?
+  isCustom    Boolean @default(false)
+  createdById String?
+  sourceId    String?
+
+  mealFoods MealFood[]
+}
+
+model NutritionPlan {
+  id             String    @id @default(uuid())
+  userId         String
+  name           String
+  goal           DietGoal?
+  targetCalories Float?
+  targetProteinG Float?
+  targetCarbsG   Float?
+  targetFatG     Float?
+  targetWaterMl  Int?
+  notes          String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user          User                  @relation(fields: [userId], references: [id])
+  meals         Meal[]
+  supplements   PlanSupplement[]
+  prescriptions PrescribedNutrition[]
+}
+
+model Meal {
+  id              String @id @default(uuid())
+  nutritionPlanId String
+  name            String
+  order           Int
+  targetTimeHour  Int?
+
+  plan  NutritionPlan @relation(fields: [nutritionPlanId], references: [id])
+  foods MealFood[]
+  logs  MealLog[]
+}
+
+model MealFood {
+  id        String  @id @default(uuid())
+  mealId    String
+  foodId    String
+  quantityG Float
+  isCooked  Boolean @default(false)
+
+  meal Meal @relation(fields: [mealId], references: [id])
+  food Food @relation(fields: [foodId], references: [id])
+}
+
+model PlanSupplement {
+  id              String  @id @default(uuid())
+  nutritionPlanId String
+  name            String
+  dosage          String
+  timing          String?
+  notes           String?
+
+  plan NutritionPlan @relation(fields: [nutritionPlanId], references: [id])
+}
+
+model DailyNutritionLog {
+  id      String   @id @default(uuid())
+  userId  String
+  date    DateTime @db.Date
+  waterMl Int      @default(0)
+  notes   String?
+
+  user     User      @relation(fields: [userId], references: [id])
+  mealLogs MealLog[]
+
+  @@unique([userId, date])
+}
+
+model MealLog {
+  id                  String    @id @default(uuid())
+  dailyNutritionLogId String
+  mealId              String
+  completedAt         DateTime?
+  isDone              Boolean   @default(false)
+
+  dailyLog DailyNutritionLog @relation(fields: [dailyNutritionLogId], references: [id])
+  meal     Meal              @relation(fields: [mealId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// CONSULTANCY
+// ─────────────────────────────────────────────
+
+model Consultation {
+  id        String   @id @default(uuid())
+  trainerId String
+  athleteId String
+  isActive  Boolean  @default(true)
+  startedAt DateTime @default(now())
+  notes     String?
+
+  trainer User @relation("TrainerConsultations", fields: [trainerId], references: [id])
+  athlete User @relation("AthleteConsultations", fields: [athleteId], references: [id])
+
+  forms               ConsultationForm[]
+  prescribedPrograms  PrescribedProgram[]
+  prescribedNutrition PrescribedNutrition[]
+
+  @@unique([trainerId, athleteId])
+}
+
+model ConsultationForm {
+  id             String   @id @default(uuid())
+  consultationId String
+  title          String
+  fields         Json
+  createdAt      DateTime @default(now())
+
+  consultation Consultation   @relation(fields: [consultationId], references: [id])
+  responses    FormResponse[]
+}
+
+model FormResponse {
+  id        String   @id @default(uuid())
+  formId    String
+  answers   Json
+  createdAt DateTime @default(now())
+
+  form ConsultationForm @relation(fields: [formId], references: [id])
+}
+
+model PrescribedProgram {
+  id             String   @id @default(uuid())
+  consultationId String
+  programId      String
+  prescribedAt   DateTime @default(now())
+
+  consultation Consultation @relation(fields: [consultationId], references: [id])
+  program      Program      @relation(fields: [programId], references: [id])
+}
+
+model PrescribedNutrition {
+  id              String   @id @default(uuid())
+  consultationId  String
+  nutritionPlanId String
+  prescribedAt    DateTime @default(now())
+
+  consultation  Consultation  @relation(fields: [consultationId], references: [id])
+  nutritionPlan NutritionPlan @relation(fields: [nutritionPlanId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// SOCIAL
+// ─────────────────────────────────────────────
+
+model Post {
+  id            String   @id @default(uuid())
+  userId        String
+  trainingLogId String?  @unique
+  content       String?
+  imageUrls     String[]
+  videoUrl      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id])
+  trainingLog TrainingLog? @relation(fields: [trainingLogId], references: [id])
+  likes       Like[]
+  comments    Comment[]
+}
+
+model Like {
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  post Post @relation(fields: [postId], references: [id])
+
+  @@id([userId, postId])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Follow {
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("Follower", fields: [followerId], references: [id])
+  following User @relation("Following", fields: [followingId], references: [id])
+
+  @@id([followerId, followingId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  payload   Json
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// GAMIFICATION
+// ─────────────────────────────────────────────
+
+model GameProfile {
+  id               String @id @default(uuid())
+  userId           String @unique
+  level            Int    @default(1)
+  xp               Int    @default(0)
+  strengthScore    Int    @default(0)
+  enduranceScore   Int    @default(0)
+  disciplineScore  Int    @default(0)
+  consistencyScore Int    @default(0)
+  knowledgeScore   Int    @default(0)
+  currentStreak    Int    @default(0)
+  longestStreak    Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Achievement {
+  id          String @id @default(uuid())
+  key         String @unique
+  name        String
+  description String
+  iconUrl     String?
+  xpReward    Int    @default(0)
+  category    String
+
+  users UserAchievement[]
+}
+
+model UserAchievement {
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id])
+  achievement Achievement @relation(fields: [achievementId], references: [id])
+
+  @@id([userId, achievementId])
+}
+
+model Mission {
+  id          String  @id @default(uuid())
+  key         String  @unique
+  title       String
+  description String
+  type        String
+  target      Int
+  metric      String
+  xpReward    Int
+  expiresIn   Int?
+
+  progress MissionProgress[]
+}
+
+model MissionProgress {
+  id          String    @id @default(uuid())
+  userId      String
+  missionId   String
+  current     Int       @default(0)
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+  expiresAt   DateTime?
+
+  user    User    @relation(fields: [userId], references: [id])
+  mission Mission @relation(fields: [missionId], references: [id])
+
+  @@unique([userId, missionId])
+}
+
+model Challenge {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  type        String
+  metric      String
+  exerciseId  String?
+  startDate   DateTime
+  endDate     DateTime
+  createdById String
+  isPublic    Boolean  @default(false)
+  groupId     String?
+
+  participants ChallengeParticipant[]
+}
+
+model ChallengeParticipant {
+  id          String   @id @default(uuid())
+  challengeId String
+  userId      String
+  score       Float    @default(0)
+  rank        Int?
+  joinedAt    DateTime @default(now())
+
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([challengeId, userId])
+}
+
+// ─────────────────────────────────────────────
+// DISCOVERY
+// ─────────────────────────────────────────────
+
+model Gym {
+  id      String  @id @default(uuid())
+  name    String
+  address String?
+  city    String?
+  lat     Float?
+  lng     Float?
+
+  members UserGym[]
+}
+
+model UserGym {
+  userId   String   @unique
+  gymId    String
+  joinedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  gym  Gym  @relation(fields: [gymId], references: [id])
+}
