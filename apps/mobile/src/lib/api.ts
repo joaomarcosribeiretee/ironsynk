@@ -3,10 +3,27 @@ import { useAuthStore } from '../store/authStore'
 const BASE_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3333'
 
 type RequestOptions = Omit<RequestInit, 'body'> & { body?: unknown }
+type ApiErrorBody = { error?: { code?: string; message?: string; details?: string[] } }
+
+export class ApiError extends Error {
+  code?: string
+  status: number
+  details?: string[]
+
+  constructor(message: string, status: number, code?: string, details?: string[]) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+    this.details = details
+  }
+}
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = useAuthStore.getState().session?.access_token
   const { body, ...rest } = options
+  const isAuthLoginOrRegister =
+    path === '/api/v1/auth/login' || path === '/api/v1/auth/register'
 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...rest,
@@ -18,15 +35,20 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 
-  if (res.status === 401) {
+  if (res.status === 401 && !isAuthLoginOrRegister && token) {
     useAuthStore.getState().logout()
-    throw new Error('Session expired')
+    throw new Error('Sessao expirada')
   }
 
-  const data = (await res.json()) as { error?: { code: string; message: string } } & T
+  const data = (await res.json().catch(() => ({}))) as ApiErrorBody & T
 
   if (!res.ok) {
-    throw new Error(data.error?.message ?? 'Request failed')
+    throw new ApiError(
+      data.error?.message ?? 'Falha na requisicao',
+      res.status,
+      data.error?.code,
+      data.error?.details,
+    )
   }
 
   return data
@@ -64,7 +86,7 @@ export type ProfileRecord = {
   isPrivate: boolean
 }
 
-export type RegisterInput = { email: string; password: string; role: 'ATHLETE' | 'TRAINER' }
+export type RegisterInput = { username: string; email: string; password: string; role: 'ATHLETE' | 'TRAINER' }
 export type LoginInput = { email: string; password: string }
 
 export type UpdateProfileInput = {
@@ -86,9 +108,9 @@ export type UpdateProfileInput = {
 export const api = {
   auth: {
     register: (body: RegisterInput) =>
-      request<{ user: UserRecord; session: Session }>('/api/v1/auth/register', { method: 'POST', body }),
+      request<{ user: UserRecord; session: Session; isOnboarded: boolean }>('/api/v1/auth/register', { method: 'POST', body }),
     login: (body: LoginInput) =>
-      request<{ user: UserRecord; session: Session }>('/api/v1/auth/login', { method: 'POST', body }),
+      request<{ user: UserRecord; session: Session; isOnboarded: boolean }>('/api/v1/auth/login', { method: 'POST', body }),
     google: () =>
       request<{ url: string }>('/api/v1/auth/google', { method: 'POST' }),
     logout: () =>

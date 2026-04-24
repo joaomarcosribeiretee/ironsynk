@@ -9,11 +9,15 @@ import {
   Platform,
   ScrollView,
   Alert,
+  StyleSheet,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import type { AuthStackParamList } from '../../navigation/AuthNavigator'
 import { api } from '../../lib/api'
+import { getFriendlyErrorMessage } from '../../lib/errorMessages'
 import { useAuthStore } from '../../store/authStore'
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>
@@ -23,23 +27,23 @@ export function LoginScreen({ navigation }: Props) {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const { login, setIsOnboarded } = useAuthStore()
+  const { login } = useAuthStore()
+  const canSubmit = email.trim().length > 0 && password.length > 0 && !loading
 
   async function handleLogin() {
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter your email and password.')
+      Alert.alert('Erro', 'Informe seu e-mail e senha.')
       return
     }
     setLoading(true)
     try {
-      const { user, session } = await api.auth.login({ email: email.trim(), password })
+      const { user, session, isOnboarded } = await api.auth.login({ email: email.trim(), password })
       login(user, session)
-      setIsOnboarded(user.profile != null)
-      if (user.profile == null) {
+      if (!isOnboarded) {
         navigation.replace('Onboarding')
       }
     } catch (err) {
-      Alert.alert('Login failed', err instanceof Error ? err.message : 'Unknown error')
+      Alert.alert('Falha no login', getFriendlyErrorMessage(err, 'Nao foi possivel entrar agora.'))
     } finally {
       setLoading(false)
     }
@@ -51,13 +55,14 @@ export function LoginScreen({ navigation }: Props) {
       const { Linking } = await import('react-native')
       await Linking.openURL(url)
     } catch (err) {
-      Alert.alert('Error', 'Could not start Google sign-in')
+      Alert.alert('Erro', 'Nao foi possivel iniciar o login com Google')
     }
   }
 
   return (
+    <SafeAreaView className="flex-1 bg-background">
     <KeyboardAvoidingView
-      className="flex-1 bg-background"
+      className="flex-1"
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
@@ -65,65 +70,86 @@ export function LoginScreen({ navigation }: Props) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View className="flex-1 px-6 pt-20 pb-10">
+        <View className="flex-1 px-6 pt-8 pb-8 items-center justify-center">
+          <View className="w-full max-w-[460px]">
           {/* Logo */}
           <View className="items-center mb-12">
             <Text className="text-white font-bold" style={{ fontSize: 32, letterSpacing: 3 }}>
               IRON<Text className="text-cyan">SYNK</Text>
             </Text>
-            <Text className="text-text-secondary mt-1 text-sm">Train. Track. Evolve.</Text>
+            <Text className="text-text-secondary mt-1 text-sm">Treine. Registre. Evolua.</Text>
           </View>
 
           {/* Form */}
           <View className="gap-y-4">
             <View>
-              <Text className="text-text-secondary text-xs font-medium mb-1.5 ml-1">EMAIL</Text>
-              <TextInput
-                className="bg-surface border border-border rounded-2xl px-4 py-3.5 text-text-primary text-base"
-                placeholder="you@example.com"
+              <Text className="text-text-secondary text-xs font-medium mb-1.5 ml-1">E-MAIL</Text>
+              <View
+                className="h-[52px] bg-surface border border-border rounded-2xl px-4"
+                style={{ flexDirection: 'row', alignItems: 'center' }}
+              >
+                <TextInput
+                className="text-text-primary text-base"
+                  placeholder="nome@exemplo.com"
                 placeholderTextColor="#4A4A5A"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
+                multiline={false}
+                numberOfLines={1}
+                textAlignVertical="center"
+                style={styles.centeredInputText}
               />
+              </View>
             </View>
 
             <View>
-              <Text className="text-text-secondary text-xs font-medium mb-1.5 ml-1">PASSWORD</Text>
-              <View className="relative">
+              <Text className="text-text-secondary text-xs font-medium mb-1.5 ml-1">SENHA</Text>
+              <View
+                className="h-[52px] bg-surface border border-border rounded-2xl px-4"
+                style={{ flexDirection: 'row', alignItems: 'center' }}
+              >
                 <TextInput
-                  className="bg-surface border border-border rounded-2xl px-4 py-3.5 text-text-primary text-base pr-12"
+                  className="text-text-primary text-base"
                   placeholder="••••••••"
                   placeholderTextColor="#4A4A5A"
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
                   autoComplete="password"
+                  multiline={false}
+                  numberOfLines={1}
+                  textAlignVertical="center"
+                  style={styles.centeredInputText}
                 />
                 <TouchableOpacity
-                  className="absolute right-4 top-3.5"
                   onPress={() => setShowPassword((v) => !v)}
+                  style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
                 >
-                  <Text className="text-text-secondary text-sm">{showPassword ? 'Hide' : 'Show'}</Text>
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color="#8A8A9A"
+                  />
                 </TouchableOpacity>
               </View>
             </View>
           </View>
 
           {/* Sign in button */}
-          <TouchableOpacity className="mt-8" onPress={handleLogin} disabled={loading}>
+          <TouchableOpacity className="mt-8" onPress={handleLogin} disabled={!canSubmit}>
             <LinearGradient
-              colors={['#4FC3F7', '#2979FF']}
+              colors={canSubmit ? ['#4FC3F7', '#2979FF'] : ['#2A2A35', '#2A2A35']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={{ borderRadius: 16, paddingVertical: 14, alignItems: 'center' }}
+              style={{ borderRadius: 16, paddingVertical: 14, alignItems: 'center', opacity: canSubmit ? 1 : 0.65 }}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text className="text-white font-bold text-base">Sign In</Text>
+                <Text className="text-white font-bold text-base">Entrar</Text>
               )}
             </LinearGradient>
           </TouchableOpacity>
@@ -131,7 +157,7 @@ export function LoginScreen({ navigation }: Props) {
           {/* Divider */}
           <View className="flex-row items-center my-6">
             <View className="flex-1 h-px bg-border" />
-            <Text className="text-text-disabled mx-4 text-xs">OR</Text>
+            <Text className="text-text-disabled mx-4 text-xs">OU</Text>
             <View className="flex-1 h-px bg-border" />
           </View>
 
@@ -140,18 +166,34 @@ export function LoginScreen({ navigation }: Props) {
             className="border border-border rounded-2xl py-3.5 items-center"
             onPress={handleGoogle}
           >
-            <Text className="text-text-primary font-medium text-base">Continue with Google</Text>
+            <Text className="text-text-primary font-medium text-base">Continuar com Google</Text>
           </TouchableOpacity>
 
           {/* Register link */}
           <View className="flex-row justify-center mt-8">
-            <Text className="text-text-secondary text-sm">Don't have an account? </Text>
+            <Text className="text-text-secondary text-sm">Nao tem conta? </Text>
             <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-              <Text className="text-cyan text-sm font-medium">Create one</Text>
+              <Text className="text-cyan text-sm font-medium">Criar conta</Text>
             </TouchableOpacity>
+          </View>
           </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   )
 }
+
+const styles = StyleSheet.create({
+  centeredInputText: {
+    flex: 1,
+    alignSelf: 'center',
+    height: 24,
+    margin: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    lineHeight: 20,
+    // iOS baseline tends to render slightly lower; this nudges it visually to center.
+    transform: [{ translateY: -1 }],
+  },
+})

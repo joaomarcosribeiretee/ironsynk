@@ -5,8 +5,19 @@ import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
 
 const RegisterBody = z.object({
+  username: z
+    .string()
+    .min(3)
+    .max(30)
+    .regex(/^[a-zA-Z0-9._ -]+$/, 'Username can only contain letters, numbers, spaces, dot, underscore, and hyphen'),
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .refine((v) => /[a-z]/.test(v), 'Password must contain a lowercase letter')
+    .refine((v) => /[A-Z]/.test(v), 'Password must contain an uppercase letter')
+    .refine((v) => /[0-9]/.test(v), 'Password must contain a number')
+    .refine((v) => /[^A-Za-z0-9]/.test(v), 'Password must contain a special character'),
   role: z.enum(['ATHLETE', 'TRAINER']),
 })
 
@@ -15,20 +26,33 @@ const LoginBody = z.object({
   password: z.string().min(1),
 })
 
+function sanitizeUser<T extends object>(user: T): Omit<T, 'passwordHash'> {
+  const copy = { ...(user as unknown as Record<string, unknown>) }
+  delete copy['passwordHash']
+  return copy as unknown as Omit<T, 'passwordHash'>
+}
+
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /api/v1/auth/register
   fastify.post('/register', async (request, reply) => {
     const parsed = RegisterBody.safeParse(request.body)
     if (!parsed.success) {
-      return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0]?.message ?? 'Invalid input' } })
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid input',
+          details: parsed.error.issues.map((issue) => issue.message),
+        },
+      })
     }
 
-    const { email, password, role } = parsed.data
+    const { username, email, password, role } = parsed.data
 
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
+      user_metadata: { username },
     })
 
     if (authError || !authData.user) {
@@ -37,23 +61,48 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(status).send({ error: { code: 'AUTH_ERROR', message: msg } })
     }
 
-    const dbUser = await prisma.user.create({
-      data: { id: authData.user.id, email, role },
-    })
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.create({ data: { id: authData.user.id, email, role } })
+        await tx.profile.create({ data: { userId: authData.user.id, name: '' } })
+        await tx.gameProfile.create({ data: { userId: authData.user.id } })
+        if (role === 'TRAINER') {
+          await tx.trainerProfile.create({ data: { userId: authData.user.id, specialties: [] } })
+        }
+      })
+    } catch {
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id).catch(() => null)
+      return reply.status(500).send({ error: { code: 'REGISTER_ERROR', message: 'Failed to create account' } })
+    }
 
     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
     if (signInError || !signInData.session) {
       return reply.status(500).send({ error: { code: 'AUTH_ERROR', message: 'User created but sign-in failed' } })
     }
 
-    return reply.status(201).send({ user: dbUser, session: signInData.session })
+    const dbUser = await prisma.user.findUniqueOrThrow({
+      where: { id: authData.user.id },
+      include: { profile: true, trainerProfile: true },
+    })
+
+    return reply.status(201).send({
+      user: sanitizeUser(dbUser),
+      session: signInData.session,
+      isOnboarded: false,
+    })
   })
 
   // POST /api/v1/auth/login
   fastify.post('/login', async (request, reply) => {
     const parsed = LoginBody.safeParse(request.body)
     if (!parsed.success) {
-      return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0]?.message ?? 'Invalid input' } })
+      return reply.status(400).send({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid input',
+          details: parsed.error.issues.map((issue) => issue.message),
+        },
+      })
     }
 
     const { email, password } = parsed.data
@@ -72,7 +121,13 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: { code: 'USER_NOT_FOUND', message: 'User not found in database' } })
     }
 
-    return reply.send({ user: dbUser, session: data.session })
+    const isOnboarded = dbUser.profile != null && dbUser.profile.name.length > 0
+
+    return reply.send({
+      user: sanitizeUser(dbUser),
+      session: data.session,
+      isOnboarded,
+    })
   })
 
   // POST /api/v1/auth/google
@@ -107,6 +162,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     const isOnboarded = user?.profile != null && user.profile.name.length > 0
 
-    return reply.send({ user, isOnboarded })
+    return reply.send({
+      user: user ? sanitizeUser(user) : null,
+      isOnboarded,
+    })
   })
 }
