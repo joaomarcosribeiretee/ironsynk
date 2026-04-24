@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -9,10 +9,11 @@ import {
   Image,
   ActivityIndicator,
   StyleSheet,
+  Animated as RNAnimated,
+  Easing,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
-import Animated, { useSharedValue, withTiming, useAnimatedStyle } from 'react-native-reanimated'
 import * as ImagePicker from 'expo-image-picker'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
@@ -39,11 +40,15 @@ export function ProfileScreen({ navigation }: Props) {
   const [privacyLoading, setPrivacyLoading] = useState(false)
   const [avatarUploading, setAvatarUploading] = useState(false)
 
-  const opacity = useSharedValue(0)
-  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }))
+  const opacity = useRef(new RNAnimated.Value(0)).current
 
   useEffect(() => {
-    opacity.value = withTiming(1, { duration: 280 })
+    RNAnimated.timing(opacity, {
+      toValue: 1,
+      duration: 280,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start()
   }, [])
 
   function getInitials(name: string): string {
@@ -117,7 +122,7 @@ export function ProfileScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <Animated.View style={[{ flex: 1 }, animatedStyle]}>
+      <RNAnimated.View style={[{ flex: 1 }, { opacity }]}>
         <ScrollView
           contentContainerStyle={{ paddingBottom: 48 }}
           showsVerticalScrollIndicator={false}
@@ -238,7 +243,7 @@ export function ProfileScreen({ navigation }: Props) {
             <Text style={styles.signOutText}>Sair da conta</Text>
           </TouchableOpacity>
         </ScrollView>
-      </Animated.View>
+      </RNAnimated.View>
     </SafeAreaView>
   )
 }
