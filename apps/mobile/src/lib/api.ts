@@ -90,6 +90,7 @@ export type RegisterInput = { username: string; email: string; password: string;
 export type LoginInput = { email: string; password: string }
 
 export type UpdateProfileInput = {
+  isOnboarding?: boolean
   name?: string
   birthDate?: string
   sex?: 'male' | 'female' | 'other'
@@ -98,6 +99,8 @@ export type UpdateProfileInput = {
   goal?: string
   experience?: string
   daysPerWeek?: number
+  isPrivate?: boolean
+  gymName?: string
   bio?: string
   cref?: string
   specialties?: string[]
@@ -121,6 +124,19 @@ export const api = {
   profile: {
     update: (body: UpdateProfileInput) =>
       request<{ profile: ProfileRecord }>('/api/v1/profile', { method: 'PUT', body }),
+    uploadAvatar: async (formData: FormData): Promise<{ avatarUrl: string }> => {
+      const token = useAuthStore.getState().session?.access_token
+      const res = await fetch(`${BASE_URL}/api/v1/profile/avatar`, {
+        method: 'PUT',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      })
+      const data = (await res.json().catch(() => ({}))) as ApiErrorBody & { avatarUrl: string }
+      if (!res.ok) {
+        throw new ApiError(data.error?.message ?? 'Falha no upload', res.status, data.error?.code)
+      }
+      return data
+    },
     get: (userId: string) =>
       request<{ profile: ProfileRecord }>(`/api/v1/profile/${userId}`),
   },

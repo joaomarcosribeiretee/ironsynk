@@ -49,14 +49,8 @@ export function LoginScreen({ navigation }: Props) {
     }
   }
 
-  async function handleGoogle() {
-    try {
-      const { url } = await api.auth.google()
-      const { Linking } = await import('react-native')
-      await Linking.openURL(url)
-    } catch (err) {
-      Alert.alert('Erro', 'Nao foi possivel iniciar o login com Google')
-    }
+  function handleGoogle() {
+    Alert.alert('Em breve', 'Login com Google estara disponivel em breve.')
   }
 
   return (

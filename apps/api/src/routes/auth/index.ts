@@ -10,7 +10,7 @@ const RegisterBody = z.object({
     .min(3)
     .max(30)
     .regex(/^[a-zA-Z0-9._ -]+$/, 'Username can only contain letters, numbers, spaces, dot, underscore, and hyphen'),
-  email: z.string().email(),
+  email: z.email(),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
@@ -22,15 +22,9 @@ const RegisterBody = z.object({
 })
 
 const LoginBody = z.object({
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(1),
 })
-
-function sanitizeUser<T extends object>(user: T): Omit<T, 'passwordHash'> {
-  const copy = { ...(user as unknown as Record<string, unknown>) }
-  delete copy['passwordHash']
-  return copy as unknown as Omit<T, 'passwordHash'>
-}
 
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /api/v1/auth/register
@@ -85,11 +79,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       include: { profile: true, trainerProfile: true },
     })
 
-    return reply.status(201).send({
-      user: sanitizeUser(dbUser),
-      session: signInData.session,
-      isOnboarded: false,
-    })
+    return reply.status(201).send({ user: dbUser, session: signInData.session, isOnboarded: false })
   })
 
   // POST /api/v1/auth/login
@@ -123,27 +113,12 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     const isOnboarded = dbUser.profile != null && dbUser.profile.name.length > 0
 
-    return reply.send({
-      user: sanitizeUser(dbUser),
-      session: data.session,
-      isOnboarded,
-    })
+    return reply.send({ user: dbUser, session: data.session, isOnboarded })
   })
 
-  // POST /api/v1/auth/google
+  // POST /api/v1/auth/google — see apps/api/src/routes/auth/google.ts for setup checklist
   fastify.post('/google', async (_request, reply) => {
-    const redirectTo = process.env['OAUTH_REDIRECT_URL'] ?? 'exp://localhost:8081'
-
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo, skipBrowserRedirect: true },
-    })
-
-    if (error || !data.url) {
-      return reply.status(500).send({ error: { code: 'OAUTH_ERROR', message: 'Failed to initiate Google OAuth' } })
-    }
-
-    return reply.send({ url: data.url })
+    return reply.status(501).send({ error: { code: 'NOT_IMPLEMENTED', message: 'Google OAuth not yet configured. See google.ts for setup checklist.' } })
   })
 
   // POST /api/v1/auth/logout
@@ -162,9 +137,6 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     const isOnboarded = user?.profile != null && user.profile.name.length > 0
 
-    return reply.send({
-      user: user ? sanitizeUser(user) : null,
-      isOnboarded,
-    })
+    return reply.send({ user, isOnboarded })
   })
 }

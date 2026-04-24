@@ -9,7 +9,7 @@ export type AuthStackParamList = {
   Splash: undefined
   Login: undefined
   Register: undefined
-  Onboarding: undefined
+  Onboarding: { name?: string } | undefined
 }
 
 const Stack = createNativeStackNavigator<AuthStackParamList>()
