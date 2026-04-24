@@ -4,8 +4,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ScrollView,
   Alert,
@@ -85,6 +87,7 @@ export function RegisterScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#141418' }}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -97,6 +100,7 @@ export function RegisterScreen({ navigation }: Props) {
             alignItems: 'center',
           }}
           keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={Keyboard.dismiss}
           showsVerticalScrollIndicator={false}
         >
           <View style={{ width: '100%', maxWidth: 460, paddingHorizontal: 24 }}>
@@ -178,11 +182,12 @@ export function RegisterScreen({ navigation }: Props) {
                   style={{
                     ...styles.centeredInputText,
                   }}
-                  placeholder="Ex: Joao Silva"
+                  placeholder="Ex: joaosilva"
                   placeholderTextColor="#4A4A5A"
                   value={username}
                   onChangeText={setUsername}
                   autoCapitalize="none"
+                  autoCorrect={false}
                   autoComplete="username"
                   multiline={false}
                   numberOfLines={1}
@@ -341,6 +346,7 @@ export function RegisterScreen({ navigation }: Props) {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
   )
 }
@@ -368,7 +374,7 @@ const styles = StyleSheet.create({
     transform: [{ translateY: -1 }],
   },
   fieldHintError: {
-    color: '#FFB300',
+    color: '#FF5252',
     fontSize: 12,
     marginTop: 6,
     marginLeft: 2,

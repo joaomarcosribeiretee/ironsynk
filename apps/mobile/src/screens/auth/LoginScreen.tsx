@@ -4,8 +4,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ScrollView,
   Alert,
@@ -55,6 +57,7 @@ export function LoginScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <KeyboardAvoidingView
       className="flex-1"
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -62,6 +65,7 @@ export function LoginScreen({ navigation }: Props) {
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
         showsVerticalScrollIndicator={false}
       >
         <View className="flex-1 px-6 pt-8 pb-8 items-center justify-center">
@@ -174,6 +178,7 @@ export function LoginScreen({ navigation }: Props) {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
     </SafeAreaView>
   )
 }
