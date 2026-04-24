@@ -55,17 +55,20 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.status(status).send({ error: { code: 'AUTH_ERROR', message: msg } })
     }
 
+    const supabaseUserId = authData.user.id
+
     try {
       await prisma.$transaction(async (tx) => {
-        await tx.user.create({ data: { id: authData.user.id, email, role } })
-        await tx.profile.create({ data: { userId: authData.user.id, name: '' } })
-        await tx.gameProfile.create({ data: { userId: authData.user.id } })
+        await tx.user.create({ data: { id: supabaseUserId, email, role } })
+        await tx.profile.create({ data: { userId: supabaseUserId, name: '' } })
+        await tx.gameProfile.create({ data: { userId: supabaseUserId } })
         if (role === 'TRAINER') {
-          await tx.trainerProfile.create({ data: { userId: authData.user.id, specialties: [] } })
+          await tx.trainerProfile.create({ data: { userId: supabaseUserId, specialties: [] } })
         }
       })
-    } catch {
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id).catch(() => null)
+    } catch (err) {
+      request.log.error(err, 'prisma.$transaction failed during register')
+      await supabaseAdmin.auth.admin.deleteUser(supabaseUserId).catch(() => null)
       return reply.status(500).send({ error: { code: 'REGISTER_ERROR', message: 'Failed to create account' } })
     }
 
@@ -75,7 +78,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const dbUser = await prisma.user.findUniqueOrThrow({
-      where: { id: authData.user.id },
+      where: { id: supabaseUserId },
       include: { profile: true, trainerProfile: true },
     })
 
