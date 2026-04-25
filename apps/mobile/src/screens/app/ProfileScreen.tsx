@@ -86,7 +86,7 @@ export function ProfileScreen({ navigation }: Props) {
     setAvatarUploading(true)
     try {
       await api.profile.uploadAvatar(formData)
-      const { user: updated } = await api.auth.me()
+      const { data: { user: updated } } = await api.auth.me()
       setUser(updated)
     } catch (err) {
       Alert.alert('Erro', getFriendlyErrorMessage(err, 'Nao foi possivel enviar a foto.'))
@@ -100,7 +100,7 @@ export function ProfileScreen({ navigation }: Props) {
     setPrivacyLoading(true)
     try {
       await api.profile.update({ isPrivate: newValue })
-      const { user: updated } = await api.auth.me()
+      const { data: { user: updated } } = await api.auth.me()
       setUser(updated)
     } catch (err) {
       Alert.alert('Erro', getFriendlyErrorMessage(err, 'Nao foi possivel atualizar a privacidade.'))

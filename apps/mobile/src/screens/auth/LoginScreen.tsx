@@ -39,7 +39,7 @@ export function LoginScreen({ navigation }: Props) {
     }
     setLoading(true)
     try {
-      const { user, session, isOnboarded } = await api.auth.login({ email: email.trim(), password })
+      const { data: { user, session, isOnboarded } } = await api.auth.login({ email: email.trim(), password })
       login(user, session)
       if (!isOnboarded) {
         navigation.replace('Onboarding')

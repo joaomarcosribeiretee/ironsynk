@@ -91,7 +91,7 @@ export async function profileRoutes(fastify: FastifyInstance): Promise<void> {
       }
     }
 
-    return reply.send({ profile })
+    return reply.send({ data: { profile } })
   })
 
   // PUT /api/v1/profile/avatar — upload avatar image
@@ -136,7 +136,7 @@ export async function profileRoutes(fastify: FastifyInstance): Promise<void> {
 
     await prisma.profile.update({ where: { userId }, data: { avatar: avatarUrl } })
 
-    return reply.send({ avatarUrl })
+    return reply.send({ data: { avatarUrl } })
   })
 
   // GET /api/v1/profile/:userId — public profile
@@ -154,17 +154,21 @@ export async function profileRoutes(fastify: FastifyInstance): Promise<void> {
 
     if (user.profile.isPrivate) {
       return reply.send({
-        id: user.id,
-        role: user.role,
-        profile: { name: user.profile.name, avatar: user.profile.avatar },
+        data: {
+          id: user.id,
+          role: user.role,
+          profile: { name: user.profile.name, avatar: user.profile.avatar },
+        },
       })
     }
 
     return reply.send({
-      id: user.id,
-      role: user.role,
-      profile: user.profile,
-      trainerProfile: user.role === 'TRAINER' ? user.trainerProfile : undefined,
+      data: {
+        id: user.id,
+        role: user.role,
+        profile: user.profile,
+        trainerProfile: user.role === 'TRAINER' ? user.trainerProfile : undefined,
+      },
     })
   })
 }

@@ -65,7 +65,7 @@ export function RegisterScreen({ navigation }: Props) {
 
     setLoading(true)
     try {
-      const { user, session } = await api.auth.register({
+      const { data: { user, session } } = await api.auth.register({
         username: username.trim(),
         email: email.trim(),
         password,

@@ -176,7 +176,7 @@ export function OnboardingScreen({ navigation }: Props) {
       await api.profile.update(profilePayload)
 
       // Refresh user data
-      const { user: updatedUser } = await api.auth.me()
+      const { data: { user: updatedUser } } = await api.auth.me()
       setUser(updatedUser)
       setIsOnboarded(true)
     } catch (err) {

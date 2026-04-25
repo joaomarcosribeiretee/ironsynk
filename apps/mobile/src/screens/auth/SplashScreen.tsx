@@ -39,7 +39,7 @@ export function SplashScreen({ navigation }: Props) {
       if (session && !user) {
         // Token restored from SecureStore — verify with server to get user state
         try {
-          const { user: me, isOnboarded: onboarded } = await api.auth.me()
+          const { data: { user: me, isOnboarded: onboarded } } = await api.auth.me()
           if (!cancelled) {
             setUser(me)
             setIsOnboarded(onboarded)

@@ -86,7 +86,7 @@ export type ProfileRecord = {
   isPrivate: boolean
 }
 
-export type RegisterInput = { username: string; email: string; password: string; role: 'ATHLETE' | 'TRAINER' }
+export type RegisterInput = { username?: string; email: string; password: string; role: 'ATHLETE' | 'TRAINER' }
 export type LoginInput = { email: string; password: string }
 
 export type UpdateProfileInput = {
@@ -111,33 +111,31 @@ export type UpdateProfileInput = {
 export const api = {
   auth: {
     register: (body: RegisterInput) =>
-      request<{ user: UserRecord; session: Session; isOnboarded: boolean }>('/api/v1/auth/register', { method: 'POST', body }),
+      request<{ data: { user: UserRecord; session: Session; isOnboarded: boolean } }>('/api/v1/auth/register', { method: 'POST', body }),
     login: (body: LoginInput) =>
-      request<{ user: UserRecord; session: Session; isOnboarded: boolean }>('/api/v1/auth/login', { method: 'POST', body }),
-    google: () =>
-      request<{ url: string }>('/api/v1/auth/google', { method: 'POST' }),
+      request<{ data: { user: UserRecord; session: Session; isOnboarded: boolean } }>('/api/v1/auth/login', { method: 'POST', body }),
     logout: () =>
-      request<{ success: boolean }>('/api/v1/auth/logout', { method: 'POST' }),
+      request<{ data: { success: boolean } }>('/api/v1/auth/logout', { method: 'POST' }),
     me: () =>
-      request<{ user: UserRecord; isOnboarded: boolean }>('/api/v1/auth/me'),
+      request<{ data: { user: UserRecord; isOnboarded: boolean } }>('/api/v1/auth/me'),
   },
   profile: {
     update: (body: UpdateProfileInput) =>
-      request<{ profile: ProfileRecord }>('/api/v1/profile', { method: 'PUT', body }),
-    uploadAvatar: async (formData: FormData): Promise<{ avatarUrl: string }> => {
+      request<{ data: { profile: ProfileRecord } }>('/api/v1/profile', { method: 'PUT', body }),
+    uploadAvatar: async (formData: FormData): Promise<{ data: { avatarUrl: string } }> => {
       const token = useAuthStore.getState().session?.access_token
       const res = await fetch(`${BASE_URL}/api/v1/profile/avatar`, {
         method: 'PUT',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       })
-      const data = (await res.json().catch(() => ({}))) as ApiErrorBody & { avatarUrl: string }
+      const json = (await res.json().catch(() => ({}))) as ApiErrorBody & { data: { avatarUrl: string } }
       if (!res.ok) {
-        throw new ApiError(data.error?.message ?? 'Falha no upload', res.status, data.error?.code)
+        throw new ApiError(json.error?.message ?? 'Falha no upload', res.status, json.error?.code)
       }
-      return data
+      return json
     },
     get: (userId: string) =>
-      request<{ profile: ProfileRecord }>(`/api/v1/profile/${userId}`),
+      request<{ data: { id: string; role: string; profile: ProfileRecord } }>(`/api/v1/profile/${userId}`),
   },
 }

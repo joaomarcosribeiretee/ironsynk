@@ -9,7 +9,8 @@ const RegisterBody = z.object({
     .string()
     .min(3)
     .max(30)
-    .regex(/^[a-zA-Z0-9._ -]+$/, 'Username can only contain letters, numbers, spaces, dot, underscore, and hyphen'),
+    .refine((v) => /^[a-zA-Z0-9._ -]+$/.test(v), 'Username can only contain letters, numbers, spaces, dot, underscore, and hyphen')
+    .optional(),
   email: z.email(),
   password: z
     .string()
@@ -82,7 +83,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       include: { profile: true, trainerProfile: true },
     })
 
-    return reply.status(201).send({ user: dbUser, session: signInData.session, isOnboarded: false })
+    return reply.status(201).send({ data: { user: dbUser, session: signInData.session, isOnboarded: false } })
   })
 
   // POST /api/v1/auth/login
@@ -116,7 +117,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     const isOnboarded = dbUser.profile != null && dbUser.profile.name.length > 0
 
-    return reply.send({ user: dbUser, session: data.session, isOnboarded })
+    return reply.send({ data: { user: dbUser, session: data.session, isOnboarded } })
   })
 
   // POST /api/v1/auth/google — see apps/api/src/routes/auth/google.ts for setup checklist
@@ -128,7 +129,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post('/logout', { preHandler: authMiddleware }, async (request, reply) => {
     const token = request.headers['authorization']?.replace('Bearer ', '') ?? ''
     await supabaseAdmin.auth.admin.signOut(token).catch(() => null)
-    return reply.send({ success: true })
+    return reply.send({ data: { success: true } })
   })
 
   // GET /api/v1/auth/me
@@ -140,6 +141,6 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
     const isOnboarded = user?.profile != null && user.profile.name.length > 0
 
-    return reply.send({ user, isOnboarded })
+    return reply.send({ data: { user, isOnboarded } })
   })
 }
