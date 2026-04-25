@@ -30,12 +30,13 @@ type FieldErrors = Record<string, string>
 function validateOnboarding(data: z.infer<typeof UpdateProfileBody>, role: string): FieldErrors | null {
   const fields: FieldErrors = {}
 
-  // Step 1: required for all roles
   if (!data.name || data.name.trim().length < 2) fields.name = 'required'
   if (!data.birthDate) fields.birthDate = 'required'
   if (!data.sex) fields.sex = 'required'
-  if (!data.weightKg || data.weightKg <= 0) fields.weightKg = 'required'
-  if (!data.heightCm || data.heightCm <= 0) fields.heightCm = 'required'
+  if (role !== 'TRAINER') {
+    if (!data.weightKg || data.weightKg <= 0) fields.weightKg = 'required'
+    if (!data.heightCm || data.heightCm <= 0) fields.heightCm = 'required'
+  }
 
   // Step 2: role-specific
   if (role === 'ATHLETE') {
