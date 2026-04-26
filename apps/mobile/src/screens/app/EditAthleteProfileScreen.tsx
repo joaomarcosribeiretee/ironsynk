@@ -17,6 +17,7 @@ import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store/authStore'
 import { api } from '../../lib/api'
 import { getFriendlyErrorMessage } from '../../lib/errorMessages'
+import { ProfileAvatarUploadSection } from './ProfileAvatarUploadSection'
 
 type Props = NativeStackScreenProps<AppStackParamList, 'EditAthleteProfile'>
 
@@ -113,6 +114,8 @@ export function EditAthleteProfileScreen({ navigation }: Props) {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          <ProfileAvatarUploadSection nameForInitials={name.trim() || profile?.name || ' '} />
+
           <Text style={s.label}>Nome *</Text>
           <TextInput
             style={s.input}

@@ -97,7 +97,7 @@ export async function profileRoutes(fastify: FastifyInstance): Promise<void> {
 
   // PUT /api/v1/profile/avatar — upload avatar image
   fastify.put('/avatar', { preHandler: authMiddleware }, async (request, reply) => {
-    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
 
     const data = await request.file()
     if (!data) {
@@ -106,7 +106,7 @@ export async function profileRoutes(fastify: FastifyInstance): Promise<void> {
 
     if (!ALLOWED_TYPES.includes(data.mimetype)) {
       data.file.resume() // drain stream to release backpressure
-      return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Only jpg, png, and webp are allowed' } })
+      return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Only jpg, png, webp, heic, and heif are allowed' } })
     }
 
     const chunks: Buffer[] = []
@@ -119,19 +119,32 @@ export async function profileRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const buffer = Buffer.concat(chunks)
-    const ext = data.mimetype === 'image/png' ? 'png' : data.mimetype === 'image/webp' ? 'webp' : 'jpg'
+    const ext =
+      data.mimetype === 'image/png'
+        ? 'png'
+        : data.mimetype === 'image/webp'
+          ? 'webp'
+          : data.mimetype === 'image/heic'
+            ? 'heic'
+            : data.mimetype === 'image/heif'
+              ? 'heif'
+              : 'jpg'
     const userId = request.authUser.id
     const storagePath = `${userId}/avatar.${ext}`
 
     // Remove old avatar files with other extensions to avoid orphaned files
-    const otherExts = ['jpg', 'png', 'webp'].filter((e) => e !== ext)
+    const otherExts = ['jpg', 'png', 'webp', 'heic', 'heif'].filter((e) => e !== ext)
     await Promise.all(
       otherExts.map((e) => supabaseAdmin.storage.from('avatars').remove([`${userId}/avatar.${e}`]).catch(() => null))
     )
 
     const { error: storageError } = await supabaseAdmin.storage
       .from('avatars')
-      .upload(storagePath, buffer, { contentType: data.mimetype, upsert: true })
+      .upload(storagePath, buffer, {
+        contentType: data.mimetype,
+        upsert: true,
+        cacheControl: '31536000',
+      })
 
     if (storageError) {
       request.log.error(storageError, 'Supabase storage upload failed')
