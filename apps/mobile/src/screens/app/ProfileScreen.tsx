@@ -143,6 +143,16 @@ function DesempenhoTab() {
         ))}
       </View>
 
+      {/* Evolução de Carga */}
+      <SectionTitle>EVOLUÇÃO DE CARGA</SectionTitle>
+      <View style={s.infoCard}>
+        <EmptyState
+          icon="📈"
+          title="Sem dados suficientes"
+          sub="Complete ao menos 3 sessões com o mesmo exercício para ver a evolução de carga"
+        />
+      </View>
+
       {/* Aderência à Dieta */}
       <SectionTitle>ADERÊNCIA À DIETA</SectionTitle>
       <View style={[s.infoCard, s.adherenceCard]}>
@@ -258,7 +268,7 @@ function AlunosTab() {
 
 // ─── Trainer tab: Consultas ─────────────────────────────────────────────
 
-function ConsultasTab() {
+function ConsultasTab({ onCreateForm }: { onCreateForm: () => void }) {
   return (
     <View style={s.tabContent}>
       <EmptyState
@@ -266,6 +276,9 @@ function ConsultasTab() {
         title="Nenhuma consulta criada ainda"
         sub="Crie formulários de avaliação para seus alunos"
       />
+      <TouchableOpacity style={s.createBtn} onPress={onCreateForm}>
+        <Text style={s.createBtnText}>+ Criar formulário</Text>
+      </TouchableOpacity>
     </View>
   )
 }
@@ -508,7 +521,9 @@ export function ProfileScreen({ navigation }: Props) {
           {isTrainer ? (
             <>
               {trainerTab === 'alunos' && <AlunosTab />}
-              {trainerTab === 'consultas' && <ConsultasTab />}
+              {trainerTab === 'consultas' && (
+                <ConsultasTab onCreateForm={() => Alert.alert('Em breve', 'Criação de formulários disponível na fase de consultoria.')} />
+              )}
               {trainerTab === 'sobre' && (
                 <TrainerSobreTab
                   profile={profile}
@@ -644,6 +659,14 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(41,121,255,0.1)', borderWidth: 1, borderColor: 'rgba(41,121,255,0.3)',
   },
   chipText: { color: '#4FC3F7', fontSize: 12, fontWeight: '500' },
+
+  // Create button
+  createBtn: {
+    marginTop: 16, paddingVertical: 14, borderRadius: 12,
+    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2979FF',
+    alignItems: 'center',
+  },
+  createBtnText: { color: '#4FC3F7', fontSize: 14, fontWeight: '600' },
 
   // Logout
   logoutBtn: { marginTop: 16, marginBottom: 8, paddingVertical: 14, alignItems: 'center' },
