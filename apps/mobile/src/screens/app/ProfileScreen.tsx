@@ -194,13 +194,9 @@ function ProgramaTab() {
 // ─── Athlete tab: Sobre ─────────────────────────────────────────────────
 
 function AthleteSobreTab({
-  profile, isPrivate, privacyLoading, onPrivacyToggle, onLogout, onEdit,
+  profile, onEdit,
 }: {
   profile: ProfileRecord | null | undefined
-  isPrivate: boolean
-  privacyLoading: boolean
-  onPrivacyToggle: () => void
-  onLogout: () => void
   onEdit: () => void
 }) {
   const birthFormatted = profile?.birthDate
@@ -233,20 +229,6 @@ function AthleteSobreTab({
           </View>
         </>
       )}
-      <SectionTitle>CONFIGURAÇÕES</SectionTitle>
-      <View style={s.infoCard}>
-        <View style={s.infoRow}>
-          <Text style={s.infoRowLabel}>Perfil Privado</Text>
-          <Switch
-            value={isPrivate} onValueChange={onPrivacyToggle} disabled={privacyLoading}
-            trackColor={{ false: '#2A2A35', true: 'rgba(41,121,255,0.5)' }}
-            thumbColor={isPrivate ? '#2979FF' : '#4A4A5A'}
-          />
-        </View>
-      </View>
-      <TouchableOpacity style={s.logoutBtn} onPress={onLogout}>
-        <Text style={s.logoutText}>Sair da conta</Text>
-      </TouchableOpacity>
     </View>
   )
 }
@@ -286,15 +268,10 @@ function ConsultasTab({ onCreateForm }: { onCreateForm: () => void }) {
 // ─── Trainer tab: Sobre ─────────────────────────────────────────────────
 
 function TrainerSobreTab({
-  profile, trainerProfile, isPrivate, privacyLoading,
-  onPrivacyToggle, onLogout, onEdit,
+  profile, trainerProfile, onEdit,
 }: {
   profile: ProfileRecord | null | undefined
   trainerProfile: TrainerProfileRecord | null | undefined
-  isPrivate: boolean
-  privacyLoading: boolean
-  onPrivacyToggle: () => void
-  onLogout: () => void
   onEdit: () => void
 }) {
   return (
@@ -343,21 +320,6 @@ function TrainerSobreTab({
         </>
       )}
 
-      <SectionTitle>CONFIGURAÇÕES</SectionTitle>
-      <View style={s.infoCard}>
-        <View style={s.infoRow}>
-          <Text style={s.infoRowLabel}>Perfil Privado</Text>
-          <Switch
-            value={isPrivate} onValueChange={onPrivacyToggle} disabled={privacyLoading}
-            trackColor={{ false: '#2A2A35', true: 'rgba(41,121,255,0.5)' }}
-            thumbColor={isPrivate ? '#2979FF' : '#4A4A5A'}
-          />
-        </View>
-      </View>
-
-      <TouchableOpacity style={s.logoutBtn} onPress={onLogout}>
-        <Text style={s.logoutText}>Sair da conta</Text>
-      </TouchableOpacity>
     </View>
   )
 }
@@ -443,8 +405,8 @@ export function ProfileScreen({ navigation }: Props) {
           {/* Header */}
           <View style={s.header}>
             <Text style={s.headerTitle}>Perfil</Text>
-            <TouchableOpacity style={s.headerIconBtn} onPress={navigateToEdit}>
-              <Text style={s.headerIconText}>✎</Text>
+            <TouchableOpacity style={s.headerEditBtn} onPress={navigateToEdit}>
+              <Text style={s.headerEditTxt}>Editar</Text>
             </TouchableOpacity>
           </View>
 
@@ -467,14 +429,16 @@ export function ProfileScreen({ navigation }: Props) {
             </TouchableOpacity>
 
             <View style={s.heroInfo}>
-              <Text style={s.heroName} numberOfLines={1}>{displayName}</Text>
+              <View style={s.heroNameRow}>
+                <Text style={s.heroName} numberOfLines={1}>{displayName}</Text>
+                {isTrainer && (
+                  <View style={s.trainerBadge}>
+                    <Text style={s.trainerBadgeText}>Personal Trainer</Text>
+                  </View>
+                )}
+              </View>
               <Text style={s.heroHandle} numberOfLines={1}>@{user?.email?.split('@')[0]}</Text>
               <View style={s.heroAccent} />
-              {isTrainer && (
-                <View style={s.trainerBadge}>
-                  <Text style={s.trainerBadgeText}>Personal Trainer</Text>
-                </View>
-              )}
               <View style={s.heroStats}>
                 {!isTrainer && (
                   <View style={s.heroStat}>
@@ -528,10 +492,6 @@ export function ProfileScreen({ navigation }: Props) {
                 <TrainerSobreTab
                   profile={profile}
                   trainerProfile={trainerProfile}
-                  isPrivate={isPrivate}
-                  privacyLoading={privacyLoading}
-                  onPrivacyToggle={handlePrivacyToggle}
-                  onLogout={handleLogout}
                   onEdit={navigateToEdit}
                 />
               )}
@@ -544,15 +504,31 @@ export function ProfileScreen({ navigation }: Props) {
               {athleteTab === 'sobre' && (
                 <AthleteSobreTab
                   profile={profile}
-                  isPrivate={isPrivate}
-                  privacyLoading={privacyLoading}
-                  onPrivacyToggle={handlePrivacyToggle}
-                  onLogout={handleLogout}
                   onEdit={navigateToEdit}
                 />
               )}
             </>
           )}
+          {/* Settings — always visible below tabs */}
+          <View style={s.settingsWrap}>
+            <SectionTitle>CONFIGURAÇÕES</SectionTitle>
+            <View style={s.infoCard}>
+              <View style={s.infoRow}>
+                <Text style={s.infoRowLabel}>Perfil Privado</Text>
+                <Switch
+                  value={isPrivate}
+                  onValueChange={handlePrivacyToggle}
+                  disabled={privacyLoading}
+                  trackColor={{ false: '#2A2A35', true: 'rgba(41,121,255,0.5)' }}
+                  thumbColor={isPrivate ? '#2979FF' : '#4A4A5A'}
+                />
+              </View>
+            </View>
+            <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
+              <Text style={s.logoutText}>Sair da conta</Text>
+            </TouchableOpacity>
+          </View>
+
         </ScrollView>
       </RNAnimated.View>
     </SafeAreaView>
@@ -570,12 +546,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8,
   },
   headerTitle: { color: '#F0F0F5', fontSize: 22, fontWeight: '500' },
-  headerIconBtn: {
-    width: 36, height: 36, backgroundColor: '#1E1E24',
-    borderRadius: 10, borderWidth: 1, borderColor: '#2A2A35',
-    justifyContent: 'center', alignItems: 'center',
+  headerEditBtn: {
+    paddingHorizontal: 14, paddingVertical: 7,
+    backgroundColor: '#1E1E24', borderRadius: 10,
+    borderWidth: 1, borderColor: '#2A2A35',
   },
-  headerIconText: { color: '#4FC3F7', fontSize: 16 },
+  headerEditTxt: { color: '#4FC3F7', fontSize: 13, fontWeight: '600' },
 
   // Hero
   hero: {
@@ -595,7 +571,8 @@ const s = StyleSheet.create({
   avatarImg: { width: '100%', height: '100%' },
   avatarInitials: { color: '#F0F0F5', fontSize: 30, fontWeight: '700' },
   heroInfo: { flex: 1, justifyContent: 'center', paddingLeft: 2 },
-  heroName: { color: '#F0F0F5', fontSize: 19, fontWeight: '700', marginBottom: 4 },
+  heroNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  heroName: { color: '#F0F0F5', fontSize: 19, fontWeight: '700', flexShrink: 1 },
   heroHandle: { color: '#8A8A9A', fontSize: 12, marginBottom: 8 },
   heroAccent: { width: 30, height: 2, borderRadius: 999, backgroundColor: 'rgba(79,195,247,0.65)', marginBottom: 6 },
   trainerBadge: {
@@ -667,6 +644,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   createBtnText: { color: '#4FC3F7', fontSize: 14, fontWeight: '600' },
+
+  // Settings section
+  settingsWrap: { paddingHorizontal: 16, paddingTop: 24, paddingBottom: 8 },
 
   // Logout
   logoutBtn: { marginTop: 16, marginBottom: 8, paddingVertical: 14, alignItems: 'center' },
