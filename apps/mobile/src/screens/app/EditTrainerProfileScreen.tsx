@@ -28,6 +28,38 @@ const SPECIALTY_SUGGESTIONS = [
   'Atletas', 'Nutrição Esportiva',
 ]
 
+const SEX_OPTIONS = [
+  { key: 'male' as const, label: 'Masculino' },
+  { key: 'female' as const, label: 'Feminino' },
+  { key: 'other' as const, label: 'Outro' },
+]
+
+function isoToDisplay(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const dd = String(d.getUTCDate()).padStart(2, '0')
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
+  return `${dd}/${mm}/${d.getUTCFullYear()}`
+}
+
+function maskDate(text: string): string {
+  const digits = text.replace(/\D/g, '').slice(0, 8)
+  let out = ''
+  for (let i = 0; i < digits.length; i++) {
+    if (i === 2 || i === 4) out += '/'
+    out += digits[i]
+  }
+  return out
+}
+
+function displayToIso(str: string): string | undefined {
+  const parts = str.split('/')
+  if (parts.length !== 3 || parts[2]!.length !== 4) return undefined
+  const iso = `${parts[2]}-${parts[1]}-${parts[0]}`
+  return isNaN(new Date(iso).getTime()) ? undefined : iso
+}
+
 export function EditTrainerProfileScreen({ navigation }: Props) {
   const { user, setUser } = useAuthStore()
   const profile = user?.profile
@@ -35,6 +67,10 @@ export function EditTrainerProfileScreen({ navigation }: Props) {
 
   const [name, setName] = useState(profile?.name ?? '')
   const [bio, setBio] = useState(profile?.bio ?? '')
+  const [birthDate, setBirthDate] = useState(isoToDisplay(profile?.birthDate))
+  const [sex, setSex] = useState<'male' | 'female' | 'other' | null>(profile?.sex ?? null)
+  const [weightKg, setWeightKg] = useState(profile?.weightKg?.toString() ?? '')
+  const [heightCm, setHeightCm] = useState(profile?.heightCm?.toString() ?? '')
   const [trainerBio, setTrainerBio] = useState(trainerProfile?.bio ?? '')
   const [cref, setCref] = useState(trainerProfile?.cref ?? '')
   const [specialties, setSpecialties] = useState<string[]>(trainerProfile?.specialties ?? [])
@@ -58,11 +94,30 @@ export function EditTrainerProfileScreen({ navigation }: Props) {
       Alert.alert('Erro', 'Nome é obrigatório.')
       return
     }
+    const parsedBirthDate = birthDate.trim() ? displayToIso(birthDate.trim()) : undefined
+    if (birthDate.trim() && !parsedBirthDate) {
+      Alert.alert('Erro', 'Data de nascimento inválida. Use DD/MM/AAAA.')
+      return
+    }
+    const parsedWeight = weightKg.trim() ? parseFloat(weightKg.replace(',', '.')) : undefined
+    const parsedHeight = heightCm.trim() ? parseFloat(heightCm.replace(',', '.')) : undefined
+    if (parsedWeight !== undefined && (isNaN(parsedWeight) || parsedWeight <= 0)) {
+      Alert.alert('Erro', 'Peso inválido.')
+      return
+    }
+    if (parsedHeight !== undefined && (isNaN(parsedHeight) || parsedHeight <= 0)) {
+      Alert.alert('Erro', 'Altura inválida.')
+      return
+    }
     setLoading(true)
     try {
       await api.profile.update({
         name: name.trim(),
         bio: bio.trim() || undefined,
+        birthDate: parsedBirthDate,
+        sex: sex ?? undefined,
+        weightKg: parsedWeight,
+        heightCm: parsedHeight,
         trainerBio: trainerBio.trim() || undefined,
         cref: cref.trim() || undefined,
         specialties,
@@ -106,7 +161,7 @@ export function EditTrainerProfileScreen({ navigation }: Props) {
           <ProfileAvatarUploadSection nameForInitials={name.trim() || profile?.name || ' '} />
 
           {/* Personal info */}
-          <Text style={[s.sectionHeader, { marginTop: 12 }]}>DADOS PESSOAIS</Text>
+          <Text style={s.sectionHeader}>DADOS PESSOAIS</Text>
 
           <Text style={s.label}>Nome *</Text>
           <TextInput
@@ -118,6 +173,57 @@ export function EditTrainerProfileScreen({ navigation }: Props) {
             returnKeyType="next"
           />
 
+          <Text style={s.label}>Data de nascimento</Text>
+          <TextInput
+            style={s.input}
+            value={birthDate}
+            onChangeText={(t) => setBirthDate(maskDate(t))}
+            placeholder="DD/MM/AAAA"
+            placeholderTextColor="#4A4A5A"
+            keyboardType="numeric"
+            maxLength={10}
+            returnKeyType="next"
+          />
+
+          <Text style={s.label}>Sexo</Text>
+          <View style={s.chipsWrap}>
+            {SEX_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[s.chip, sex === opt.key && s.chipActive]}
+                onPress={() => setSex(sex === opt.key ? null : opt.key)}
+              >
+                <Text style={[s.chipText, sex === opt.key && s.chipTextActive]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={s.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.label}>Peso (kg)</Text>
+              <TextInput
+                style={s.input}
+                value={weightKg}
+                onChangeText={setWeightKg}
+                placeholder="ex: 75"
+                placeholderTextColor="#4A4A5A"
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View style={{ width: 12 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.label}>Altura (cm)</Text>
+              <TextInput
+                style={s.input}
+                value={heightCm}
+                onChangeText={setHeightCm}
+                placeholder="ex: 175"
+                placeholderTextColor="#4A4A5A"
+                keyboardType="decimal-pad"
+              />
+            </View>
+          </View>
+
           <Text style={s.label}>Bio pessoal</Text>
           <TextInput
             style={[s.input, s.inputMultiline]}
@@ -128,7 +234,9 @@ export function EditTrainerProfileScreen({ navigation }: Props) {
             multiline
             numberOfLines={2}
             textAlignVertical="top"
+            maxLength={160}
           />
+          <Text style={s.charCount}>{bio.length}/160</Text>
 
           {/* Professional info */}
           <Text style={[s.sectionHeader, { marginTop: 28 }]}>PERFIL PROFISSIONAL</Text>
@@ -143,7 +251,9 @@ export function EditTrainerProfileScreen({ navigation }: Props) {
             multiline
             numberOfLines={4}
             textAlignVertical="top"
+            maxLength={300}
           />
+          <Text style={s.charCount}>{trainerBio.length}/300</Text>
 
           <Text style={s.label}>CREF</Text>
           <TextInput
@@ -201,7 +311,7 @@ export function EditTrainerProfileScreen({ navigation }: Props) {
           </View>
 
           <View style={[s.chipsWrap, { marginTop: 10 }]}>
-            {SPECIALTY_SUGGESTIONS.filter((s) => !specialties.includes(s)).map((sp) => (
+            {SPECIALTY_SUGGESTIONS.filter((sg) => !specialties.includes(sg)).map((sp) => (
               <TouchableOpacity key={sp} style={s.chip} onPress={() => addSpecialty(sp)}>
                 <Text style={s.chipText}>+ {sp}</Text>
               </TouchableOpacity>
@@ -250,6 +360,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 13,
   },
   inputMultiline: { minHeight: 88, paddingTop: 13 },
+  charCount: { color: '#4A4A5A', fontSize: 11, textAlign: 'right', marginTop: 4 },
+  row: { flexDirection: 'row' },
 
   switchRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -272,6 +384,7 @@ const s = StyleSheet.create({
     backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
   },
   chipText: { color: '#8A8A9A', fontSize: 12, fontWeight: '500' },
+  chipTextActive: { color: '#4FC3F7', fontWeight: '600' },
   chipActive: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
