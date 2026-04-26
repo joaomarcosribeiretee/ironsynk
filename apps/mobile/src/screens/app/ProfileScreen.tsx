@@ -354,13 +354,13 @@ export function ProfileScreen({ navigation }: Props) {
 
           {/* Hero */}
           <View style={s.hero}>
-            {/* Avatar */}
-            <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.8} disabled={avatarUploading} style={{ alignSelf: 'center' }}>
+            {/* Avatar — square, gradient border, cyan glow */}
+            <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85} disabled={avatarUploading}>
               <LinearGradient
                 colors={['#4FC3F7', '#2979FF', '#1A237E']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={s.avatarRing}
+                style={s.avatarFrame}
               >
                 <View style={s.avatarInner}>
                   {profile?.avatar ? (
@@ -373,45 +373,42 @@ export function ProfileScreen({ navigation }: Props) {
               <View style={s.cameraOverlay}>
                 {avatarUploading
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={{ fontSize: 12 }}>📷</Text>
+                  : <Text style={{ fontSize: 10 }}>📷</Text>
                 }
               </View>
             </TouchableOpacity>
 
-            {/* Name + badge */}
-            <Text style={s.displayName}>{displayName}</Text>
-            <Text style={s.emailSub}>{user?.email}</Text>
-            {isTrainer && (
-              <View style={s.trainerBadge}>
-                <Text style={s.trainerBadgeText}>Personal Trainer</Text>
+            {/* Info column: name + email + role badge + stats */}
+            <View style={s.heroInfo}>
+              <Text style={s.heroName} numberOfLines={1}>{displayName}</Text>
+              <Text style={s.heroEmail} numberOfLines={1}>{user?.email}</Text>
+              {isTrainer && (
+                <View style={s.trainerBadge}>
+                  <Text style={s.trainerBadgeText}>Personal Trainer</Text>
+                </View>
+              )}
+              <View style={s.heroStats}>
+                {!isTrainer && (
+                  <View style={s.heroStat}>
+                    <Text style={s.heroStatNum}>{MOCK_PERF.totalWorkouts}</Text>
+                    <Text style={s.heroStatLbl}>Treinos</Text>
+                  </View>
+                )}
+                <View style={s.heroStat}>
+                  <Text style={s.heroStatNum}>{MOCK_SOCIAL.followers}</Text>
+                  <Text style={s.heroStatLbl}>Seguidores</Text>
+                </View>
+                <View style={s.heroStat}>
+                  <Text style={s.heroStatNum}>{MOCK_SOCIAL.following}</Text>
+                  <Text style={s.heroStatLbl}>Seguindo</Text>
+                </View>
               </View>
-            )}
-            {!!profile?.bio && (
-              <Text style={s.bioPreview} numberOfLines={2}>{profile.bio}</Text>
-            )}
+            </View>
           </View>
 
-          {/* Social stats */}
-          <View style={s.socialRow}>
-            <TouchableOpacity style={s.socialCell}>
-              <Text style={s.socialNum}>{MOCK_SOCIAL.following}</Text>
-              <Text style={s.socialLbl}>Seguindo</Text>
-            </TouchableOpacity>
-            <View style={s.socialSep} />
-            <TouchableOpacity style={s.socialCell}>
-              <Text style={s.socialNum}>{MOCK_SOCIAL.followers}</Text>
-              <Text style={s.socialLbl}>Seguidores</Text>
-            </TouchableOpacity>
-            {!isTrainer && (
-              <>
-                <View style={s.socialSep} />
-                <View style={s.socialCell}>
-                  <Text style={s.socialNum}>{MOCK_PERF.totalWorkouts}</Text>
-                  <Text style={s.socialLbl}>Treinos</Text>
-                </View>
-              </>
-            )}
-          </View>
+          {!!profile?.bio && (
+            <Text style={s.bioText} numberOfLines={3}>{profile.bio}</Text>
+          )}
 
           {/* Tabs */}
           <View style={s.tabBar}>
@@ -489,38 +486,52 @@ const s = StyleSheet.create({
   headerBtnText: { color: '#4FC3F7', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   headerTitle: { flex: 1, textAlign: 'center', color: '#F0F0F5', fontSize: 17, fontWeight: '700' },
 
-  // Hero
-  hero: { alignItems: 'center', paddingTop: 20, paddingBottom: 16, paddingHorizontal: 24 },
-  avatarRing: { width: 108, height: 108, borderRadius: 54, padding: 3, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
-  avatarInner: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#1E1E24', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  avatarImg: { width: 100, height: 100, borderRadius: 50 },
-  avatarInitials: { color: '#F0F0F5', fontSize: 34, fontWeight: '700' },
+  // Hero — left-aligned avatar + info column
+  hero: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingLeft: 16, paddingRight: 20,
+    paddingTop: 20, paddingBottom: 16,
+    gap: 16,
+  },
+  avatarFrame: {
+    width: 96, height: 96, borderRadius: 20, padding: 2.5,
+    shadowColor: '#4FC3F7',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  avatarInner: {
+    flex: 1, borderRadius: 18,
+    backgroundColor: '#1E1E24',
+    justifyContent: 'center', alignItems: 'center', overflow: 'hidden',
+  },
+  avatarImg: { width: 91, height: 91 },
+  avatarInitials: { color: '#F0F0F5', fontSize: 30, fontWeight: '700' },
   cameraOverlay: {
-    position: 'absolute', bottom: 14, right: 0,
-    width: 28, height: 28, borderRadius: 14,
+    position: 'absolute', bottom: 0, right: 0,
+    width: 26, height: 26, borderRadius: 13,
     backgroundColor: '#2979FF', justifyContent: 'center', alignItems: 'center',
     borderWidth: 2, borderColor: '#141418',
   },
-  displayName: { color: '#F0F0F5', fontSize: 22, fontWeight: '700', marginBottom: 3 },
-  emailSub: { color: '#8A8A9A', fontSize: 12, marginBottom: 8 },
+  heroInfo: { flex: 1, justifyContent: 'center' },
+  heroName: { color: '#F0F0F5', fontSize: 18, fontWeight: '700', marginBottom: 2 },
+  heroEmail: { color: '#8A8A9A', fontSize: 11, marginBottom: 8 },
   trainerBadge: {
-    paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20,
     backgroundColor: 'rgba(41,121,255,0.12)', borderWidth: 1,
     borderColor: 'rgba(41,121,255,0.35)', marginBottom: 8,
   },
-  trainerBadgeText: { color: '#4FC3F7', fontSize: 11, fontWeight: '600' },
-  bioPreview: { color: '#8A8A9A', fontSize: 13, textAlign: 'center', lineHeight: 18, marginTop: 2 },
-
-  // Social stats row
-  socialRow: {
-    flexDirection: 'row', marginHorizontal: 16, marginBottom: 16,
-    backgroundColor: '#1E1E24', borderRadius: 16,
-    borderWidth: 1, borderColor: '#2A2A35',
+  trainerBadgeText: { color: '#4FC3F7', fontSize: 10, fontWeight: '600' },
+  heroStats: { flexDirection: 'row', gap: 18 },
+  heroStat: { alignItems: 'flex-start' },
+  heroStatNum: { color: '#F0F0F5', fontSize: 15, fontWeight: '700' },
+  heroStatLbl: { color: '#8A8A9A', fontSize: 10 },
+  bioText: {
+    color: '#8A8A9A', fontSize: 13, lineHeight: 19,
+    paddingHorizontal: 16, paddingBottom: 14,
   },
-  socialCell: { flex: 1, alignItems: 'center', paddingVertical: 14 },
-  socialNum: { color: '#F0F0F5', fontSize: 20, fontWeight: '700', marginBottom: 2 },
-  socialLbl: { color: '#8A8A9A', fontSize: 11 },
-  socialSep: { width: 1, marginVertical: 12, backgroundColor: '#2A2A35' },
 
   // Tab bar
   tabBar: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#2A2A35', marginBottom: 4 },
