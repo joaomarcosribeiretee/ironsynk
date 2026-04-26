@@ -27,6 +27,10 @@ const LoginBody = z.object({
   password: z.string().min(1),
 })
 
+const RefreshBody = z.object({
+  refresh_token: z.string().min(1),
+})
+
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /api/v1/auth/register
   fastify.post('/register', async (request, reply) => {
@@ -118,6 +122,19 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     const isOnboarded = dbUser.profile != null && dbUser.profile.name.length > 0
 
     return reply.send({ data: { user: dbUser, session: data.session, isOnboarded } })
+  })
+
+  // POST /api/v1/auth/refresh
+  fastify.post('/refresh', async (request, reply) => {
+    const parsed = RefreshBody.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'refresh_token required' } })
+    }
+    const { data, error } = await supabase.auth.refreshSession({ refresh_token: parsed.data.refresh_token })
+    if (error || !data.session) {
+      return reply.status(401).send({ error: { code: 'REFRESH_FAILED', message: 'Token de refresh invalido ou expirado' } })
+    }
+    return reply.send({ data: { session: data.session } })
   })
 
   // POST /api/v1/auth/google — see apps/api/src/routes/auth/google.ts for setup checklist

@@ -4,6 +4,7 @@ import type { UserRecord, Session } from '../lib/api'
 
 const TOKEN_KEY = 'ironsynk_access_token'
 const REFRESH_KEY = 'ironsynk_refresh_token'
+const API_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3333'
 
 type AuthState = {
   user: UserRecord | null
@@ -20,6 +21,7 @@ type AuthActions = {
   login: (user: UserRecord, session: Session) => void
   logout: () => void
   initialize: () => Promise<void>
+  refreshSession: () => Promise<boolean>
 }
 
 export const useAuthStore = create<AuthState & AuthActions>((set) => ({
@@ -54,9 +56,30 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
         set({ session: { access_token: accessToken, refresh_token: refreshToken } })
       }
     } catch {
-      // SecureStore unavailable (e.g. simulator without keychain) — stay logged out
+      // SecureStore unavailable — stay logged out
     } finally {
       set({ isLoading: false })
+    }
+  },
+
+  refreshSession: async (): Promise<boolean> => {
+    const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY).catch(() => null)
+    if (!refreshToken) return false
+    try {
+      const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      })
+      if (!res.ok) return false
+      const json = await res.json() as { data: { session: Session } }
+      const { access_token, refresh_token, expires_at } = json.data.session
+      SecureStore.setItemAsync(TOKEN_KEY, access_token).catch(() => null)
+      SecureStore.setItemAsync(REFRESH_KEY, refresh_token).catch(() => null)
+      set({ session: { access_token, refresh_token, expires_at } })
+      return true
+    } catch {
+      return false
     }
   },
 }))

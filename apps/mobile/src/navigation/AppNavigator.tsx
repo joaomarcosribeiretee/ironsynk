@@ -3,10 +3,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { View, Text, TouchableOpacity } from 'react-native'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import { ProfileScreen } from '../screens/app/ProfileScreen'
+import { EditAthleteProfileScreen } from '../screens/app/EditAthleteProfileScreen'
+import { EditTrainerProfileScreen } from '../screens/app/EditTrainerProfileScreen'
 
 export type AppStackParamList = {
   Home: undefined
   Profile: undefined
+  EditAthleteProfile: undefined
+  EditTrainerProfile: undefined
 }
 
 const Stack = createNativeStackNavigator<AppStackParamList>()
@@ -31,6 +35,8 @@ export function AppNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="EditAthleteProfile" component={EditAthleteProfileScreen} />
+      <Stack.Screen name="EditTrainerProfile" component={EditTrainerProfileScreen} />
     </Stack.Navigator>
   )
 }

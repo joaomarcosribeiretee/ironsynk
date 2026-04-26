@@ -1,6 +1,6 @@
 import { useAuthStore } from '../store/authStore'
 
-const BASE_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3333'
+export const BASE_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3333'
 
 type RequestOptions = Omit<RequestInit, 'body'> & { body?: unknown }
 type ApiErrorBody = { error?: { code?: string; message?: string; details?: string[] } }
@@ -19,11 +19,13 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function request<T>(path: string, options: RequestOptions = {}, retried = false): Promise<T> {
   const token = useAuthStore.getState().session?.access_token
   const { body, ...rest } = options
-  const isAuthLoginOrRegister =
-    path === '/api/v1/auth/login' || path === '/api/v1/auth/register'
+  const isAuthPublic =
+    path === '/api/v1/auth/login' ||
+    path === '/api/v1/auth/register' ||
+    path === '/api/v1/auth/refresh'
 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...rest,
@@ -35,9 +37,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 
-  if (res.status === 401 && !isAuthLoginOrRegister && token) {
+  if (res.status === 401 && !isAuthPublic && token && !retried) {
+    const refreshed = await useAuthStore.getState().refreshSession()
+    if (refreshed) {
+      return request<T>(path, options, true)
+    }
     useAuthStore.getState().logout()
-    throw new Error('Sessao expirada')
+    throw new ApiError('Sessao expirada', 401, 'UNAUTHORIZED')
   }
 
   const data = (await res.json().catch(() => ({}))) as ApiErrorBody & T
@@ -60,6 +66,15 @@ export type Session = {
   expires_at?: number
 }
 
+export type TrainerProfileRecord = {
+  id: string
+  userId: string
+  cref: string | null
+  specialties: string[]
+  acceptingClients: boolean
+  bio: string | null
+}
+
 export type UserRecord = {
   id: string
   email: string
@@ -68,6 +83,7 @@ export type UserRecord = {
   createdAt: string
   updatedAt: string
   profile: ProfileRecord | null
+  trainerProfile?: TrainerProfileRecord | null
 }
 
 export type ProfileRecord = {
@@ -84,6 +100,7 @@ export type ProfileRecord = {
   experience: string | null
   daysPerWeek: number | null
   isPrivate: boolean
+  gymName: string | null
 }
 
 export type RegisterInput = { username?: string; email: string; password: string; role: 'ATHLETE' | 'TRAINER' }
