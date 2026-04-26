@@ -7,14 +7,12 @@ import {
   Alert,
   Switch,
   Image,
-  ActivityIndicator,
   StyleSheet,
   Animated as RNAnimated,
   Easing,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
-import * as ImagePicker from 'expo-image-picker'
 import { useFocusEffect } from '@react-navigation/native'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
@@ -239,7 +237,6 @@ export function ProfileScreen({ navigation }: Props) {
   const [athleteTab, setAthleteTab] = useState<AthleteTab>('desempenho')
   const [trainerTab, setTrainerTab] = useState<TrainerTab>('profissional')
   const [privacyLoading, setPrivacyLoading] = useState(false)
-  const [avatarUploading, setAvatarUploading] = useState(false)
 
   const opacity = useRef(new RNAnimated.Value(0)).current
 
@@ -267,37 +264,6 @@ export function ProfileScreen({ navigation }: Props) {
       .slice(0, 2)
       .map((n) => n[0]?.toUpperCase() ?? '')
       .join('')
-  }
-
-  async function handleAvatarPress() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-    if (status !== 'granted') {
-      Alert.alert('Permissão necessária', 'Permita o acesso à galeria nas configurações.')
-      return
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.85,
-    })
-    if (result.canceled || !result.assets[0]) return
-    const asset = result.assets[0]
-    const uri = asset.uri
-    const ext = uri.split('.').pop()?.toLowerCase() ?? 'jpg'
-    const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
-    const formData = new FormData()
-    formData.append('avatar', { uri, name: `avatar.${ext}`, type: mimeType } as unknown as Blob)
-    setAvatarUploading(true)
-    try {
-      await api.profile.uploadAvatar(formData)
-      const { data: { user: updated } } = await api.auth.me()
-      setUser(updated)
-    } catch (err) {
-      Alert.alert('Erro', getFriendlyErrorMessage(err, 'Não foi possível enviar a foto.'))
-    } finally {
-      setAvatarUploading(false)
-    }
   }
 
   async function handlePrivacyToggle() {
@@ -354,34 +320,26 @@ export function ProfileScreen({ navigation }: Props) {
 
           {/* Hero */}
           <View style={s.hero}>
-            {/* Avatar — square, gradient border, cyan glow */}
-            <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85} disabled={avatarUploading}>
-              <LinearGradient
-                colors={['#4FC3F7', '#2979FF', '#1A237E']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={s.avatarFrame}
-              >
-                <View style={s.avatarInner}>
-                  {profile?.avatar ? (
-                    <Image source={{ uri: profile.avatar }} style={s.avatarImg} />
-                  ) : (
-                    <Text style={s.avatarInitials}>{getInitials(displayName)}</Text>
-                  )}
-                </View>
-              </LinearGradient>
-              <View style={s.cameraOverlay}>
-                {avatarUploading
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={{ fontSize: 10 }}>📷</Text>
-                }
+            {/* Avatar — bleeds from left edge of screen */}
+            <LinearGradient
+              colors={['#4FC3F7', '#2979FF', '#1A237E']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={s.avatarFrame}
+            >
+              <View style={s.avatarInner}>
+                {profile?.avatar ? (
+                  <Image source={{ uri: profile.avatar }} style={s.avatarImg} />
+                ) : (
+                  <Text style={s.avatarInitials}>{getInitials(displayName)}</Text>
+                )}
               </View>
-            </TouchableOpacity>
+            </LinearGradient>
 
-            {/* Info column: name + email + role badge + stats */}
+            {/* Info column */}
             <View style={s.heroInfo}>
               <Text style={s.heroName} numberOfLines={1}>{displayName}</Text>
-              <Text style={s.heroEmail} numberOfLines={1}>{user?.email}</Text>
+              <Text style={s.heroHandle} numberOfLines={1}>@{user?.email?.split('@')[0]}</Text>
               {isTrainer && (
                 <View style={s.trainerBadge}>
                   <Text style={s.trainerBadgeText}>Personal Trainer</Text>
@@ -486,45 +444,39 @@ const s = StyleSheet.create({
   headerBtnText: { color: '#4FC3F7', fontSize: 22, fontWeight: '700', lineHeight: 24 },
   headerTitle: { flex: 1, textAlign: 'center', color: '#F0F0F5', fontSize: 17, fontWeight: '700' },
 
-  // Hero — left-aligned avatar + info column
+  // Hero — avatar bleeds from left edge, info column to the right
   hero: {
     flexDirection: 'row', alignItems: 'center',
-    paddingLeft: 16, paddingRight: 20,
+    paddingLeft: 0, paddingRight: 20,
     paddingTop: 20, paddingBottom: 16,
     gap: 16,
   },
   avatarFrame: {
-    width: 96, height: 96, borderRadius: 20, padding: 2.5,
+    width: 96, height: 96, borderRadius: 20, padding: 1.5,
     shadowColor: '#4FC3F7',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
     elevation: 10,
   },
   avatarInner: {
-    flex: 1, borderRadius: 18,
+    flex: 1, borderRadius: 19,
     backgroundColor: '#1E1E24',
     justifyContent: 'center', alignItems: 'center', overflow: 'hidden',
   },
-  avatarImg: { width: 91, height: 91 },
+  avatarImg: { width: 93, height: 93 },
   avatarInitials: { color: '#F0F0F5', fontSize: 30, fontWeight: '700' },
-  cameraOverlay: {
-    position: 'absolute', bottom: 0, right: 0,
-    width: 26, height: 26, borderRadius: 13,
-    backgroundColor: '#2979FF', justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: '#141418',
-  },
   heroInfo: { flex: 1, justifyContent: 'center' },
-  heroName: { color: '#F0F0F5', fontSize: 18, fontWeight: '700', marginBottom: 2 },
-  heroEmail: { color: '#8A8A9A', fontSize: 11, marginBottom: 8 },
+  heroName: { color: '#F0F0F5', fontSize: 18, fontWeight: '700', marginBottom: 3 },
+  heroHandle: { color: '#8A8A9A', fontSize: 12, marginBottom: 10 },
   trainerBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20,
     backgroundColor: 'rgba(41,121,255,0.12)', borderWidth: 1,
-    borderColor: 'rgba(41,121,255,0.35)', marginBottom: 8,
+    borderColor: 'rgba(41,121,255,0.35)', marginBottom: 10,
   },
   trainerBadgeText: { color: '#4FC3F7', fontSize: 10, fontWeight: '600' },
-  heroStats: { flexDirection: 'row', gap: 18 },
+  heroStats: { flexDirection: 'row', gap: 26 },
   heroStat: { alignItems: 'flex-start' },
   heroStatNum: { color: '#F0F0F5', fontSize: 15, fontWeight: '700' },
   heroStatLbl: { color: '#8A8A9A', fontSize: 10 },
