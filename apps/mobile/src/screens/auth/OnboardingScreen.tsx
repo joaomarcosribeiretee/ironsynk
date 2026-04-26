@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   ActivityIndicator,
   KeyboardAvoidingView,
   Keyboard,
@@ -192,7 +191,6 @@ export function OnboardingScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <KeyboardAvoidingView
       className="flex-1"
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -481,7 +479,6 @@ export function OnboardingScreen({ navigation }: Props) {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
-    </TouchableWithoutFeedback>
     </SafeAreaView>
   )
 }
