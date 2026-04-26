@@ -98,7 +98,6 @@ export async function profileRoutes(fastify: FastifyInstance): Promise<void> {
   // PUT /api/v1/profile/avatar — upload avatar image
   fastify.put('/avatar', { preHandler: authMiddleware }, async (request, reply) => {
     const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-    const MAX_BYTES = 5 * 1024 * 1024
 
     const data = await request.file()
     if (!data) {
@@ -106,34 +105,42 @@ export async function profileRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     if (!ALLOWED_TYPES.includes(data.mimetype)) {
+      data.file.resume() // drain stream to release backpressure
       return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Only jpg, png, and webp are allowed' } })
     }
 
     const chunks: Buffer[] = []
-    let totalSize = 0
     for await (const chunk of data.file) {
-      totalSize += chunk.length
-      if (totalSize > MAX_BYTES) {
-        return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'File exceeds 5MB limit' } })
-      }
       chunks.push(chunk)
     }
-    const buffer = Buffer.concat(chunks)
 
+    if (data.file.truncated) {
+      return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'File exceeds 5MB limit' } })
+    }
+
+    const buffer = Buffer.concat(chunks)
     const ext = data.mimetype === 'image/png' ? 'png' : data.mimetype === 'image/webp' ? 'webp' : 'jpg'
     const userId = request.authUser.id
-    const path = `${userId}/avatar.${ext}`
+    const storagePath = `${userId}/avatar.${ext}`
+
+    // Remove old avatar files with other extensions to avoid orphaned files
+    const otherExts = ['jpg', 'png', 'webp'].filter((e) => e !== ext)
+    await Promise.all(
+      otherExts.map((e) => supabaseAdmin.storage.from('avatars').remove([`${userId}/avatar.${e}`]).catch(() => null))
+    )
 
     const { error: storageError } = await supabaseAdmin.storage
       .from('avatars')
-      .upload(path, buffer, { contentType: data.mimetype, upsert: true })
+      .upload(storagePath, buffer, { contentType: data.mimetype, upsert: true })
 
     if (storageError) {
+      request.log.error(storageError, 'Supabase storage upload failed')
       return reply.status(500).send({ error: { code: 'STORAGE_ERROR', message: 'Failed to upload avatar' } })
     }
 
-    const { data: publicUrl } = supabaseAdmin.storage.from('avatars').getPublicUrl(path)
-    const avatarUrl = publicUrl.publicUrl
+    const { data: publicUrlData } = supabaseAdmin.storage.from('avatars').getPublicUrl(storagePath)
+    // Append version timestamp so clients always fetch the updated image
+    const avatarUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`
 
     await prisma.profile.update({ where: { userId }, data: { avatar: avatarUrl } })
 

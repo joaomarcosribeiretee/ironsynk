@@ -14,7 +14,9 @@ async function bootstrap(): Promise<void> {
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 
-  await server.register(multipart)
+  await server.register(multipart, {
+    limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  })
 
   await supabaseAdmin.storage.createBucket('avatars', { public: true }).catch(() => null)
 
