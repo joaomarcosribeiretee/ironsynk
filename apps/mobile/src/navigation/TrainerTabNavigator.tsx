@@ -19,10 +19,12 @@ const TAB_BAR_STYLE = {
   backgroundColor: '#141418',
   borderTopColor: '#2A2A35',
   borderTopWidth: 0.5,
+  borderRadius: 16,
   height: 60,
   paddingBottom: 4,
   paddingTop: 6,
-  marginBottom: 16,
+  marginBottom: 28,
+  marginHorizontal: 20,
 } as const
 
 export function TrainerTabNavigator() {
