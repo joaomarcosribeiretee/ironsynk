@@ -5,15 +5,14 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
-import { useFocusEffect } from '@react-navigation/native'
-import type { NativeStackScreenProps } from '@react-navigation/native-stack'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store/authStore'
 import { api } from '../../lib/api'
 import type { TrainerProfileRecord, ProfileRecord } from '../../lib/api'
 import { getFriendlyErrorMessage } from '../../lib/errorMessages'
 
-type Props = NativeStackScreenProps<AppStackParamList, 'Profile'>
 type AthleteTab = 'historico' | 'desempenho' | 'programa' | 'sobre'
 type TrainerTab = 'alunos' | 'consultas' | 'sobre'
 
@@ -326,7 +325,8 @@ function TrainerSobreTab({
 
 // ─── Main screen ────────────────────────────────────────────────────────
 
-export function ProfileScreen({ navigation }: Props) {
+export function ProfileScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
   const insets = useSafeAreaInsets()
   const { user, setUser, logout } = useAuthStore()
   const profile = user?.profile

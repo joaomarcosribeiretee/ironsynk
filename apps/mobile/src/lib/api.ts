@@ -125,6 +125,23 @@ export type UpdateProfileInput = {
   trainerBio?: string
 }
 
+export type TrainerDashboardData = {
+  totalStudents: number
+  trainedToday: number
+  needsAttention: {
+    athleteId: string
+    name: string
+    avatar: string | null
+    reason: string
+    daysSinceLastWorkout?: number
+  }[]
+  recentActivity: {
+    studentName: string
+    workoutName: string
+    loggedAt: string
+  }[]
+}
+
 export const api = {
   auth: {
     register: (body: RegisterInput) =>
@@ -154,5 +171,9 @@ export const api = {
     },
     get: (userId: string) =>
       request<{ data: { id: string; role: string; profile: ProfileRecord } }>(`/api/v1/profile/${userId}`),
+  },
+  trainer: {
+    dashboard: () =>
+      request<{ data: TrainerDashboardData }>('/api/v1/trainer/dashboard'),
   },
 }
