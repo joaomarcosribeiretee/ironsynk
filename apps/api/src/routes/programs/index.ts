@@ -19,7 +19,7 @@ const UpdateProgramBody = z.object({
 
 function formatProgram(p: any) {
   const { _count, ...rest } = p
-  return { ...rest, goals: p.goal ? [p.goal] : [], workoutsCount: _count?.workouts ?? p.workoutsCount ?? 0 }
+  return { ...rest, goals: p.goals ?? [], workoutsCount: _count?.workouts ?? p.workoutsCount ?? 0 }
 }
 
 export async function programRoutes(fastify: FastifyInstance): Promise<void> {
@@ -40,11 +40,11 @@ export async function programRoutes(fastify: FastifyInstance): Promise<void> {
       data: {
         name: body.name,
         description: body.description,
-        goal: body.goals[0],
+        goals: body.goals,
         createdById: request.authUser.id,
       },
     })
-    return reply.status(201).send({ data: { program: { ...program, goals: [program.goal], workoutsCount: 0 } } })
+    return reply.status(201).send({ data: { program: { ...program, goals: program.goals, workoutsCount: 0 } } })
   })
 
   // PUT /api/v1/programs/:id
@@ -61,7 +61,7 @@ export async function programRoutes(fastify: FastifyInstance): Promise<void> {
       data: {
         ...(body.name !== undefined && { name: body.name }),
         ...('description' in body && { description: body.description }),
-        ...(body.goals && { goal: body.goals[0] }),
+        ...(body.goals && { goals: body.goals }),
         updatedAt: new Date(),
       },
       include: { _count: { select: { workouts: true } } },
@@ -101,7 +101,7 @@ export async function programRoutes(fastify: FastifyInstance): Promise<void> {
 
     const newProg = await prisma.$transaction(async (tx) => {
       const prog = await tx.program.create({
-        data: { name: `${original.name} (cópia)`, description: original.description, goal: original.goal, createdById: request.authUser.id },
+        data: { name: `${original.name} (cópia)`, description: original.description, goals: original.goals, createdById: request.authUser.id },
       })
       for (const w of original.workouts) {
         const nw = await tx.workout.create({
@@ -116,7 +116,7 @@ export async function programRoutes(fastify: FastifyInstance): Promise<void> {
       return prog
     })
 
-    return reply.status(201).send({ data: { program: { ...newProg, goals: newProg.goal ? [newProg.goal] : [], workoutsCount: original.workouts.length } } })
+    return reply.status(201).send({ data: { program: { ...newProg, goals: newProg.goals, workoutsCount: original.workouts.length } } })
   })
 
   // GET /api/v1/programs/:id/workouts

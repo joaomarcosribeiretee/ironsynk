@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react'
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -27,7 +27,6 @@ export function WorkoutScreen() {
   const [workoutModal, setWorkoutModal] = useState<{ open: boolean; programId: string | null; editing: WorkoutRecord | null }>({ open: false, programId: null, editing: null })
   const [freeWorkoutModal, setFreeWorkoutModal] = useState(false)
 
-  // Programs query
   const { data, isLoading } = useQuery({
     queryKey: ['programs'],
     queryFn: () => api.programs.list(),
@@ -35,20 +34,17 @@ export function WorkoutScreen() {
   })
   const programs = data?.data.programs ?? []
 
-  // Create program
   const createProgram = useMutation({
     mutationFn: (body: Parameters<typeof api.programs.create>[0]) => api.programs.create(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['programs'] }),
   })
 
-  // Update program
   const updateProgram = useMutation({
     mutationFn: ({ id, ...body }: { id: string } & Parameters<typeof api.programs.update>[1]) =>
       api.programs.update(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['programs'] }),
   })
 
-  // Create workout
   const createWorkout = useMutation({
     mutationFn: (body: Parameters<typeof api.workouts.create>[0]) => api.workouts.create(body),
     onSuccess: (_, vars) => {
@@ -57,7 +53,6 @@ export function WorkoutScreen() {
     },
   })
 
-  // Update workout
   const updateWorkout = useMutation({
     mutationFn: ({ id, programId, ...body }: { id: string; programId: string } & Parameters<typeof api.workouts.update>[1]) =>
       api.workouts.update(id, body),
@@ -94,7 +89,8 @@ export function WorkoutScreen() {
     if (programModal.editing) {
       await updateProgram.mutateAsync({ id: programModal.editing.id, ...data })
     } else {
-      await createProgram.mutateAsync(data)
+      const res = await createProgram.mutateAsync(data)
+      openAddWorkout(res.data.program.id)
     }
   }
 
@@ -108,10 +104,9 @@ export function WorkoutScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
-      {/* Header */}
       <View style={s.header}>
         <Text style={s.headerTitle}>Treino</Text>
-        <TouchableOpacity onPress={openCreateProgram} style={s.addBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={openCreateProgram} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="add-outline" size={26} color="#F0F0F5" />
         </TouchableOpacity>
       </View>
@@ -120,40 +115,60 @@ export function WorkoutScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
+        bounces
       >
-        {/* Treino Livre card */}
-        <TouchableOpacity onPress={handleTrenoLivre} activeOpacity={0.8} style={s.freeCard}>
-          <LinearGradient colors={['#4FC3F7', '#2979FF']} style={s.freeIconCircle}>
-            <Ionicons name="flash-outline" size={18} color="#fff" />
+        {/* Treino Livre */}
+        <TouchableOpacity onPress={handleTrenoLivre} activeOpacity={0.85}>
+          <LinearGradient colors={['#2979FF', '#1A237E']} style={s.freeBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+            <Ionicons name="flash" size={20} color="#fff" />
+            <Text style={s.freeBtnText}>Iniciar Treino Livre</Text>
+            <View style={{ flex: 1 }} />
+            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
           </LinearGradient>
-          <View style={s.freeCardInfo}>
-            <Text style={s.freeCardTitle}>Treino Livre</Text>
-            <Text style={s.freeCardSub}>Comece agora sem um programa</Text>
-          </View>
-          <Ionicons name="chevron-forward-outline" size={20} color="#4FC3F7" />
         </TouchableOpacity>
+        <Text style={s.freeSub}>Sem programa · Sessão livre</Text>
+
+        <View style={s.spacer} />
 
         {/* Section header */}
-        <Text style={s.sectionHeader}>MEUS PROGRAMAS</Text>
+        <View style={s.sectionRow}>
+          <Text style={s.sectionLabel}>PROGRAMAS</Text>
+          <TouchableOpacity onPress={openCreateProgram} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={s.sectionAction}>Novo +</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Programs list */}
+        {/* List */}
         {isLoading ? (
-          <View style={s.centered}>
-            <ActivityIndicator color="#4FC3F7" />
+          <View>
+            {[0, 1, 2].map(i => (
+              <View key={i} style={s.skeleton}>
+                <View style={s.skeletonLeft}>
+                  <View style={s.skeletonChev} />
+                  <View style={{ gap: 6, flex: 1 }}>
+                    <View style={[s.skeletonLine, { width: '52%' }]} />
+                    <View style={[s.skeletonLine, { width: '28%', height: 10 }]} />
+                  </View>
+                </View>
+                <View style={[s.skeletonLine, { width: 52, height: 10 }]} />
+              </View>
+            ))}
           </View>
         ) : programs.length === 0 ? (
           <View style={s.emptyState}>
-            <Text style={s.emptyEmoji}>💪</Text>
-            <Text style={s.emptyTitle}>Nenhum programa criado</Text>
+            <View style={s.emptyIconWrap}>
+              <Ionicons name="barbell-outline" size={28} color="#4FC3F7" />
+            </View>
+            <Text style={s.emptyTitle}>Nenhum programa</Text>
             <Text style={s.emptySub}>Crie seu primeiro programa de treino</Text>
             <TouchableOpacity onPress={openCreateProgram} activeOpacity={0.85} style={s.emptyBtnWrap}>
-              <LinearGradient colors={['#4FC3F7', '#2979FF']} style={s.emptyBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+              <LinearGradient colors={['#2979FF', '#1565C0']} style={s.emptyBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                 <Text style={s.emptyBtnText}>Criar programa</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={s.programsList}>
+          <View>
             {programs.map(program => (
               <ProgramCard
                 key={program.id}
@@ -168,7 +183,6 @@ export function WorkoutScreen() {
         )}
       </ScrollView>
 
-      {/* Modals */}
       <ProgramModal
         visible={programModal.open}
         editingProgram={programModal.editing}
@@ -197,38 +211,55 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#141418' },
 
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 14,
   },
-  headerTitle: { color: '#F0F0F5', fontSize: 24, fontWeight: '500' },
-  addBtn: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { color: '#F0F0F5', fontSize: 26, fontWeight: '500' },
 
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 32 },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 40 },
 
-  freeCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: '#1E1E24', borderRadius: 16, padding: 18,
-    borderWidth: 1, borderColor: '#2A2A35', marginBottom: 20,
+  freeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    height: 56,
+    paddingHorizontal: 16,
+    borderRadius: 14,
   },
-  freeIconCircle: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
-  freeCardInfo: { flex: 1 },
-  freeCardTitle: { color: '#F0F0F5', fontSize: 15, fontWeight: '700', marginBottom: 2 },
-  freeCardSub: { color: '#8A8A9A', fontSize: 13 },
+  freeBtnText: { color: '#fff', fontSize: 15, fontWeight: '500' },
+  freeSub: { color: '#8A8A9A', fontSize: 12, textAlign: 'center', marginTop: 8 },
 
-  sectionHeader: {
-    color: '#8A8A9A', fontSize: 13, fontWeight: '600', letterSpacing: 0.8,
-    marginBottom: 12,
+  spacer: { height: 24 },
+
+  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  sectionLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 1.2 },
+  sectionAction: { color: '#4FC3F7', fontSize: 13 },
+
+  skeleton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 58,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2A2A35',
   },
+  skeletonLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  skeletonChev: { width: 16, height: 16, borderRadius: 4, backgroundColor: '#2A2A35' },
+  skeletonLine: { height: 13, borderRadius: 6, backgroundColor: '#2A2A35' },
 
-  centered: { paddingVertical: 40, alignItems: 'center' },
-
-  emptyState: { alignItems: 'center', paddingVertical: 40, gap: 8 },
-  emptyEmoji: { fontSize: 48, marginBottom: 8 },
-  emptyTitle: { color: '#F0F0F5', fontSize: 16, fontWeight: '600' },
-  emptySub: { color: '#8A8A9A', fontSize: 14, marginBottom: 8 },
+  emptyState: { alignItems: 'center', paddingVertical: 48, gap: 8 },
+  emptyIconWrap: {
+    width: 56, height: 56, borderRadius: 16,
+    backgroundColor: 'rgba(79,195,247,0.08)',
+    justifyContent: 'center', alignItems: 'center', marginBottom: 4,
+  },
+  emptyTitle: { color: '#F0F0F5', fontSize: 16, fontWeight: '500' },
+  emptySub: { color: '#8A8A9A', fontSize: 14, marginBottom: 4 },
   emptyBtnWrap: { borderRadius: 12, overflow: 'hidden', marginTop: 8 },
-  emptyBtn: { paddingVertical: 13, paddingHorizontal: 28 },
-  emptyBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-
-  programsList: { gap: 12 },
+  emptyBtn: { paddingVertical: 12, paddingHorizontal: 28 },
+  emptyBtnText: { color: '#fff', fontSize: 14, fontWeight: '500' },
 })

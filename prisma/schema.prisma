@@ -156,11 +156,11 @@ model Exercise {
 }
 
 model Program {
-  id          String        @id @default(uuid())
+  id          String         @id @default(uuid())
   name        String
   description String?
-  goal        TrainingGoal?
-  isTemplate  Boolean       @default(false)
+  goals       TrainingGoal[]
+  isTemplate  Boolean        @default(false)
   isPublic    Boolean       @default(false)
   createdById String
   createdAt   DateTime      @default(now())
