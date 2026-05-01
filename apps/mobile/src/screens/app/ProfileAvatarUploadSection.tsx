@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, Image,
   ActivityIndicator, Alert, StyleSheet,
 } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { api } from '../../lib/api'
 import { useAuthStore } from '../../store/authStore'
@@ -100,19 +101,25 @@ export function ProfileAvatarUploadSection({ nameForInitials }: Props) {
           </View>
         )}
       </View>
-      <Text style={s.changeText}>Alterar foto</Text>
+      <View style={s.textCol}>
+        <Text style={s.changeText}>Alterar foto</Text>
+        <Text style={s.changeHint}>Toque para escolher uma imagem</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color="#4A4A5A" />
     </TouchableOpacity>
   )
 }
 
 const s = StyleSheet.create({
-  wrap: { alignItems: 'center', paddingVertical: 20 },
+  wrap: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 14, gap: 14,
+  },
   avatarOuter: {
-    width: 88, height: 88, borderRadius: 22,
+    width: 56, height: 56, borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: '#1E1E24',
-    borderWidth: 2, borderColor: '#2A2A35',
-    marginBottom: 10,
+    borderWidth: 1.5, borderColor: '#2A2A35',
   },
   avatarUploading: { borderColor: '#4FC3F7' },
   avatarImg: { width: '100%', height: '100%' },
@@ -120,11 +127,13 @@ const s = StyleSheet.create({
     flex: 1, justifyContent: 'center', alignItems: 'center',
     backgroundColor: '#1E1E24',
   },
-  initials: { color: '#F0F0F5', fontSize: 28, fontWeight: '700' },
+  initials: { color: '#F0F0F5', fontSize: 18, fontWeight: '700' },
   spinnerOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(20,20,24,0.55)',
     justifyContent: 'center', alignItems: 'center',
   },
-  changeText: { color: '#4FC3F7', fontSize: 14, fontWeight: '600' },
+  textCol: { flex: 1 },
+  changeText: { color: '#F0F0F5', fontSize: 14, fontWeight: '500' },
+  changeHint: { color: '#8A8A9A', fontSize: 12, marginTop: 2 },
 })

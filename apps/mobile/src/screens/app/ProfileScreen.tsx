@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  View, Text, TouchableOpacity, ScrollView, Alert, Switch, Image,
+  View, Text, TouchableOpacity, ScrollView, Alert, Image,
   StyleSheet, Animated as RNAnimated, Easing,
 } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
@@ -11,7 +13,6 @@ import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store/authStore'
 import { api } from '../../lib/api'
 import type { TrainerProfileRecord, ProfileRecord } from '../../lib/api'
-import { getFriendlyErrorMessage } from '../../lib/errorMessages'
 
 type AthleteTab = 'historico' | 'desempenho' | 'programa' | 'sobre'
 type TrainerTab = 'alunos' | 'consultas' | 'sobre'
@@ -82,8 +83,8 @@ function HistoricoTab() {
 // ─── Athlete tab: Desempenho ────────────────────────────────────────────
 
 // 8 weeks placeholder — Phase 2 will supply real data
-const WEEKLY_WORKOUTS = [0, 0, 0, 0, 0, 0, 0, 0]
-const WEEK_LABELS = ['S8', 'S7', 'S6', 'S5', 'S4', 'S3', 'S2', 'S1']
+const WEEKLY_WORKOUTS = [0, 0, 0, 0]
+const WEEK_LABELS = ['S4', 'S3', 'S2', 'S1']
 const MUSCLE_GROUPS = [
   'Peito', 'Costas', 'Ombros', 'Bíceps', 'Tríceps', 'Pernas',
 ]
@@ -94,7 +95,7 @@ function DesempenhoTab() {
   return (
     <ScrollView style={s.tabContent} scrollEnabled={false}>
       {/* Frequência */}
-      <SectionTitle>FREQUÊNCIA — ÚLTIMAS 8 SEMANAS</SectionTitle>
+      <SectionTitle>FREQUÊNCIA — ÚLTIMO MÊS</SectionTitle>
       <View style={s.chartCard}>
         <View style={s.freqChart}>
           {WEEKLY_WORKOUTS.map((val, i) => (
@@ -328,14 +329,13 @@ function TrainerSobreTab({
 export function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
   const insets = useSafeAreaInsets()
-  const { user, setUser, logout } = useAuthStore()
+  const { user, setUser } = useAuthStore()
   const profile = user?.profile
   const trainerProfile = user?.trainerProfile
   const isTrainer = user?.role === 'TRAINER'
 
   const [athleteTab, setAthleteTab] = useState<AthleteTab>('historico')
   const [trainerTab, setTrainerTab] = useState<TrainerTab>('alunos')
-  const [privacyLoading, setPrivacyLoading] = useState(false)
 
   const opacity = useRef(new RNAnimated.Value(0)).current
   useEffect(() => {
@@ -356,32 +356,11 @@ export function ProfileScreen() {
     return name.split(' ').slice(0, 2).map((n) => n[0]?.toUpperCase() ?? '').join('')
   }
 
-  async function handlePrivacyToggle() {
-    setPrivacyLoading(true)
-    try {
-      await api.profile.update({ isPrivate: !(profile?.isPrivate ?? false) })
-      const { data: { user: u } } = await api.auth.me()
-      setUser(u)
-    } catch (err) {
-      Alert.alert('Erro', getFriendlyErrorMessage(err, 'Não foi possível atualizar.'))
-    } finally {
-      setPrivacyLoading(false)
-    }
-  }
-
-  function handleLogout() {
-    Alert.alert('Sair', 'Tem certeza que deseja sair?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Sair', style: 'destructive', onPress: () => logout() },
-    ])
-  }
-
   function navigateToEdit() {
     navigation.navigate(isTrainer ? 'EditTrainerProfile' : 'EditAthleteProfile')
   }
 
   const displayName = profile?.name || 'Sem nome'
-  const isPrivate = profile?.isPrivate ?? false
 
   const athleteTabs: { key: AthleteTab; label: string }[] = [
     { key: 'historico', label: 'HISTÓRICO' },
@@ -405,9 +384,14 @@ export function ProfileScreen() {
           {/* Header */}
           <View style={s.header}>
             <Text style={s.headerTitle}>Perfil</Text>
-            <TouchableOpacity style={s.headerEditBtn} onPress={navigateToEdit}>
-              <Text style={s.headerEditTxt}>Editar</Text>
-            </TouchableOpacity>
+            <View style={s.headerActions}>
+              <TouchableOpacity style={s.headerIconBtn} onPress={navigateToEdit}>
+                <FontAwesome6 name="pencil" size={18} color="#F0F0F5" />
+              </TouchableOpacity>
+              <TouchableOpacity style={s.headerIconBtn} onPress={() => navigation.navigate('Settings')}>
+                <Ionicons name="settings-outline" size={20} color="#F0F0F5" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Hero */}
@@ -509,26 +493,6 @@ export function ProfileScreen() {
               )}
             </>
           )}
-          {/* Settings — always visible below tabs */}
-          <View style={s.settingsWrap}>
-            <SectionTitle>CONFIGURAÇÕES</SectionTitle>
-            <View style={s.infoCard}>
-              <View style={s.infoRow}>
-                <Text style={s.infoRowLabel}>Perfil Privado</Text>
-                <Switch
-                  value={isPrivate}
-                  onValueChange={handlePrivacyToggle}
-                  disabled={privacyLoading}
-                  trackColor={{ false: '#2A2A35', true: 'rgba(41,121,255,0.5)' }}
-                  thumbColor={isPrivate ? '#2979FF' : '#4A4A5A'}
-                />
-              </View>
-            </View>
-            <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
-              <Text style={s.logoutText}>Sair da conta</Text>
-            </TouchableOpacity>
-          </View>
-
         </ScrollView>
       </RNAnimated.View>
     </SafeAreaView>
@@ -546,12 +510,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8,
   },
   headerTitle: { color: '#F0F0F5', fontSize: 22, fontWeight: '500' },
-  headerEditBtn: {
-    paddingHorizontal: 14, paddingVertical: 7,
-    backgroundColor: '#1E1E24', borderRadius: 10,
-    borderWidth: 1, borderColor: '#2A2A35',
-  },
-  headerEditTxt: { color: '#4FC3F7', fontSize: 13, fontWeight: '600' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerIconBtn: { width: 38, height: 38, justifyContent: 'center', alignItems: 'center' },
 
   // Hero
   hero: {

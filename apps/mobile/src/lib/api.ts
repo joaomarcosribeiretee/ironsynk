@@ -125,6 +125,54 @@ export type UpdateProfileInput = {
   trainerBio?: string
 }
 
+// DEBUG — remove before launch
+export type ExerciseRecord = {
+  id: string
+  name: string
+  muscleGroup: string
+  equipment: string | null
+  sourceId: string | null
+  gifUrl: string | null
+  videoUrl: string | null
+}
+
+export type UpdateExerciseInput = {
+  name?: string
+  muscleGroup?: string
+  equipment?: string | null
+  gifUrl?: string | null
+  videoUrl?: string | null
+}
+
+export type TrainingGoal = 'HYPERTROPHY' | 'STRENGTH' | 'FAT_LOSS' | 'ENDURANCE' | 'HEALTH' | 'PERFORMANCE'
+
+export type ProgramRecord = {
+  id: string
+  name: string
+  description: string | null
+  goal: TrainingGoal | null
+  goals: TrainingGoal[]
+  workoutsCount: number
+  createdById: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type WorkoutRecord = {
+  id: string
+  programId: string | null
+  name: string
+  notes: string | null
+  order: number | null
+  exercisesCount: number
+  createdAt: string
+}
+
+export type CreateProgramInput = { name: string; goals: TrainingGoal[]; description?: string }
+export type UpdateProgramInput = { name?: string; goals?: TrainingGoal[]; description?: string | null }
+export type CreateWorkoutInput = { programId: string; name: string; description?: string }
+export type UpdateWorkoutInput = { name?: string; description?: string | null; order?: number }
+
 export type TrainerDashboardData = {
   totalStudents: number
   trainedToday: number
@@ -175,5 +223,40 @@ export const api = {
   trainer: {
     dashboard: () =>
       request<{ data: TrainerDashboardData }>('/api/v1/trainer/dashboard'),
+  },
+  programs: {
+    list: () =>
+      request<{ data: { programs: ProgramRecord[] } }>('/api/v1/programs'),
+    create: (body: CreateProgramInput) =>
+      request<{ data: { program: ProgramRecord } }>('/api/v1/programs', { method: 'POST', body }),
+    update: (id: string, body: UpdateProgramInput) =>
+      request<{ data: { program: ProgramRecord } }>(`/api/v1/programs/${id}`, { method: 'PUT', body }),
+    delete: (id: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/programs/${id}`, { method: 'DELETE' }),
+    duplicate: (id: string) =>
+      request<{ data: { program: ProgramRecord } }>(`/api/v1/programs/${id}/duplicate`, { method: 'POST' }),
+    workouts: (id: string) =>
+      request<{ data: { workouts: WorkoutRecord[] } }>(`/api/v1/programs/${id}/workouts`),
+  },
+  workouts: {
+    create: (body: CreateWorkoutInput) =>
+      request<{ data: { workout: WorkoutRecord } }>('/api/v1/workouts', { method: 'POST', body }),
+    update: (id: string, body: UpdateWorkoutInput) =>
+      request<{ data: { workout: WorkoutRecord } }>(`/api/v1/workouts/${id}`, { method: 'PUT', body }),
+    delete: (id: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/workouts/${id}`, { method: 'DELETE' }),
+    duplicate: (id: string) =>
+      request<{ data: { workout: WorkoutRecord } }>(`/api/v1/workouts/${id}/duplicate`, { method: 'POST' }),
+  },
+  // DEBUG — remove before launch
+  exercises: {
+    list: (muscleGroup?: string) =>
+      request<{ data: { exercises: ExerciseRecord[] } }>(
+        `/api/v1/exercises${muscleGroup ? `?muscleGroup=${muscleGroup}` : ''}`
+      ),
+    update: (id: string, body: UpdateExerciseInput) =>
+      request<{ data: { exercise: ExerciseRecord } }>(`/api/v1/exercises/${id}`, { method: 'PATCH', body }),
+    delete: (id: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/exercises/${id}`, { method: 'DELETE' }),
   },
 }

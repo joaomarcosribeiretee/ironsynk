@@ -198,7 +198,7 @@ export function OnboardingScreen({ navigation }: Props) {
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         keyboardShouldPersistTaps="handled"
-        onScrollBeginDrag={Keyboard.dismiss}
+        onScrollBeginDrag={Keyboard.dismiss}    
         showsVerticalScrollIndicator={false}
       >
         <View className="flex-1 px-6 pt-8 pb-8">

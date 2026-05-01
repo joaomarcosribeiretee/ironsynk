@@ -1,8 +1,9 @@
 import React from 'react'
+import { View } from 'react-native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
 import { FeedScreen } from '../screens/app/FeedScreen'
-import { WorkoutScreen } from '../screens/app/WorkoutScreen'
+import { WorkoutScreen } from '../screens/workout/WorkoutScreen'
 import { NutritionScreen } from '../screens/app/NutritionScreen'
 import { ProfileScreen } from '../screens/app/ProfileScreen'
 
@@ -17,15 +18,27 @@ const Tab = createBottomTabNavigator<AthleteTabParamList>()
 
 const TAB_BAR_STYLE = {
   backgroundColor: '#141418',
-  borderTopColor: '#2A2A35',
-  borderTopWidth: 0.5,
+  borderTopWidth: 0,
   borderRadius: 16,
   height: 60,
   paddingBottom: 4,
   paddingTop: 6,
-  marginBottom: 28,
+  marginBottom: 20,
   marginHorizontal: 20,
 } as const
+
+const FullWidthSeparator = () => (
+  <View
+    style={{
+      position: 'absolute',
+      top: 0,
+      left: -20,
+      right: -20,
+      height: 1,
+      backgroundColor: '#2A2A35',
+    }}
+  />
+)
 
 export function AthleteTabNavigator() {
   return (
@@ -36,6 +49,7 @@ export function AthleteTabNavigator() {
         tabBarActiveTintColor: '#4FC3F7',
         tabBarInactiveTintColor: '#8A8A9A',
         tabBarLabelStyle: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+        tabBarBackground: () => <FullWidthSeparator />,
       }}
     >
       <Tab.Screen
