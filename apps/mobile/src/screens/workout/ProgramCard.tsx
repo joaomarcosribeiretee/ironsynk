@@ -3,9 +3,11 @@ import {
   View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Animated,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import type { ProgramRecord, WorkoutRecord, TrainingGoal } from '../../lib/api'
+import { ActionSheet, type SheetAction } from './ActionSheet'
 
 const GOAL_LABELS: Record<TrainingGoal, string> = {
   HYPERTROPHY: 'Hipertrofia',
@@ -28,8 +30,11 @@ export function ProgramCard({ program, onEditProgram, onAddWorkout, onEditWorkou
   const qc = useQueryClient()
   const [isOpen, setIsOpen] = useState(false)
   const [contentH, setContentH] = useState(0)
-  const progress = useRef(new Animated.Value(0)).current
+  const [sheet, setSheet] = useState<{ visible: boolean; title: string; actions: SheetAction[] }>({
+    visible: false, title: '', actions: [],
+  })
 
+  const progress = useRef(new Animated.Value(0)).current
   const chevronRotate = progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '90deg'] })
   const containerHeight = progress.interpolate({ inputRange: [0, 1], outputRange: [0, contentH] })
   const contentOpacity = progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] })
@@ -79,41 +84,49 @@ export function ProgramCard({ program, onEditProgram, onAddWorkout, onEditWorkou
   })
 
   function showProgramMenu() {
-    Alert.alert(program.name, undefined, [
-      { text: 'Editar programa', onPress: () => onEditProgram(program) },
-      { text: 'Duplicar programa', onPress: () => duplicateProgram.mutate() },
-      {
-        text: 'Apagar programa', style: 'destructive',
-        onPress: () => Alert.alert(
-          'Apagar programa',
-          `Apagar "${program.name}" e todos os treinos?`,
-          [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Apagar', style: 'destructive', onPress: () => deleteProgram.mutate() },
-          ]
-        ),
-      },
-      { text: 'Cancelar', style: 'cancel' },
-    ])
+    setSheet({
+      visible: true,
+      title: program.name,
+      actions: [
+        { label: 'Editar programa', onPress: () => onEditProgram(program) },
+        { label: 'Duplicar programa', onPress: () => duplicateProgram.mutate() },
+        {
+          label: 'Apagar programa', destructive: true,
+          onPress: () => Alert.alert(
+            'Apagar programa',
+            `Apagar "${program.name}" e todos os treinos?`,
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Apagar', style: 'destructive', onPress: () => deleteProgram.mutate() },
+            ]
+          ),
+        },
+        { label: 'Cancelar', cancel: true, onPress: () => {} },
+      ],
+    })
   }
 
   function showWorkoutMenu(workout: WorkoutRecord) {
-    Alert.alert(workout.name, undefined, [
-      { text: 'Editar treino', onPress: () => onEditWorkout(workout, program.id) },
-      { text: 'Duplicar treino', onPress: () => duplicateWorkout.mutate(workout.id) },
-      {
-        text: 'Apagar treino', style: 'destructive',
-        onPress: () => Alert.alert(
-          'Apagar treino',
-          `Apagar "${workout.name}"?`,
-          [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Apagar', style: 'destructive', onPress: () => deleteWorkout.mutate(workout.id) },
-          ]
-        ),
-      },
-      { text: 'Cancelar', style: 'cancel' },
-    ])
+    setSheet({
+      visible: true,
+      title: workout.name,
+      actions: [
+        { label: 'Editar treino', onPress: () => onEditWorkout(workout, program.id) },
+        { label: 'Duplicar treino', onPress: () => duplicateWorkout.mutate(workout.id) },
+        {
+          label: 'Apagar treino', destructive: true,
+          onPress: () => Alert.alert(
+            'Apagar treino',
+            `Apagar "${workout.name}"?`,
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Apagar', style: 'destructive', onPress: () => deleteWorkout.mutate(workout.id) },
+            ]
+          ),
+        },
+        { label: 'Cancelar', cancel: true, onPress: () => {} },
+      ],
+    })
   }
 
   const visibleGoals = program.goals.slice(0, 2)
@@ -145,7 +158,7 @@ export function ProgramCard({ program, onEditProgram, onAddWorkout, onEditWorkou
             onPress={showProgramMenu}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="ellipsis-horizontal" size={20} color="#8A8A9A" />
+            <Ionicons name="ellipsis-horizontal" size={22} color="#8A8A9A" />
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -161,55 +174,57 @@ export function ProgramCard({ program, onEditProgram, onAddWorkout, onEditWorkou
               <View style={s.loadingRow}>
                 <ActivityIndicator size="small" color="#4FC3F7" />
               </View>
-            ) : workouts.map((workout, idx) => {
-              const isFirst = idx === 0
-              const isLast = idx === workouts.length - 1
-              return (
-                <View
-                  key={workout.id}
-                  style={[
-                    s.workoutRow,
-                    isFirst && s.workoutRowFirst,
-                    isLast && s.workoutRowLast,
-                    idx > 0 && { marginTop: 2 },
-                  ]}
+            ) : workouts.map(workout => (
+              <View key={workout.id} style={s.workoutRow}>
+                <TouchableOpacity
+                  onPress={() => onNavigateWorkout(workout)}
+                  activeOpacity={0.8}
+                  style={s.playBtn}
                 >
-                  <TouchableOpacity
-                    style={s.playBtn}
-                    onPress={() => onNavigateWorkout(workout)}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  <LinearGradient
+                    colors={['#2979FF', '#1565C0']}
+                    style={s.playGrad}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
                   >
-                    <Ionicons name="play-circle-outline" size={18} color="#4FC3F7" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={s.workoutInfo}
-                    onPress={() => onNavigateWorkout(workout)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={s.workoutName} numberOfLines={1}>{workout.name}</Text>
-                    <Text style={s.workoutMeta}>{workout.exercisesCount} exercícios</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => showWorkoutMenu(workout)}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name="ellipsis-horizontal" size={18} color="#8A8A9A" />
-                  </TouchableOpacity>
-                </View>
-              )
-            })}
+                    <Ionicons name="play" size={16} color="#fff" />
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.workoutInfo}
+                  onPress={() => onNavigateWorkout(workout)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.workoutName} numberOfLines={1}>{workout.name}</Text>
+                  <Text style={s.workoutMeta}>{workout.exercisesCount} exercícios</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => showWorkoutMenu(workout)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={20} color="#555560" />
+                </TouchableOpacity>
+              </View>
+            ))}
 
             <TouchableOpacity
               style={s.addRow}
               onPress={() => onAddWorkout(program.id)}
               activeOpacity={0.7}
             >
-              <Text style={s.addText}>+ Adicionar treino</Text>
+              <Ionicons name="add-circle-outline" size={16} color="#4FC3F7" />
+              <Text style={s.addText}>Adicionar treino</Text>
             </TouchableOpacity>
           </Animated.View>
         </View>
       </Animated.View>
+
+      <ActionSheet
+        visible={sheet.visible}
+        title={sheet.title}
+        actions={sheet.actions}
+        onClose={() => setSheet(s => ({ ...s, visible: false }))}
+      />
     </View>
   )
 }
@@ -218,66 +233,67 @@ const s = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 58,
+    minHeight: 64,
+    paddingVertical: 14,
     paddingHorizontal: 4,
     borderBottomWidth: 0.5,
     borderBottomColor: '#2A2A35',
   },
   rowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12, minWidth: 0 },
-  nameBlock: { flex: 1, minWidth: 0, gap: 3 },
-  programName: { color: '#F0F0F5', fontSize: 15, fontWeight: '500' },
+  nameBlock: { flex: 1, minWidth: 0, gap: 5 },
+  programName: { color: '#F0F0F5', fontSize: 17, fontWeight: '500' },
   pillsRow: { flexDirection: 'row', gap: 4 },
   pill: {
-    backgroundColor: 'rgba(41,121,255,0.08)',
+    backgroundColor: '#2979FF18',
     borderWidth: 1,
-    borderColor: 'rgba(41,121,255,0.22)',
+    borderColor: '#2979FF35',
     borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  pillText: { color: '#4FC3F7', fontSize: 10 },
+  pillText: { color: '#4FC3F7', fontSize: 12 },
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
-  countText: { color: '#8A8A9A', fontSize: 12 },
+  countText: { color: '#8A8A9A', fontSize: 13 },
 
   measureWrap: { position: 'absolute', left: 0, right: 0, top: 0 },
-  workoutsWrap: { paddingLeft: 28, paddingVertical: 8, paddingRight: 0 },
-  loadingRow: { height: 52, justifyContent: 'center', alignItems: 'center' },
+  workoutsWrap: { paddingVertical: 10 },
+  loadingRow: { height: 68, justifyContent: 'center', alignItems: 'center' },
 
   workoutRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 52,
-    backgroundColor: '#1A1A20',
-    paddingHorizontal: 12,
-    gap: 10,
-  },
-  workoutRowFirst: { borderTopLeftRadius: 10, borderTopRightRadius: 10 },
-  workoutRowLast: { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 },
-
-  playBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(41,121,255,0.09)',
+    height: 68,
+    backgroundColor: '#1A1A22',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(41,121,255,0.25)',
+    borderColor: '#252530',
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    gap: 12,
+  },
+  playBtn: { flexShrink: 0 },
+  playGrad: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     justifyContent: 'center',
     alignItems: 'center',
-    flexShrink: 0,
   },
   workoutInfo: { flex: 1, minWidth: 0 },
-  workoutName: { color: '#F0F0F5', fontSize: 14, fontWeight: '500' },
-  workoutMeta: { color: '#8A8A9A', fontSize: 12, marginTop: 1 },
+  workoutName: { color: '#F0F0F5', fontSize: 16, fontWeight: '500' },
+  workoutMeta: { color: '#8A8A9A', fontSize: 13, marginTop: 3 },
 
   addRow: {
-    height: 44,
-    marginTop: 6,
-    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 50,
+    marginBottom: 16,
+    borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: '#2A2A35',
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: 12,
   },
   addText: { color: '#4FC3F7', fontSize: 14 },
 })

@@ -64,7 +64,7 @@ export function WorkoutModal({ visible, editingWorkout, onClose, onSave }: Props
 
   const formFields = (
     <>
-      <Text style={s.label}>Nome *</Text>
+      <Text style={[s.label, { marginTop: 0 }]}>Nome *</Text>
       <TextInput
         style={s.input}
         value={name}
@@ -188,32 +188,31 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
   },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#2A2A35', alignSelf: 'center', marginBottom: 16 },
+  handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: '#2A2A35', alignSelf: 'center', marginBottom: 14 },
   sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
   },
-  sheetTitle: { color: '#F0F0F5', fontSize: 18, fontWeight: '500' },
+  sheetTitle: { color: '#F0F0F5', fontSize: 20, fontWeight: '500' },
 
-  label: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 0.6, marginBottom: 8, marginTop: 4 },
+  label: { color: '#8A8A9A', fontSize: 12, fontWeight: '400', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8, marginTop: 20 },
   input: {
+    height: 52,
     backgroundColor: '#141418',
     borderWidth: 1,
     borderColor: '#2A2A35',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    borderRadius: 12,
+    paddingHorizontal: 16,
     color: '#F0F0F5',
     fontSize: 15,
-    marginBottom: 16,
   },
-  textArea: { height: 64, paddingTop: 12 },
+  textArea: { height: 80, paddingTop: 14, paddingBottom: 14 },
 
-  footer: { paddingTop: 12, borderTopWidth: 1, borderTopColor: '#2A2A35' },
-  btnWrap: { borderRadius: 12, overflow: 'hidden' },
+  footer: { paddingTop: 16, paddingBottom: 32, borderTopWidth: 1, borderTopColor: '#2A2A35' },
+  btnWrap: { borderRadius: 14, overflow: 'hidden' },
   btnDisabled: { opacity: 0.35 },
-  btn: { height: 48, alignItems: 'center', justifyContent: 'center' },
-  btnText: { color: '#fff', fontSize: 15, fontWeight: '500' },
+  btn: { height: 52, alignItems: 'center', justifyContent: 'center' },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '500' },
 })
