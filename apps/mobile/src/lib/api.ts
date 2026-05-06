@@ -30,7 +30,7 @@ async function request<T>(path: string, options: RequestOptions = {}, retried = 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...rest,
     headers: {
-      'Content-Type': 'application/json',
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(rest.headers ?? {}),
     },
@@ -144,6 +144,118 @@ export type UpdateExerciseInput = {
   videoUrl?: string | null
 }
 
+export type ExerciseDetail = {
+  id: string
+  name: string
+  muscleGroup: string
+  equipment: string | null
+  gifUrl: string | null
+  videoUrl: string | null
+}
+
+export type SetType = 'WORKING' | 'WARMUP' | 'FEEDER'
+
+export type SetTechnique =
+  | 'NONE'
+  | 'WARMUP'
+  | 'FEEDER'
+  | 'DROP_SET'
+  | 'BACK_OFF'
+  | 'REST_PAUSE'
+  | 'CLUSTER_SET'
+  | 'MUSCLE_ROUND'
+  | 'MYOREP'
+  | 'BISET'
+  | 'SUPERSET'
+
+export type PlannedSetTechnique = 'NONE' | 'REST_PAUSE' | 'MUSCLE_ROUND' | 'CLUSTER_SET' | 'BACK_OFF'
+
+export type RestPauseConfig = { failurePoints: number; restBetweenSeconds: number }
+export type MuscleRoundConfig = { blocks: number; repsPerBlock: number; restBetweenSeconds: number }
+export type ClusterSetConfig = { blocks: number; repsPerBlock: number; restBetweenSeconds: number }
+export type BackOffConfig = { percentage: number }
+export type TechniqueConfig = RestPauseConfig | MuscleRoundConfig | ClusterSetConfig | BackOffConfig | Record<string, unknown>
+
+export type SetTechniqueEntry = { technique: SetTechnique; config: TechniqueConfig | null }
+
+export type PlannedSetRecord = {
+  id: string
+  trainingExId: string
+  order: number
+  setType: SetType
+  technique: PlannedSetTechnique
+  techniqueConfig: TechniqueConfig | null
+  targetReps: string | null
+  targetWeight: number | null
+  restSeconds: number | null
+}
+
+export type TrainingExerciseRecord = {
+  id: string
+  workoutId: string
+  order: number
+  targetSets: number
+  targetReps: string
+  restSeconds: number | null
+  notes: string | null
+  technique: SetTechnique
+  techniqueConfig: TechniqueConfig | null
+  supersetGroupId: string | null
+  exercise: ExerciseDetail
+  sets: PlannedSetRecord[]
+}
+
+export type WorkoutDetailRecord = {
+  id: string
+  programId: string | null
+  name: string
+  notes: string | null
+  exercises: TrainingExerciseRecord[]
+}
+
+export type AddExerciseInput = {
+  exerciseId: string
+  targetSets?: number
+  targetReps?: string
+  restSeconds?: number | null
+}
+
+export type UpdateTrainingExerciseInput = {
+  targetSets?: number
+  targetReps?: string
+  restSeconds?: number | null
+  order?: number
+  notes?: string | null
+  technique?: SetTechnique
+  techniqueConfig?: TechniqueConfig | null
+  supersetGroupId?: string | null
+}
+
+export type CreateSupersetInput = {
+  workoutId: string
+  exerciseIds: [string, string]
+  type: 'BISET' | 'SUPERSET'
+}
+
+export type AddSetInput = {
+  setType?: SetType
+  technique?: PlannedSetTechnique
+  techniqueConfig?: TechniqueConfig | null
+  targetReps?: string | null
+  targetWeight?: number | null
+  restSeconds?: number | null
+}
+
+export type UpdateSetInput = AddSetInput
+
+export type ExerciseListParams = {
+  muscleGroup?: string
+  equipment?: string
+  search?: string
+  limit?: number
+  offset?: number
+}
+
 export type TrainingGoal = 'HYPERTROPHY' | 'STRENGTH' | 'FAT_LOSS' | 'ENDURANCE' | 'HEALTH' | 'PERFORMANCE'
 
 export type ProgramRecord = {
@@ -168,8 +280,8 @@ export type WorkoutRecord = {
   createdAt: string
 }
 
-export type CreateProgramInput = { name: string; goals: TrainingGoal[]; description?: string }
-export type UpdateProgramInput = { name?: string; goals?: TrainingGoal[]; description?: string | null }
+export type CreateProgramInput = { name: string; goals?: TrainingGoal[]; description?: string }
+export type UpdateProgramInput = { name?: string; description?: string | null }
 export type CreateWorkoutInput = { programId: string; name: string; description?: string }
 export type UpdateWorkoutInput = { name?: string; description?: string | null; order?: number }
 
@@ -247,16 +359,48 @@ export const api = {
       request<{ data: { success: boolean } }>(`/api/v1/workouts/${id}`, { method: 'DELETE' }),
     duplicate: (id: string) =>
       request<{ data: { workout: WorkoutRecord } }>(`/api/v1/workouts/${id}/duplicate`, { method: 'POST' }),
+    get: (id: string) =>
+      request<{ data: { workout: WorkoutDetailRecord } }>(`/api/v1/workouts/${id}`),
+    addExercise: (id: string, body: AddExerciseInput) =>
+      request<{ data: { trainingExercise: TrainingExerciseRecord } }>(`/api/v1/workouts/${id}/exercises`, { method: 'POST', body }),
   },
   // DEBUG — remove before launch
   exercises: {
-    list: (muscleGroup?: string) =>
-      request<{ data: { exercises: ExerciseRecord[] } }>(
-        `/api/v1/exercises${muscleGroup ? `?muscleGroup=${muscleGroup}` : ''}`
-      ),
+    list: (params?: ExerciseListParams) => {
+      const qs = new URLSearchParams()
+      if (params?.muscleGroup) qs.set('muscleGroup', params.muscleGroup)
+      if (params?.equipment) qs.set('equipment', params.equipment)
+      if (params?.search) qs.set('search', params.search)
+      if (params?.limit !== undefined) qs.set('limit', String(params.limit))
+      if (params?.offset !== undefined) qs.set('offset', String(params.offset))
+      const query = qs.toString()
+      return request<{ data: { exercises: ExerciseRecord[]; total: number } }>(
+        `/api/v1/exercises${query ? `?${query}` : ''}`
+      )
+    },
     update: (id: string, body: UpdateExerciseInput) =>
       request<{ data: { exercise: ExerciseRecord } }>(`/api/v1/exercises/${id}`, { method: 'PATCH', body }),
     delete: (id: string) =>
       request<{ data: { success: boolean } }>(`/api/v1/exercises/${id}`, { method: 'DELETE' }),
+  },
+  trainingExercises: {
+    update: (id: string, body: UpdateTrainingExerciseInput) =>
+      request<{ data: { trainingExercise: TrainingExerciseRecord } }>(`/api/v1/training-exercises/${id}`, { method: 'PUT', body }),
+    delete: (id: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/training-exercises/${id}`, { method: 'DELETE' }),
+    replace: (id: string, body: { newExerciseId: string }) =>
+      request<{ data: { trainingExercise: TrainingExerciseRecord } }>(`/api/v1/training-exercises/${id}/replace`, { method: 'PUT', body }),
+    createSuperset: (body: CreateSupersetInput) =>
+      request<{ data: { exercises: TrainingExerciseRecord[]; groupId: string } }>('/api/v1/training-exercises/superset', { method: 'POST', body }),
+    dissolveSuperset: (groupId: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/training-exercises/superset/${groupId}`, { method: 'DELETE' }),
+    addSet: (id: string, body: AddSetInput) =>
+      request<{ data: { plannedSet: PlannedSetRecord } }>(`/api/v1/training-exercises/${id}/sets`, { method: 'POST', body }),
+  },
+  plannedSets: {
+    update: (id: string, body: UpdateSetInput) =>
+      request<{ data: { plannedSet: PlannedSetRecord } }>(`/api/v1/planned-sets/${id}`, { method: 'PUT', body }),
+    delete: (id: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/planned-sets/${id}`, { method: 'DELETE' }),
   },
 }

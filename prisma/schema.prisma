@@ -30,6 +30,10 @@ enum SetTechnique {
   CLUSTER_SET
   MUSCLE_ROUND
   MYOREP
+  WARMUP
+  FEEDER
+  BISET
+  SUPERSET
 }
 
 enum MuscleGroup {
@@ -185,20 +189,42 @@ model Workout {
 }
 
 model TrainingExercise {
-  id          String  @id @default(uuid())
-  workoutId   String
-  exerciseId  String
-  order       Int
-  targetSets  Int
-  targetReps  String
-  targetRIR   Int?
-  targetRPE   Float?
-  restSeconds Int?
-  notes       String?
+  id              String       @id @default(uuid())
+  workoutId       String
+  exerciseId      String
+  order           Int
+  targetSets      Int
+  targetReps      String
+  targetRIR       Int?
+  targetRPE       Float?
+  restSeconds     Int?
+  notes           String?
+  technique       SetTechnique @default(NONE)
+  techniqueConfig Json?
+  supersetGroupId String?
 
-  workout  Workout  @relation(fields: [workoutId], references: [id])
-  exercise Exercise @relation(fields: [exerciseId], references: [id])
-  setLogs  SetLog[]
+  workout     Workout      @relation(fields: [workoutId], references: [id])
+  exercise    Exercise     @relation(fields: [exerciseId], references: [id])
+  setLogs     SetLog[]
+  plannedSets PlannedSet[]
+
+  @@index([supersetGroupId])
+}
+
+model PlannedSet {
+  id              String       @id @default(uuid())
+  trainingExId    String
+  order           Int
+  setType         SetType      @default(WORKING)
+  technique       SetTechnique @default(NONE)
+  techniqueConfig Json?
+  targetReps      String?
+  targetWeight    Float?
+  restSeconds     Int?
+
+  trainingExercise TrainingExercise @relation(fields: [trainingExId], references: [id], onDelete: Cascade)
+
+  @@index([trainingExId])
 }
 
 model TrainingLog {

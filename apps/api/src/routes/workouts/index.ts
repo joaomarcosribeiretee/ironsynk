@@ -3,6 +3,22 @@ import { z } from 'zod'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
 
+const AddExerciseBody = z.object({
+  exerciseId: z.string(),
+  targetSets: z.number().int().min(1).optional(),
+  targetReps: z.string().optional(),
+  restSeconds: z.number().int().nullable().optional(),
+})
+
+const EXERCISE_SELECT = {
+  id: true,
+  name: true,
+  muscleGroup: true,
+  equipment: true,
+  gifUrl: true,
+  videoUrl: true,
+} as const
+
 const CreateWorkoutBody = z.object({
   programId: z.string(),
   name: z.string().min(1).max(100),
@@ -97,5 +113,65 @@ export async function workoutRoutes(fastify: FastifyInstance): Promise<void> {
     })
 
     return reply.status(201).send({ data: { workout: { ...newWorkout, exercisesCount: original.exercises.length } } })
+  })
+
+  // GET /api/v1/workouts/:id
+  fastify.get('/:id', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+
+    const workout = await prisma.workout.findUnique({
+      where: { id },
+      include: {
+        program: true,
+        exercises: {
+          orderBy: { order: 'asc' },
+          include: {
+            exercise: { select: EXERCISE_SELECT },
+            plannedSets: { orderBy: { order: 'asc' } },
+          },
+        },
+      },
+    })
+
+    if (!workout) return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
+    if (!workout.program || workout.program.createdById !== request.authUser.id) {
+      return reply.status(403).send({ error: { code: 'FORBIDDEN' } })
+    }
+
+    const { exercises, ...rest } = workout
+    const mapped = exercises.map(({ plannedSets, ...te }) => ({ ...te, sets: plannedSets }))
+    return reply.send({ data: { workout: { ...rest, exercises: mapped } } })
+  })
+
+  // POST /api/v1/workouts/:id/exercises
+  fastify.post('/:id/exercises', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const body = AddExerciseBody.parse(request.body)
+
+    const workout = await prisma.workout.findUnique({ where: { id }, include: { program: true } })
+    if (!workout) return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
+    if (!workout.program || workout.program.createdById !== request.authUser.id) {
+      return reply.status(403).send({ error: { code: 'FORBIDDEN' } })
+    }
+
+    const exercise = await prisma.exercise.findUnique({ where: { id: body.exerciseId } })
+    if (!exercise) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Exercise not found' } })
+
+    const agg = await prisma.trainingExercise.aggregate({ where: { workoutId: id }, _max: { order: true } })
+    const order = (agg._max.order ?? 0) + 1
+
+    const te = await prisma.trainingExercise.create({
+      data: {
+        workoutId: id,
+        exerciseId: body.exerciseId,
+        order,
+        targetSets: body.targetSets ?? 1,
+        targetReps: body.targetReps ?? '',
+        restSeconds: body.restSeconds ?? null,
+      },
+      include: { exercise: { select: EXERCISE_SELECT } },
+    })
+
+    return reply.status(201).send({ data: { trainingExercise: te } })
   })
 }
