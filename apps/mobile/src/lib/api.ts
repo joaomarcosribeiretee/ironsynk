@@ -168,13 +168,13 @@ export type SetTechnique =
   | 'BISET'
   | 'SUPERSET'
 
-export type PlannedSetTechnique = 'NONE' | 'REST_PAUSE' | 'MUSCLE_ROUND' | 'CLUSTER_SET' | 'BACK_OFF'
+export type PlannedSetTechnique = 'NONE' | 'REST_PAUSE' | 'MUSCLE_ROUND' | 'CLUSTER_SET' | 'BACK_OFF' | 'DROP_SET'
 
-export type RestPauseConfig = { failurePoints: number; restBetweenSeconds: number }
-export type MuscleRoundConfig = { blocks: number; repsPerBlock: number; restBetweenSeconds: number }
-export type ClusterSetConfig = { blocks: number; repsPerBlock: number; restBetweenSeconds: number }
-export type BackOffConfig = { percentage: number }
-export type TechniqueConfig = RestPauseConfig | MuscleRoundConfig | ClusterSetConfig | BackOffConfig | Record<string, unknown>
+export type RestPauseConfig = { failurePoints: number; restBetweenSeconds: number; blockReps?: string[] }
+export type MuscleRoundConfig = { blocks: number; repsPerBlock?: number; restBetweenSeconds: number; blockReps?: string[]; blockWeights?: string[]; failedAtBlock?: number }
+export type ClusterSetConfig = { blocks: number; restBetweenSeconds: number; blockReps?: string[] }
+export type DropSetConfig = { drops: number; blockReps?: string[]; blockWeights?: string[] }
+export type TechniqueConfig = RestPauseConfig | MuscleRoundConfig | ClusterSetConfig | DropSetConfig | Record<string, unknown>
 
 export type SetTechniqueEntry = { technique: SetTechnique; config: TechniqueConfig | null }
 
@@ -233,7 +233,7 @@ export type UpdateTrainingExerciseInput = {
 
 export type CreateSupersetInput = {
   workoutId: string
-  exerciseIds: [string, string]
+  exerciseIds: string[]
   type: 'BISET' | 'SUPERSET'
 }
 

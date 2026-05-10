@@ -16,6 +16,7 @@ type TechniqueOption = {
   technique: PlannedSetTechnique
   hasConfig: boolean
   infoText: string
+  seenKey: string
 }
 
 const OPTIONS: TechniqueOption[] = [
@@ -24,50 +25,67 @@ const OPTIONS: TechniqueOption[] = [
     description: 'Série de trabalho padrão',
     setType: 'WORKING', technique: 'NONE', hasConfig: false,
     infoText: '',
+    seenKey: '',
   },
   {
     label: 'Aquecimento',
-    description: 'Não conta para o volume',
+    description: 'Longe da falha — não conta no volume',
     setType: 'WARMUP', technique: 'NONE', hasConfig: false,
-    infoText: '',
+    infoText:
+      'Série de aquecimento realizada longe da falha. Serve para preparar articulações e sistema nervoso para a carga de trabalho.\n\nNão é contabilizada no volume total.',
+    seenKey: 'info_warmup',
   },
   {
-    label: 'Feeder',
-    description: 'Série leve de ativação — não conta para volume',
+    label: 'Feeder Set',
+    description: 'Série de ajuste — não conta no volume',
     setType: 'FEEDER', technique: 'NONE', hasConfig: false,
-    infoText: '',
+    infoText:
+      'Uma série de ativação com carga moderada e volume alto, realizada dias antes ou no início do treino do grupamento. O objetivo é aumentar o fluxo sanguíneo, melhorar a conexão mente-músculo e preparar o tecido sem gerar fadiga excessiva.\n\nNão conta no volume total do treino.\n\nExemplo:\n  F  Rosca Direta — 20kg × 20  (não conta)',
+    seenKey: 'info_feeder',
+  },
+  {
+    label: 'Back-Off',
+    description: 'Série com carga reduzida — apenas visual',
+    setType: 'WORKING', technique: 'BACK_OFF', hasConfig: false,
+    infoText:
+      'Após as séries principais, realize uma série com carga reduzida. Diferenciada visualmente das séries principais.',
+    seenKey: 'info_back_off',
   },
   {
     label: 'Rest-Pause',
     description: 'Até a falha, pause, repita',
     setType: 'WORKING', technique: 'REST_PAUSE', hasConfig: true,
     infoText:
-      'Você vai até a falha momentânea, descansa brevemente e continua com o mesmo peso. Cada pausa é chamada de "ponto de falha".\n\nExemplo: 12 reps → falha → 20s → +5 reps → 20s → +3 reps.',
-  },
-  {
-    label: 'Muscle Round',
-    description: 'Blocos curtos com descanso mínimo',
-    setType: 'WORKING', technique: 'MUSCLE_ROUND', hasConfig: true,
-    infoText:
-      'Múltiplos blocos de poucas repetições com descanso muito curto entre eles. Mantém alta ativação muscular sem usar carga muito elevada.\n\nUse 50–60% do seu peso de trabalho normal.',
+      'Técnica de alta intensidade onde você executa reps até a falha ou próximo dela, faz uma pausa curta e volta com o mesmo peso. Cada rodada é chamada de ponto de falha.\n\nTudo conta como UMA série no volume total.\n\nExemplo:\n  RP  Falha 1: 80kg × 8\n      · · · 15s · · ·\n      Falha 2: 80kg × 3\n      · · · 15s · · ·\n      Falha 3: 80kg × 1',
+    seenKey: 'info_rest_pause',
   },
   {
     label: 'Cluster Set',
     description: 'Blocos com breve descanso entre eles',
     setType: 'WORKING', technique: 'CLUSTER_SET', hasConfig: true,
     infoText:
-      'Divide a série em blocos menores com breve descanso. Permite usar cargas maiores e acumular mais volume de qualidade.\n\nExemplo: 4 blocos de 4 reps com 15s de descanso.',
+      'O Cluster Set divide uma série em mini-blocos com micro-descansos entre eles. Isso permite usar uma carga mais alta por mais repetições totais, mantendo a qualidade mecânica de cada rep. Conta como UMA série no volume.\n\nExemplo:\n  CS  100kg: 4 reps · · ·15s· · · 4 reps · · ·15s· · · 4 reps\n      = 12 reps totais com carga que normalmente daria só 6',
+    seenKey: 'info_cluster_set',
   },
   {
-    label: 'Back-Off',
-    description: 'Série extra com carga reduzida',
-    setType: 'WORKING', technique: 'BACK_OFF', hasConfig: true,
+    label: 'Muscle Round',
+    description: 'Blocos curtos com descanso mínimo',
+    setType: 'WORKING', technique: 'MUSCLE_ROUND', hasConfig: true,
     infoText:
-      'Após as séries principais, realize uma série extra com carga reduzida (percentual). Aumenta volume total sem sobrecarregar o sistema nervoso central.',
+      'O Muscle Round é uma técnica de alta densidade onde você realiza blocos de 6 reps com 35 segundos de descanso entre cada bloco. Quando falhar em um bloco, marque-o, reduza a carga e continue. Após falhar, o objetivo é não falhar novamente. Conta como UMA série no volume total.\n\nExemplo:\n  MR  Bloco 1: 60kg × 6 ✓\n      · · · 35s · · ·\n      Bloco 2: 60kg × 6 ✓\n      · · · 35s · · ·\n      Bloco 3: 60kg × 4 ✗ → reduziu para 50kg\n      Bloco 4: 50kg × 6 ✓',
+    seenKey: 'info_muscle_round',
+  },
+  {
+    label: 'Drop Set',
+    description: 'Reduza a carga e continue sem descanso',
+    setType: 'WORKING', technique: 'DROP_SET', hasConfig: true,
+    infoText:
+      'Ao atingir a falha (ou próximo dela), você reduz a carga imediatamente sem descanso e continua. Cada redução é um "drop". Maximiza o volume em pouco tempo. Conta como UMA série no volume total.\n\nExemplo:\n  DS  100kg × 8 → drop → 75kg × 6 → drop → 50kg × 10',
+    seenKey: 'info_drop_set',
   },
 ]
 
-// ─── Config field validation helpers ─────────────────────────────────────────
+// ─── Config field validation ──────────────────────────────────────────────────
 
 function isIntInRange(val: string, min: number, max: number) {
   const n = parseInt(val, 10)
@@ -77,19 +95,10 @@ function isIntInRange(val: string, min: number, max: number) {
 // ─── ConfigInput ──────────────────────────────────────────────────────────────
 
 function ConfigInput({
-  label,
-  value,
-  onChange,
-  min,
-  max,
-  suffix,
+  label, value, onChange, min, max, suffix,
 }: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  min: number
-  max: number
-  suffix?: string
+  label: string; value: string; onChange: (v: string) => void
+  min: number; max: number; suffix?: string
 }) {
   const valid = isIntInRange(value, min, max)
   return (
@@ -107,9 +116,7 @@ function ConfigInput({
         />
         {suffix ? <Text style={ci.suffix}>{suffix}</Text> : null}
       </View>
-      {!valid && (
-        <Text style={ci.hint}>{min}–{max}</Text>
-      )}
+      {!valid && <Text style={ci.hint}>{min}–{max}</Text>}
     </View>
   )
 }
@@ -119,15 +126,9 @@ const ci = StyleSheet.create({
   label: { color: '#8A8A9A', fontSize: 13, marginBottom: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: {
-    flex: 1,
-    height: 44,
-    backgroundColor: '#141418',
-    borderWidth: 1,
-    borderColor: '#2A2A35',
-    borderRadius: 10,
-    color: '#F0F0F5',
-    fontSize: 16,
-    paddingHorizontal: 14,
+    flex: 1, height: 44,
+    backgroundColor: '#141418', borderWidth: 1, borderColor: '#2A2A35',
+    borderRadius: 10, color: '#F0F0F5', fontSize: 16, paddingHorizontal: 14,
   },
   inputError: { borderColor: '#FF5252' },
   suffix: { color: '#8A8A9A', fontSize: 14, width: 28 },
@@ -154,12 +155,7 @@ interface TechniquePickerSheetProps {
 }
 
 export function TechniquePickerSheet({
-  visible,
-  currentSetType,
-  currentTechnique,
-  currentConfig,
-  onConfirm,
-  onClose,
+  visible, currentSetType, currentTechnique, currentConfig, onConfirm, onClose,
 }: TechniquePickerSheetProps) {
   const [state, setState] = useState<SheetState>('list')
   const [selectedOption, setSelectedOption] = useState<TechniqueOption>(OPTIONS[0]!)
@@ -171,14 +167,13 @@ export function TechniquePickerSheet({
   const [rpRest, setRpRest] = useState('20')
   // MUSCLE_ROUND
   const [mrBlocks, setMrBlocks] = useState('6')
-  const [mrReps, setMrReps] = useState('6')
-  const [mrRest, setMrRest] = useState('30')
+  const [mrRepsPerBlock, setMrRepsPerBlock] = useState('6')
+  const [mrRest, setMrRest] = useState('35')
   // CLUSTER_SET
   const [csBlocks, setCsBlocks] = useState('4')
-  const [csReps, setCsReps] = useState('4')
   const [csRest, setCsRest] = useState('15')
-  // BACK_OFF
-  const [boPercent, setBoPercent] = useState('60')
+  // DROP_SET
+  const [dsDrops, setDsDrops] = useState('2')
 
   useEffect(() => {
     if (!visible) return
@@ -193,19 +188,27 @@ export function TechniquePickerSheet({
 
     const c = currentConfig as Record<string, unknown> | null
     if (c) {
-      if (c['failurePoints']) setRpFailure(String(c['failurePoints']))
-      if (c['restBetweenSeconds'] && currentTechnique === 'REST_PAUSE') setRpRest(String(c['restBetweenSeconds']))
-      if (c['blocks'] && currentTechnique === 'MUSCLE_ROUND') setMrBlocks(String(c['blocks']))
-      if (c['repsPerBlock'] && currentTechnique === 'MUSCLE_ROUND') setMrReps(String(c['repsPerBlock']))
-      if (c['restBetweenSeconds'] && currentTechnique === 'MUSCLE_ROUND') setMrRest(String(c['restBetweenSeconds']))
-      if (c['blocks'] && currentTechnique === 'CLUSTER_SET') setCsBlocks(String(c['blocks']))
-      if (c['repsPerBlock'] && currentTechnique === 'CLUSTER_SET') setCsReps(String(c['repsPerBlock']))
-      if (c['restBetweenSeconds'] && currentTechnique === 'CLUSTER_SET') setCsRest(String(c['restBetweenSeconds']))
-      if (c['percentage']) setBoPercent(String(c['percentage']))
+      if (currentTechnique === 'REST_PAUSE') {
+        if (c['failurePoints']) setRpFailure(String(c['failurePoints']))
+        if (c['restBetweenSeconds']) setRpRest(String(c['restBetweenSeconds']))
+      }
+      if (currentTechnique === 'MUSCLE_ROUND') {
+        if (c['blocks']) setMrBlocks(String(c['blocks']))
+        if (c['repsPerBlock']) setMrRepsPerBlock(String(c['repsPerBlock']))
+        if (c['restBetweenSeconds']) setMrRest(String(c['restBetweenSeconds']))
+      }
+      if (currentTechnique === 'CLUSTER_SET') {
+        if (c['blocks']) setCsBlocks(String(c['blocks']))
+        if (c['restBetweenSeconds']) setCsRest(String(c['restBetweenSeconds']))
+      }
+      if (currentTechnique === 'DROP_SET') {
+        if (c['drops']) setDsDrops(String(c['drops']))
+      }
     }
   }, [visible])
 
   async function markSeen(key: string) {
+    if (!key) return
     const next = new Set([...seenKeys, key])
     setSeenKeys(next)
     await SecureStore.setItemAsync('technique_seen', JSON.stringify([...next])).catch(() => {})
@@ -219,25 +222,35 @@ export function TechniquePickerSheet({
     }
     setSelectedOption(opt)
     setDontShowAgain(false)
-    const alreadySeen = seenKeys.has(opt.technique)
+    const alreadySeen = seenKeys.has(opt.seenKey)
     setState(alreadySeen ? 'config' : 'info')
   }
 
+  function handleInfoOpen(opt: TechniqueOption) {
+    setSelectedOption(opt)
+    setDontShowAgain(seenKeys.has(opt.seenKey))
+    setState('info')
+  }
+
   function handleInfoContinue() {
-    if (dontShowAgain) markSeen(selectedOption.technique)
-    setState('config')
+    if (dontShowAgain && selectedOption.seenKey) markSeen(selectedOption.seenKey)
+    if (selectedOption.hasConfig) {
+      setState('config')
+    } else {
+      setState('list')
+    }
   }
 
   function isConfigValid(): boolean {
     switch (selectedOption.technique) {
       case 'REST_PAUSE':
-        return isIntInRange(rpFailure, 2, 4) && isIntInRange(rpRest, 5, 60)
+        return isIntInRange(rpFailure, 1, 5) && isIntInRange(rpRest, 5, 60)
       case 'MUSCLE_ROUND':
-        return isIntInRange(mrBlocks, 4, 8) && isIntInRange(mrReps, 1, 10) && isIntInRange(mrRest, 20, 60)
+        return isIntInRange(mrBlocks, 4, 10) && isIntInRange(mrRepsPerBlock, 1, 10) && isIntInRange(mrRest, 20, 60)
       case 'CLUSTER_SET':
-        return isIntInRange(csBlocks, 2, 6) && isIntInRange(csReps, 1, 15) && isIntInRange(csRest, 5, 30)
-      case 'BACK_OFF':
-        return isIntInRange(boPercent, 40, 80)
+        return isIntInRange(csBlocks, 2, 10) && isIntInRange(csRest, 5, 60)
+      case 'DROP_SET':
+        return isIntInRange(dsDrops, 1, 10)
       default:
         return true
     }
@@ -248,11 +261,11 @@ export function TechniquePickerSheet({
       case 'REST_PAUSE':
         return { failurePoints: parseInt(rpFailure), restBetweenSeconds: parseInt(rpRest) }
       case 'MUSCLE_ROUND':
-        return { blocks: parseInt(mrBlocks), repsPerBlock: parseInt(mrReps), restBetweenSeconds: parseInt(mrRest) }
+        return { blocks: parseInt(mrBlocks), repsPerBlock: parseInt(mrRepsPerBlock), restBetweenSeconds: parseInt(mrRest) }
       case 'CLUSTER_SET':
-        return { blocks: parseInt(csBlocks), repsPerBlock: parseInt(csReps), restBetweenSeconds: parseInt(csRest) }
-      case 'BACK_OFF':
-        return { percentage: parseInt(boPercent) }
+        return { blocks: parseInt(csBlocks), restBetweenSeconds: parseInt(csRest) }
+      case 'DROP_SET':
+        return { drops: parseInt(dsDrops) }
       default:
         return null
     }
@@ -268,17 +281,21 @@ export function TechniquePickerSheet({
     opt.setType === currentSetType && opt.technique === currentTechnique
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={s.overlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={s.sheet}>
-          <View style={s.handle} />
 
           {/* ── LIST ── */}
           {state === 'list' && (
             <>
-              <Text style={s.title}>Tipo de série</Text>
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
+              <View style={s.titleRow}>
+                <Text style={s.title}>Tipo de série</Text>
+                <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={20} color="#4A4A5A" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
                 {OPTIONS.map((opt, i) => (
                   <TouchableOpacity
                     key={i}
@@ -291,14 +308,10 @@ export function TechniquePickerSheet({
                       <Text style={s.rowDesc}>{opt.description}</Text>
                     </View>
                     <View style={s.rowRight}>
-                      {opt.hasConfig && (
+                      {opt.infoText !== '' && (
                         <TouchableOpacity
                           style={s.infoBtn}
-                          onPress={() => {
-                            setSelectedOption(opt)
-                            setDontShowAgain(seenKeys.has(opt.technique))
-                            setState('info')
-                          }}
+                          onPress={() => handleInfoOpen(opt)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
                           <Ionicons name="information-circle-outline" size={18} color="#4A4A5A" />
@@ -325,24 +338,20 @@ export function TechniquePickerSheet({
               </TouchableOpacity>
               <Text style={s.title}>{selectedOption.label}</Text>
               <Text style={s.infoText}>{selectedOption.infoText}</Text>
-              <View style={s.dontShowRow}>
-                <Text style={s.dontShowLabel}>Não mostrar novamente</Text>
-                <Switch
-                  value={dontShowAgain}
-                  onValueChange={setDontShowAgain}
-                  trackColor={{ false: '#2A2A35', true: '#2979FF' }}
-                  thumbColor="#F0F0F5"
-                />
-              </View>
-              {selectedOption.hasConfig ? (
-                <TouchableOpacity style={s.confirmBtn} onPress={handleInfoContinue} activeOpacity={0.85}>
-                  <Text style={s.confirmText}>Configurar</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity style={s.confirmBtn} onPress={() => setState('list')} activeOpacity={0.85}>
-                  <Text style={s.confirmText}>Entendido</Text>
-                </TouchableOpacity>
+              {selectedOption.hasConfig && (
+                <View style={s.dontShowRow}>
+                  <Text style={s.dontShowLabel}>Não mostrar novamente</Text>
+                  <Switch
+                    value={dontShowAgain}
+                    onValueChange={setDontShowAgain}
+                    trackColor={{ false: '#2A2A35', true: '#2979FF' }}
+                    thumbColor="#F0F0F5"
+                  />
+                </View>
               )}
+              <TouchableOpacity style={s.confirmBtn} onPress={handleInfoContinue} activeOpacity={0.85}>
+                <Text style={s.confirmText}>{selectedOption.hasConfig ? 'Configurar' : 'Entendido'}</Text>
+              </TouchableOpacity>
             </>
           )}
 
@@ -355,7 +364,7 @@ export function TechniquePickerSheet({
                   <Text style={s.backText}>Voltar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => { setDontShowAgain(seenKeys.has(selectedOption.technique)); setState('info') }}
+                  onPress={() => { setDontShowAgain(seenKeys.has(selectedOption.seenKey)); setState('info') }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Ionicons name="information-circle-outline" size={20} color="#4A4A5A" />
@@ -365,29 +374,28 @@ export function TechniquePickerSheet({
 
               {selectedOption.technique === 'REST_PAUSE' && (
                 <>
-                  <ConfigInput label="Pontos de falha" value={rpFailure} onChange={setRpFailure} min={2} max={4} />
+                  <ConfigInput label="Pontos de falha" value={rpFailure} onChange={setRpFailure} min={1} max={5} />
                   <ConfigInput label="Descanso entre falhas" value={rpRest} onChange={setRpRest} min={5} max={60} suffix="s" />
                 </>
               )}
 
               {selectedOption.technique === 'MUSCLE_ROUND' && (
                 <>
-                  <ConfigInput label="Blocos" value={mrBlocks} onChange={setMrBlocks} min={4} max={8} />
-                  <ConfigInput label="Reps por bloco" value={mrReps} onChange={setMrReps} min={1} max={10} />
+                  <ConfigInput label="Blocos" value={mrBlocks} onChange={setMrBlocks} min={4} max={10} />
+                  <ConfigInput label="Reps por bloco" value={mrRepsPerBlock} onChange={setMrRepsPerBlock} min={1} max={10} />
                   <ConfigInput label="Descanso entre blocos" value={mrRest} onChange={setMrRest} min={20} max={60} suffix="s" />
                 </>
               )}
 
               {selectedOption.technique === 'CLUSTER_SET' && (
                 <>
-                  <ConfigInput label="Blocos" value={csBlocks} onChange={setCsBlocks} min={2} max={6} />
-                  <ConfigInput label="Reps por bloco" value={csReps} onChange={setCsReps} min={1} max={15} />
-                  <ConfigInput label="Descanso entre blocos" value={csRest} onChange={setCsRest} min={5} max={30} suffix="s" />
+                  <ConfigInput label="Blocos" value={csBlocks} onChange={setCsBlocks} min={2} max={10} />
+                  <ConfigInput label="Descanso entre blocos" value={csRest} onChange={setCsRest} min={5} max={60} suffix="s" />
                 </>
               )}
 
-              {selectedOption.technique === 'BACK_OFF' && (
-                <ConfigInput label="% da carga principal" value={boPercent} onChange={setBoPercent} min={40} max={80} suffix="%" />
+              {selectedOption.technique === 'DROP_SET' && (
+                <ConfigInput label="Número de drops" value={dsDrops} onChange={setDsDrops} min={1} max={10} />
               )}
 
               <TouchableOpacity
@@ -409,22 +417,25 @@ export function TechniquePickerSheet({
 const s = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
   sheet: {
     backgroundColor: '#1E1E24',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 8,
-    paddingBottom: 40,
+    borderRadius: 20,
+    width: '100%',
+    maxHeight: '85%',
+    paddingTop: 22,
+    paddingBottom: 28,
     paddingHorizontal: 20,
+    overflow: 'hidden',
   },
-  handle: {
-    width: 36, height: 4,
-    backgroundColor: '#2A2A35',
-    borderRadius: 2,
-    alignSelf: 'center',
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
   title: {
@@ -453,12 +464,7 @@ const s = StyleSheet.create({
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   infoBtn: { padding: 2 },
 
-  backRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 12,
-  },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 12 },
   backText: { color: '#8A8A9A', fontSize: 14 },
 
   configHeader: {
@@ -482,15 +488,11 @@ const s = StyleSheet.create({
   dontShowLabel: { color: '#8A8A9A', fontSize: 14 },
 
   confirmBtn: {
-    height: 50,
-    borderRadius: 12,
+    height: 50, borderRadius: 12,
     backgroundColor: '#2979FF',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center', alignItems: 'center',
     marginTop: 4,
   },
-  confirmBtnDisabled: {
-    backgroundColor: '#1A2A4A',
-  },
+  confirmBtnDisabled: { backgroundColor: '#1A2A4A' },
   confirmText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 })
