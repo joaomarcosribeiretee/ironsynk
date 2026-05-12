@@ -55,13 +55,14 @@ const EQUIPMENT = [
 
 type Props = {
   visible: boolean
-  mode: 'add' | 'replace'
-  workoutId: string
-  replaceTargetId: string | null
+  mode?: 'add' | 'replace'
+  workoutId?: string
+  replaceTargetId?: string | null
   existingExerciseIds?: string[]
   onClose: () => void
-  onAdded: () => void
-  onReplaced: () => void
+  onAdded?: () => void
+  onReplaced?: () => void
+  onSelect?: (exercise: ExerciseRecord) => void
 }
 
 type FilterPickerProps = {
@@ -104,7 +105,7 @@ function FilterPicker({ visible, title, options, selected, onSelect, onClose }: 
 }
 
 export function ExercisePickerModal({
-  visible, mode, workoutId, replaceTargetId, existingExerciseIds = [], onClose, onAdded, onReplaced,
+  visible, mode = 'add', workoutId, replaceTargetId, existingExerciseIds = [], onClose, onAdded, onReplaced, onSelect,
 }: Props) {
   const insets = useSafeAreaInsets()
   const [search, setSearch] = useState('')
@@ -165,6 +166,13 @@ export function ExercisePickerModal({
 
   async function handleAddSelected() {
     if (isSubmitting || selectedIds.size === 0) return
+    // onSelect mode: just return the first selected exercise without API call
+    if (onSelect) {
+      const ex = exercises.find(e => selectedIds.has(e.id))
+      if (ex) { onSelect(ex); onClose() }
+      return
+    }
+    if (!workoutId || !onAdded) return
     setIsSubmitting(true)
     try {
       await Promise.all(
@@ -178,11 +186,12 @@ export function ExercisePickerModal({
   }
 
   async function handleReplace(ex: ExerciseRecord) {
+    if (onSelect) { onSelect(ex); onClose(); return }
     if (!replaceTargetId || isSubmitting) return
     setIsSubmitting(true)
     try {
       await api.trainingExercises.replace(replaceTargetId, { newExerciseId: ex.id })
-      onReplaced()
+      onReplaced?.()
     } catch {}
     finally {
       setIsSubmitting(false)

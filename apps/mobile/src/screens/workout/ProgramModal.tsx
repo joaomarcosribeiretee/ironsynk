@@ -7,24 +7,15 @@ import {
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import type { TrainingGoal, ProgramRecord } from '../../lib/api'
+import type { ProgramRecord } from '../../lib/api'
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
-
-const GOAL_OPTIONS: { key: TrainingGoal; label: string }[] = [
-  { key: 'HYPERTROPHY', label: 'Hipertrofia' },
-  { key: 'STRENGTH', label: 'Força' },
-  { key: 'FAT_LOSS', label: 'Emagrecimento' },
-  { key: 'ENDURANCE', label: 'Resistência' },
-  { key: 'HEALTH', label: 'Saúde' },
-  { key: 'PERFORMANCE', label: 'Performance' },
-]
 
 type Props = {
   visible: boolean
   editingProgram?: ProgramRecord | null
   onClose: () => void
-  onSave: (data: { name: string; goals: TrainingGoal[]; description?: string }) => Promise<void>
+  onSave: (data: { name: string; description?: string }) => Promise<void>
 }
 
 export function ProgramModal({ visible, editingProgram, onClose, onSave }: Props) {
@@ -32,7 +23,6 @@ export function ProgramModal({ visible, editingProgram, onClose, onSave }: Props
   const isEdit = !!editingProgram
 
   const [name, setName] = useState('')
-  const [goals, setGoals] = useState<TrainingGoal[]>([])
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -42,7 +32,6 @@ export function ProgramModal({ visible, editingProgram, onClose, onSave }: Props
   useEffect(() => {
     if (visible) {
       setName(editingProgram?.name ?? '')
-      setGoals(editingProgram?.goals ?? [])
       setDescription(editingProgram?.description ?? '')
       setSaving(false)
       if (isEdit) {
@@ -59,17 +48,13 @@ export function ProgramModal({ visible, editingProgram, onClose, onSave }: Props
     }
   }, [visible, isEdit, editingProgram])
 
-  function toggleGoal(goal: TrainingGoal) {
-    setGoals(prev => prev.includes(goal) ? prev.filter(g => g !== goal) : [...prev, goal])
-  }
-
-  const canSave = name.trim().length > 0 && goals.length > 0
+  const canSave = name.trim().length > 0
 
   async function handleSave() {
     if (!canSave || saving) return
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), goals, description: description.trim() || undefined })
+      await onSave({ name: name.trim(), description: description.trim() || undefined })
       onClose()
     } catch {
       setSaving(false)
@@ -78,7 +63,7 @@ export function ProgramModal({ visible, editingProgram, onClose, onSave }: Props
 
   const formFields = (
     <>
-      <Text style={[s.label, { marginTop: 0 }]}>Nome *</Text>
+      <Text style={[s.label, { marginTop: 0 }]}>Nome</Text>
       <TextInput
         style={s.input}
         value={name}
@@ -87,28 +72,7 @@ export function ProgramModal({ visible, editingProgram, onClose, onSave }: Props
         placeholderTextColor="#4A4A5A"
         autoFocus={!isEdit}
       />
-
-      <Text style={s.label}>OBJETIVO *</Text>
-      <View style={s.goalsGrid}>
-        {GOAL_OPTIONS.map(g => {
-          const active = goals.includes(g.key)
-          return (
-            <TouchableOpacity
-              key={g.key}
-              style={[s.goalChip, active && s.goalChipActive]}
-              onPress={() => toggleGoal(g.key)}
-              activeOpacity={0.7}
-            >
-              <Text style={[s.goalChipText, active && s.goalChipTextActive]}>{g.label}</Text>
-            </TouchableOpacity>
-          )
-        })}
-      </View>
-      {goals.length === 0 && name.trim().length > 0 && (
-        <Text style={s.hint}>Seleciona pelo menos um objetivo</Text>
-      )}
-
-      <Text style={s.label}>Descrição (opcional)</Text>
+      <Text style={s.label}>Descrição</Text>
       <TextInput
         style={[s.input, s.textArea]}
         value={description}
@@ -116,7 +80,7 @@ export function ProgramModal({ visible, editingProgram, onClose, onSave }: Props
         placeholder="Notas sobre o programa..."
         placeholderTextColor="#4A4A5A"
         multiline
-        numberOfLines={3}
+        numberOfLines={2}
         textAlignVertical="top"
       />
     </>
@@ -163,10 +127,9 @@ export function ProgramModal({ visible, editingProgram, onClose, onSave }: Props
                 contentContainerStyle={s.scrollPad}
               >
                 {formFields}
-              </ScrollView>
-              <View style={s.footer}>
+                <View style={s.btnSpacer} />
                 {saveButton}
-              </View>
+              </ScrollView>
             </Animated.View>
           </KeyboardAvoidingView>
         </View>
@@ -177,9 +140,9 @@ export function ProgramModal({ visible, editingProgram, onClose, onSave }: Props
   // CREATE — centered modal
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={s.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <View style={s.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
           <Animated.View style={[s.card, { transform: [{ scale }] }]}>
             <View style={s.cardHeader}>
               <Text style={s.cardTitle}>Novo Programa</Text>
@@ -187,19 +150,12 @@ export function ProgramModal({ visible, editingProgram, onClose, onSave }: Props
                 <Ionicons name="close" size={22} color="#8A8A9A" />
               </TouchableOpacity>
             </View>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              style={{ maxHeight: SCREEN_H * 0.62 }}
-              contentContainerStyle={s.scrollPad}
-            >
-              {formFields}
-              {saveButton}
-              <View style={{ height: 4 }} />
-            </ScrollView>
+            {formFields}
+            <View style={s.btnSpacer} />
+            {saveButton}
           </Animated.View>
-        </KeyboardAvoidingView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -213,24 +169,22 @@ const s = StyleSheet.create({
     padding: 24,
   },
 
-  // Centered modal card
   card: {
     width: SCREEN_W - 48,
     backgroundColor: '#1E1E24',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#2A2A35',
-    padding: 24,
+    padding: 20,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 14,
   },
   cardTitle: { color: '#F0F0F5', fontSize: 18, fontWeight: '500' },
 
-  // Drawer
   drawer: {
     width: '100%',
     backgroundColor: '#1E1E24',
@@ -245,17 +199,16 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 14,
   },
   sheetTitle: { color: '#F0F0F5', fontSize: 20, fontWeight: '500' },
 
-  scrollPad: { paddingBottom: 32 },
+  scrollPad: { paddingBottom: 24 },
+  btnSpacer: { height: 14 },
 
-  // Shared form
-  label: { color: '#8A8A9A', fontSize: 12, fontWeight: '400', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8, marginTop: 20 },
-  hint: { color: '#FFB300', fontSize: 12, marginTop: -8, marginBottom: 12 },
+  label: { color: '#8A8A9A', fontSize: 12, fontWeight: '400', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8, marginTop: 14 },
   input: {
-    height: 52,
+    height: 48,
     backgroundColor: '#141418',
     borderWidth: 1,
     borderColor: '#2A2A35',
@@ -264,26 +217,10 @@ const s = StyleSheet.create({
     color: '#F0F0F5',
     fontSize: 15,
   },
-  textArea: { height: 80, paddingTop: 14, paddingBottom: 14 },
-  goalsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 0 },
-  goalChip: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#2A2A35',
-    backgroundColor: '#141418',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-  },
-  goalChipActive: {
-    backgroundColor: 'rgba(41,121,255,0.12)',
-    borderColor: '#2979FF',
-  },
-  goalChipText: { color: '#8A8A9A', fontSize: 14 },
-  goalChipTextActive: { color: '#4FC3F7', fontWeight: '500' },
+  textArea: { height: 72, paddingTop: 12, paddingBottom: 12 },
 
-  footer: { paddingTop: 16, borderTopWidth: 1, borderTopColor: '#2A2A35' },
   btnWrap: { borderRadius: 14, overflow: 'hidden' },
-  btnDisabled: { opacity: 0.35 },
-  btn: { height: 52, alignItems: 'center', justifyContent: 'center' },
+  btnDisabled: { opacity: 0.4 },
+  btn: { height: 48, alignItems: 'center', justifyContent: 'center' },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '500' },
 })

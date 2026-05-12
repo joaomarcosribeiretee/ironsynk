@@ -12,29 +12,43 @@ const VALID_MUSCLE_GROUPS = [
 ] as const
 
 export async function exerciseRoutes(fastify: FastifyInstance): Promise<void> {
-  // GET /api/v1/exercises?muscleGroup=CHEST
   fastify.get('/', async (request, reply) => {
-    const { muscleGroup } = request.query as { muscleGroup?: string }
+    const q = request.query as { muscleGroup?: string; equipment?: string; search?: string; limit?: string; offset?: string }
 
-    const where = muscleGroup && VALID_MUSCLE_GROUPS.includes(muscleGroup as typeof VALID_MUSCLE_GROUPS[number])
-      ? { muscleGroup: muscleGroup as typeof VALID_MUSCLE_GROUPS[number] }
-      : {}
+    const limit = Math.min(parseInt(q.limit ?? '50', 10) || 50, 100)
+    const offset = parseInt(q.offset ?? '0', 10) || 0
 
-    const exercises = await prisma.exercise.findMany({
-      where,
-      orderBy: [{ muscleGroup: 'asc' }, { name: 'asc' }],
-      select: {
-        id: true,
-        name: true,
-        muscleGroup: true,
-        equipment: true,
-        sourceId: true,
-        gifUrl: true,
-        videoUrl: true,
-      },
-    })
+    const where: Record<string, unknown> = {}
 
-    return reply.send({ data: { exercises } })
+    if (q.muscleGroup && VALID_MUSCLE_GROUPS.includes(q.muscleGroup as typeof VALID_MUSCLE_GROUPS[number])) {
+      where['muscleGroup'] = q.muscleGroup
+    }
+
+    if (q.equipment) {
+      const normalized = q.equipment.toLowerCase().trim().replace('body weight', 'bodyweight')
+      where['equipment'] = { equals: normalized, mode: 'insensitive' }
+    }
+
+    if (q.search) {
+      where['name'] = { contains: q.search, mode: 'insensitive' }
+    }
+
+    const select = {
+      id: true,
+      name: true,
+      muscleGroup: true,
+      equipment: true,
+      sourceId: true,
+      gifUrl: true,
+      videoUrl: true,
+    }
+
+    const [exercises, total] = await Promise.all([
+      prisma.exercise.findMany({ where, orderBy: [{ muscleGroup: 'asc' }, { name: 'asc' }], select, take: limit, skip: offset }),
+      prisma.exercise.count({ where }),
+    ])
+
+    return reply.send({ data: { exercises, total } })
   })
 
   // PATCH /api/v1/exercises/:id — ADMIN only

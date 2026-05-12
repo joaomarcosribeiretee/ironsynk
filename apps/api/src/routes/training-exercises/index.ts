@@ -19,10 +19,20 @@ const TechniqueEnum = z.enum([
   'DROP_SET', 'MYOREP',
 ])
 
+// Lean select — only the fields we actually need for auth + handlers
 async function ownerCheck(teId: string, userId: string) {
   const te = await prisma.trainingExercise.findUnique({
     where: { id: teId },
-    include: { workout: { include: { program: true } } },
+    select: {
+      id: true,
+      workoutId: true,
+      order: true,
+      workout: {
+        select: {
+          program: { select: { createdById: true } },
+        },
+      },
+    },
   })
   if (!te) return { te: null, error: 'NOT_FOUND' as const }
   if (!te.workout.program || te.workout.program.createdById !== userId) {
@@ -42,15 +52,16 @@ const UpdateBody = z.object({
   supersetGroupId: z.string().nullable().optional(),
 })
 
+// min(2) so superset can accept 3+ exercises
 const SupersetBody = z.object({
   workoutId: z.string(),
-  exerciseIds: z.array(z.string()).length(2),
+  exerciseIds: z.array(z.string()).min(2),
   type: z.enum(['BISET', 'SUPERSET']),
 })
 
 const AddSetBody = z.object({
   setType: z.enum(['WORKING', 'WARMUP', 'FEEDER']).optional(),
-  technique: z.enum(['NONE', 'REST_PAUSE', 'MUSCLE_ROUND', 'CLUSTER_SET', 'BACK_OFF']).optional(),
+  technique: z.enum(['NONE', 'REST_PAUSE', 'MUSCLE_ROUND', 'CLUSTER_SET', 'BACK_OFF', 'DROP_SET']).optional(),
   techniqueConfig: z.record(z.string(), z.unknown()).nullable().optional(),
   targetReps: z.string().max(10).nullable().optional(),
   targetWeight: z.number().min(0).max(1000).nullable().optional(),
@@ -98,7 +109,7 @@ export async function trainingExerciseRoutes(fastify: FastifyInstance): Promise<
     if (error === 'NOT_FOUND') return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
     if (error === 'FORBIDDEN') return reply.status(403).send({ error: { code: 'FORBIDDEN' } })
 
-    const workoutId = te!.workout.id
+    const workoutId = te!.workoutId
     const removedOrder = te!.order
 
     await prisma.$transaction(async (tx) => {
@@ -148,7 +159,7 @@ export async function trainingExerciseRoutes(fastify: FastifyInstance): Promise<
       include: { workout: { include: { program: true } } },
     })
 
-    if (exercises.length !== 2) {
+    if (exercises.length !== body.exerciseIds.length) {
       return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Exercises not found in workout' } })
     }
 
@@ -165,8 +176,43 @@ export async function trainingExerciseRoutes(fastify: FastifyInstance): Promise<
       data: { supersetGroupId: groupId, technique: body.type },
     })
 
+    // Reorder so the selected exercises are consecutive, preserving their relative order
+    const sortedByOrder = [...exercises].sort((a, b) => a.order - b.order)
+    const anchorOrder = sortedByOrder[0]!.order
+    const needsReorder = sortedByOrder.some((ex, i) => ex.order !== anchorOrder + i)
+
+    if (needsReorder) {
+      await prisma.$transaction(async (tx) => {
+        const selectedSet = new Set(body.exerciseIds)
+
+        const allExercises = await tx.trainingExercise.findMany({
+          where: { workoutId: body.workoutId },
+          select: { id: true, order: true },
+          orderBy: { order: 'asc' },
+        })
+
+        const nonSelected = allExercises.filter(e => !selectedSet.has(e.id))
+        const selected = allExercises.filter(e => selectedSet.has(e.id))
+
+        // Insert selected block right where the first selected exercise was
+        const insertAt = nonSelected.filter(e => e.order < anchorOrder).length
+        const newOrder = [
+          ...nonSelected.slice(0, insertAt),
+          ...selected,
+          ...nonSelected.slice(insertAt),
+        ]
+
+        for (let i = 0; i < newOrder.length; i++) {
+          const ex = newOrder[i]!
+          if (ex.order !== i + 1) {
+            await tx.trainingExercise.update({ where: { id: ex.id }, data: { order: i + 1 } })
+          }
+        }
+      })
+    }
+
     const updated = await prisma.trainingExercise.findMany({
-      where: { id: { in: body.exerciseIds } },
+      where: { supersetGroupId: groupId },
       include: { exercise: { select: EXERCISE_SELECT } },
       orderBy: { order: 'asc' },
     })
@@ -182,7 +228,6 @@ export async function trainingExerciseRoutes(fastify: FastifyInstance): Promise<
       where: { supersetGroupId: groupId },
       include: { workout: { include: { program: true } } },
     })
-
 
     if (!exercises.length) return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
 
@@ -220,16 +265,20 @@ export async function trainingExerciseRoutes(fastify: FastifyInstance): Promise<
     const { id } = request.params as { id: string }
     const body = AddSetBody.parse(request.body)
 
-    const { te, error } = await ownerCheck(id, request.authUser.id)
-    if (error === 'NOT_FOUND') return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
-    if (error === 'FORBIDDEN') return reply.status(403).send({ error: { code: 'FORBIDDEN' } })
+    // Ownership check and order aggregation run in parallel
+    const [ownerResult, agg] = await Promise.all([
+      ownerCheck(id, request.authUser.id),
+      prisma.plannedSet.aggregate({ where: { trainingExId: id }, _max: { order: true } }),
+    ])
 
-    const agg = await prisma.plannedSet.aggregate({ where: { trainingExId: id }, _max: { order: true } })
+    if (ownerResult.error === 'NOT_FOUND') return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
+    if (ownerResult.error === 'FORBIDDEN') return reply.status(403).send({ error: { code: 'FORBIDDEN' } })
+
     const order = (agg._max.order ?? -1) + 1
 
     const ps = await prisma.plannedSet.create({
       data: {
-        trainingExId: te!.id,
+        trainingExId: ownerResult.te!.id,
         order,
         setType: body.setType ?? 'WORKING',
         technique: body.technique ?? 'NONE',

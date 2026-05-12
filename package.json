@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "mobile:start": "npm run start --workspace=apps/mobile",
     "api:dev": "npm run dev --workspace=apps/api",
     "api:build": "npm run build --workspace=apps/api",
     "db:migrate": "prisma migrate dev",
@@ -29,7 +30,7 @@
     "@types/pg": "^8.20.0",
     "prisma": "^7.8.0",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.3"
+    "typescript": "~5.9.2"
   },
   "overrides": {
     "react": "19.1.0",

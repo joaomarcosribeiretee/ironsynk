@@ -10,7 +10,10 @@ import { ExerciseDebugScreen } from '../screens/debug/ExerciseDebugScreen' // DE
 import { ExerciseCurationScreen } from '../screens/debug/ExerciseCurationScreen' // DEBUG — remove before launch
 import { ExerciseAdminScreen } from '../screens/debug/ExerciseAdminScreen' // DEBUG — remove before launch
 import { WorkoutDetailScreen } from '../screens/workout/WorkoutDetailScreen'
-import { FreeWorkoutScreen } from '../screens/workout/FreeWorkoutScreen'
+import { WorkoutViewScreen } from '../screens/workout/WorkoutViewScreen'
+import { WorkoutExecutionScreen } from '../screens/workout/WorkoutExecutionScreen'
+import { WorkoutPostScreen } from '../screens/workout/WorkoutPostScreen'
+import type { ExecutionExerciseRecord } from '../lib/api'
 
 export type AppStackParamList = {
   AthleteTabs: undefined
@@ -19,7 +22,17 @@ export type AppStackParamList = {
   EditTrainerProfile: undefined
   Settings: undefined
   WorkoutDetail: { workoutId: string }
-  FreeWorkout: undefined
+  WorkoutView: { workoutId: string }
+  WorkoutExecution: { workoutId?: string }
+  WorkoutPost: {
+    sessionId: string
+    workoutName: string
+    durationMin: number
+    totalSets: number
+    totalValidSets: number
+    totalVolume: number
+    exercises: ExecutionExerciseRecord[]
+  }
   ExerciseDebug: undefined // DEBUG — remove before launch
   ExerciseCuration: undefined // DEBUG — remove before launch
   ExerciseAdmin: undefined // DEBUG — remove before launch
@@ -41,7 +54,9 @@ export function AppNavigator() {
       <Stack.Screen name="EditTrainerProfile" component={EditTrainerProfileScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
-      <Stack.Screen name="FreeWorkout" component={FreeWorkoutScreen} />
+      <Stack.Screen name="WorkoutView" component={WorkoutViewScreen} />
+      <Stack.Screen name="WorkoutExecution" component={WorkoutExecutionScreen} />
+      <Stack.Screen name="WorkoutPost" component={WorkoutPostScreen} />
       <Stack.Screen name="ExerciseDebug" component={ExerciseDebugScreen} />{/* DEBUG — remove before launch */}
       <Stack.Screen name="ExerciseCuration" component={ExerciseCurationScreen} />{/* DEBUG — remove before launch */}
       <Stack.Screen name="ExerciseAdmin" component={ExerciseAdminScreen} />{/* DEBUG — remove before launch */}

@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -9,6 +9,7 @@ import { useNavigation } from '@react-navigation/native'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as SecureStore from 'expo-secure-store'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { DragSortableList } from '../../components/DragSortableList'
 import { api } from '../../lib/api'
 import type { ProgramRecord, WorkoutRecord } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
@@ -16,8 +17,25 @@ import { ProgramCard } from './ProgramCard'
 import { ProgramModal } from './ProgramModal'
 import { WorkoutModal } from './WorkoutModal'
 import { FreeWorkoutInfoModal } from './FreeWorkoutInfoModal'
+import { Toast, showToast } from '../../components/Toast'
 
 const FREE_WORKOUT_KEY = 'hasSeenFreeWorkoutModal'
+const PROGRAMS_ORDER_KEY = 'programs_order'
+
+function applyOrder(programs: ProgramRecord[], savedOrder: string[]): ProgramRecord[] {
+  if (!savedOrder.length) return programs
+  const map = new Map(programs.map(p => [p.id, p]))
+  const ordered: ProgramRecord[] = []
+  for (const id of savedOrder) {
+    const p = map.get(id)
+    if (p) ordered.push(p)
+  }
+  // append any programs not in saved order (newly created)
+  for (const p of programs) {
+    if (!savedOrder.includes(p.id)) ordered.push(p)
+  }
+  return ordered
+}
 
 export function WorkoutScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
@@ -26,6 +44,9 @@ export function WorkoutScreen() {
   const [programModal, setProgramModal] = useState<{ open: boolean; editing: ProgramRecord | null }>({ open: false, editing: null })
   const [workoutModal, setWorkoutModal] = useState<{ open: boolean; programId: string | null; editing: WorkoutRecord | null }>({ open: false, programId: null, editing: null })
   const [freeWorkoutModal, setFreeWorkoutModal] = useState(false)
+  const [orderedPrograms, setOrderedPrograms] = useState<ProgramRecord[]>([])
+  const [dragging, setDragging] = useState(false)
+  const savedOrderRef = useRef<string[]>([])
 
   const { data, isLoading } = useQuery({
     queryKey: ['programs'],
@@ -33,6 +54,16 @@ export function WorkoutScreen() {
     staleTime: 30_000,
   })
   const programs = data?.data.programs ?? []
+
+  useEffect(() => {
+    async function loadOrder() {
+      const raw = await SecureStore.getItemAsync(PROGRAMS_ORDER_KEY).catch(() => null)
+      const order: string[] = raw ? JSON.parse(raw) : []
+      savedOrderRef.current = order
+      setOrderedPrograms(applyOrder(data?.data.programs ?? [], order))
+    }
+    loadOrder()
+  }, [data])
 
   const createProgram = useMutation({
     mutationFn: (body: Parameters<typeof api.programs.create>[0]) => api.programs.create(body),
@@ -42,33 +73,34 @@ export function WorkoutScreen() {
   const updateProgram = useMutation({
     mutationFn: ({ id, ...body }: { id: string } & Parameters<typeof api.programs.update>[1]) =>
       api.programs.update(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['programs'] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['programs'] }); showToast('Programa atualizado') },
   })
 
   const createWorkout = useMutation({
     mutationFn: (body: Parameters<typeof api.workouts.create>[0]) => api.workouts.create(body),
-    onSuccess: (_, vars) => {
+    onSuccess: (result, vars) => {
       qc.invalidateQueries({ queryKey: ['workouts', vars.programId] })
       qc.invalidateQueries({ queryKey: ['programs'] })
+      navigation.navigate('WorkoutDetail', { workoutId: result.data.workout.id })
     },
   })
 
   const updateWorkout = useMutation({
     mutationFn: ({ id, programId, ...body }: { id: string; programId: string } & Parameters<typeof api.workouts.update>[1]) =>
       api.workouts.update(id, body),
-    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['workouts', vars.programId] }),
+    onSuccess: (_, vars) => { qc.invalidateQueries({ queryKey: ['workouts', vars.programId] }); showToast('Treino atualizado') },
   })
 
   const openCreateProgram = useCallback(() => setProgramModal({ open: true, editing: null }), [])
   const openEditProgram = useCallback((p: ProgramRecord) => setProgramModal({ open: true, editing: p }), [])
   const openAddWorkout = useCallback((programId: string) => setWorkoutModal({ open: true, programId, editing: null }), [])
-  const openEditWorkout = useCallback((w: WorkoutRecord, programId: string) => setWorkoutModal({ open: true, programId, editing: w }), [])
   const navigateToWorkout = useCallback((w: WorkoutRecord) => navigation.navigate('WorkoutDetail', { workoutId: w.id }), [navigation])
+  const navigateToView = useCallback((w: WorkoutRecord) => navigation.navigate('WorkoutView', { workoutId: w.id }), [navigation])
 
   async function handleTrenoLivre() {
     const seen = await SecureStore.getItemAsync(FREE_WORKOUT_KEY)
     if (seen) {
-      navigation.navigate('FreeWorkout')
+      navigation.navigate('WorkoutExecution', {})
     } else {
       setFreeWorkoutModal(true)
     }
@@ -76,21 +108,20 @@ export function WorkoutScreen() {
 
   async function handleFreeWorkoutConfirm() {
     setFreeWorkoutModal(false)
-    navigation.navigate('FreeWorkout')
+    navigation.navigate('WorkoutExecution', {})
   }
 
   async function handleFreeWorkoutDismissForever() {
     await SecureStore.setItemAsync(FREE_WORKOUT_KEY, 'true')
     setFreeWorkoutModal(false)
-    navigation.navigate('FreeWorkout')
+    navigation.navigate('WorkoutExecution', {})
   }
 
-  async function handleSaveProgram(data: { name: string; goals: Parameters<typeof api.programs.create>[0]['goals']; description?: string }) {
+  async function handleSaveProgram(data: { name: string; description?: string }) {
     if (programModal.editing) {
       await updateProgram.mutateAsync({ id: programModal.editing.id, ...data })
     } else {
-      const res = await createProgram.mutateAsync(data)
-      openAddWorkout(res.data.program.id)
+      await createProgram.mutateAsync(data)
     }
   }
 
@@ -102,6 +133,66 @@ export function WorkoutScreen() {
     }
   }
 
+  async function handleProgramDragEnd(data: ProgramRecord[]) {
+    setOrderedPrograms(data)
+    const order = data.map(p => p.id)
+    savedOrderRef.current = order
+    await SecureStore.setItemAsync(PROGRAMS_ORDER_KEY, JSON.stringify(order)).catch(() => {})
+  }
+
+  const ListHeader = (
+    <View>
+      <TouchableOpacity onPress={handleTrenoLivre} activeOpacity={0.85}>
+        <LinearGradient colors={['#2979FF', '#1A237E']} style={s.freeBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+          <Ionicons name="flash" size={20} color="#fff" />
+          <Text style={s.freeBtnText}>Iniciar Treino Livre</Text>
+          <View style={{ flex: 1 }} />
+          <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+        </LinearGradient>
+      </TouchableOpacity>
+      <Text style={s.freeSub}>Sem programa · Sessão livre</Text>
+      <View style={s.spacer} />
+      <View style={s.sectionRow}>
+        <Text style={s.sectionLabel}>PROGRAMAS</Text>
+        <TouchableOpacity onPress={openCreateProgram} activeOpacity={0.7}>
+          <View style={s.novoBtn}>
+            <Text style={s.novoBtnText}>Novo +</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+    </View>
+  )
+
+  const ListEmpty = isLoading ? (
+    <View>
+      {[0, 1, 2].map(i => (
+        <View key={i} style={s.skeleton}>
+          <View style={s.skeletonLeft}>
+            <View style={s.skeletonChev} />
+            <View style={{ gap: 6, flex: 1 }}>
+              <View style={[s.skeletonLine, { width: '52%' }]} />
+              <View style={[s.skeletonLine, { width: '28%', height: 10 }]} />
+            </View>
+          </View>
+          <View style={[s.skeletonLine, { width: 52, height: 10 }]} />
+        </View>
+      ))}
+    </View>
+  ) : (
+    <View style={s.emptyState}>
+      <View style={s.emptyIconWrap}>
+        <Ionicons name="barbell-outline" size={28} color="#4FC3F7" />
+      </View>
+      <Text style={s.emptyTitle}>Nenhum programa</Text>
+      <Text style={s.emptySub}>Crie seu primeiro programa de treino</Text>
+      <TouchableOpacity onPress={openCreateProgram} activeOpacity={0.85} style={s.emptyBtnWrap}>
+        <LinearGradient colors={['#2979FF', '#1565C0']} style={s.emptyBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+          <Text style={s.emptyBtnText}>Criar programa</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  )
+
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
@@ -112,74 +203,34 @@ export function WorkoutScreen() {
       </View>
 
       <ScrollView
-        style={{ flex: 1 }}
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
-        bounces
+        scrollEnabled={!dragging}
       >
-        {/* Treino Livre */}
-        <TouchableOpacity onPress={handleTrenoLivre} activeOpacity={0.85}>
-          <LinearGradient colors={['#2979FF', '#1A237E']} style={s.freeBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-            <Ionicons name="flash" size={20} color="#fff" />
-            <Text style={s.freeBtnText}>Iniciar Treino Livre</Text>
-            <View style={{ flex: 1 }} />
-            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-          </LinearGradient>
-        </TouchableOpacity>
-        <Text style={s.freeSub}>Sem programa · Sessão livre</Text>
-
-        <View style={s.spacer} />
-
-        {/* Section header */}
-        <View style={s.sectionRow}>
-          <Text style={s.sectionLabel}>PROGRAMAS</Text>
-          <TouchableOpacity onPress={openCreateProgram} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={s.sectionAction}>Novo +</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* List */}
-        {isLoading ? (
-          <View>
-            {[0, 1, 2].map(i => (
-              <View key={i} style={s.skeleton}>
-                <View style={s.skeletonLeft}>
-                  <View style={s.skeletonChev} />
-                  <View style={{ gap: 6, flex: 1 }}>
-                    <View style={[s.skeletonLine, { width: '52%' }]} />
-                    <View style={[s.skeletonLine, { width: '28%', height: 10 }]} />
-                  </View>
-                </View>
-                <View style={[s.skeletonLine, { width: 52, height: 10 }]} />
-              </View>
-            ))}
-          </View>
-        ) : programs.length === 0 ? (
-          <View style={s.emptyState}>
-            <View style={s.emptyIconWrap}>
-              <Ionicons name="barbell-outline" size={28} color="#4FC3F7" />
-            </View>
-            <Text style={s.emptyTitle}>Nenhum programa</Text>
-            <Text style={s.emptySub}>Crie seu primeiro programa de treino</Text>
-            <TouchableOpacity onPress={openCreateProgram} activeOpacity={0.85} style={s.emptyBtnWrap}>
-              <LinearGradient colors={['#2979FF', '#1565C0']} style={s.emptyBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                <Text style={s.emptyBtnText}>Criar programa</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View>
-            {programs.map(program => (
+        {ListHeader}
+        {isLoading || programs.length === 0 ? ListEmpty : (
+          <DragSortableList
+            data={orderedPrograms}
+            keyExtractor={p => p.id}
+            renderItem={({ item: program, drag, isActive }) => (
               <ProgramCard
                 key={program.id}
                 program={program}
                 onEditProgram={openEditProgram}
                 onAddWorkout={openAddWorkout}
-                onEditWorkout={openEditWorkout}
                 onNavigateWorkout={navigateToWorkout}
+                onViewWorkout={navigateToView}
+                onDrag={drag}
+                isDragging={isActive}
+                onWorkoutDragStart={() => setDragging(true)}
+                onWorkoutDragEnd={() => setDragging(false)}
               />
-            ))}
-          </View>
+            )}
+            onReorder={handleProgramDragEnd}
+            onDragStart={() => setDragging(true)}
+            onDragEnd={() => setDragging(false)}
+            itemHeight={64}
+          />
         )}
       </ScrollView>
 
@@ -203,6 +254,8 @@ export function WorkoutScreen() {
         onConfirm={handleFreeWorkoutConfirm}
         onDismissForever={handleFreeWorkoutDismissForever}
       />
+
+      <Toast />
     </SafeAreaView>
   )
 }
@@ -237,7 +290,15 @@ const s = StyleSheet.create({
 
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   sectionLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 1.2 },
-  sectionAction: { color: '#4FC3F7', fontSize: 13 },
+  novoBtn: {
+    backgroundColor: 'rgba(41,121,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(41,121,255,0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  novoBtnText: { color: '#4FC3F7', fontSize: 13, fontWeight: '500' },
 
   skeleton: {
     flexDirection: 'row',

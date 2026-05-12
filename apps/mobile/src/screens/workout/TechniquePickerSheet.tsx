@@ -40,7 +40,7 @@ const OPTIONS: TechniqueOption[] = [
     description: 'Série de ajuste — não conta no volume',
     setType: 'FEEDER', technique: 'NONE', hasConfig: false,
     infoText:
-      'Uma série de ativação com carga moderada e volume alto, realizada dias antes ou no início do treino do grupamento. O objetivo é aumentar o fluxo sanguíneo, melhorar a conexão mente-músculo e preparar o tecido sem gerar fadiga excessiva.\n\nNão conta no volume total do treino.\n\nExemplo:\n  F  Rosca Direta — 20kg × 20  (não conta)',
+      'Uma série de ativação com carga moderada e volume alto, realizada dias antes ou no início do treino do grupamento. O objetivo é aumentar o fluxo sanguíneo, melhorar a conexão mente-músculo e preparar o tecido sem gerar fadiga excessiva.\n\nNão conta no volume total do treino.',
     seenKey: 'info_feeder',
   },
   {
@@ -56,7 +56,7 @@ const OPTIONS: TechniqueOption[] = [
     description: 'Até a falha, pause, repita',
     setType: 'WORKING', technique: 'REST_PAUSE', hasConfig: true,
     infoText:
-      'Técnica de alta intensidade onde você executa reps até a falha ou próximo dela, faz uma pausa curta e volta com o mesmo peso. Cada rodada é chamada de ponto de falha.\n\nTudo conta como UMA série no volume total.\n\nExemplo:\n  RP  Falha 1: 80kg × 8\n      · · · 15s · · ·\n      Falha 2: 80kg × 3\n      · · · 15s · · ·\n      Falha 3: 80kg × 1',
+      'Técnica de alta intensidade onde você leva a série próximo ou até a falha, descansa brevemente e retoma com o mesmo peso. Cada rodada é chamada de ponto de falha. O número de pontos de falha e o tempo de descanso entre eles são configuráveis.\n\nTudo conta como UMA série no volume total.',
     seenKey: 'info_rest_pause',
   },
   {
@@ -64,7 +64,7 @@ const OPTIONS: TechniqueOption[] = [
     description: 'Blocos com breve descanso entre eles',
     setType: 'WORKING', technique: 'CLUSTER_SET', hasConfig: true,
     infoText:
-      'O Cluster Set divide uma série em mini-blocos com micro-descansos entre eles. Isso permite usar uma carga mais alta por mais repetições totais, mantendo a qualidade mecânica de cada rep. Conta como UMA série no volume.\n\nExemplo:\n  CS  100kg: 4 reps · · ·15s· · · 4 reps · · ·15s· · · 4 reps\n      = 12 reps totais com carga que normalmente daria só 6',
+      'Divide uma série em mini-blocos com breves micro-descansos entre eles. Isso permite executar mais repetições totais com uma carga que normalmente daria para menos, mantendo a qualidade mecânica de cada rep. O número de blocos e o tempo de descanso são configuráveis.\n\nConta como UMA série no volume.',
     seenKey: 'info_cluster_set',
   },
   {
@@ -72,7 +72,7 @@ const OPTIONS: TechniqueOption[] = [
     description: 'Blocos curtos com descanso mínimo',
     setType: 'WORKING', technique: 'MUSCLE_ROUND', hasConfig: true,
     infoText:
-      'O Muscle Round é uma técnica de alta densidade onde você realiza blocos de 6 reps com 35 segundos de descanso entre cada bloco. Quando falhar em um bloco, marque-o, reduza a carga e continue. Após falhar, o objetivo é não falhar novamente. Conta como UMA série no volume total.\n\nExemplo:\n  MR  Bloco 1: 60kg × 6 ✓\n      · · · 35s · · ·\n      Bloco 2: 60kg × 6 ✓\n      · · · 35s · · ·\n      Bloco 3: 60kg × 4 ✗ → reduziu para 50kg\n      Bloco 4: 50kg × 6 ✓',
+      'Escolha uma carga com a qual faria 10–12 reps e divida em blocos curtos com pausas mínimas entre eles. A intenção não é falhar em cada bloco — a fadiga se acumula ao longo da série. Marque em qual bloco ocorreu a falha e use isso como referência de progresso. O objetivo é aumentar o total de reps a cada treino; quando atingir seu alvo, aumente a carga. Número de blocos, reps por bloco e tempo de descanso são configuráveis.\n\nConta como UMA série no volume total.',
     seenKey: 'info_muscle_round',
   },
   {
@@ -80,7 +80,7 @@ const OPTIONS: TechniqueOption[] = [
     description: 'Reduza a carga e continue sem descanso',
     setType: 'WORKING', technique: 'DROP_SET', hasConfig: true,
     infoText:
-      'Ao atingir a falha (ou próximo dela), você reduz a carga imediatamente sem descanso e continua. Cada redução é um "drop". Maximiza o volume em pouco tempo. Conta como UMA série no volume total.\n\nExemplo:\n  DS  100kg × 8 → drop → 75kg × 6 → drop → 50kg × 10',
+      'Ao atingir a falha (ou próximo dela), você reduz a carga imediatamente sem descanso e continua. Cada redução é um "drop". Maximiza o volume em pouco tempo. O número de drops é configurável.\n\nConta como UMA série no volume total.',
     seenKey: 'info_drop_set',
   },
 ]

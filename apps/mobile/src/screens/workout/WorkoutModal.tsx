@@ -147,6 +147,7 @@ export function WorkoutModal({ visible, editingWorkout, onClose, onSave }: Props
               </TouchableOpacity>
             </View>
             {formFields}
+            <View style={{ height: 20 }} />
             {saveButton}
           </Animated.View>
         </KeyboardAvoidingView>

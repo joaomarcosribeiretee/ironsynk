@@ -27,11 +27,13 @@ export default function App() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <NavigationContainer theme={navTheme}>
-        <StatusBar style="light" />
-        <RootNavigator />
-      </NavigationContainer>
-    </QueryClientProvider>
+    <View style={{ flex: 1 }}>
+      <QueryClientProvider client={queryClient}>
+        <NavigationContainer theme={navTheme}>
+          <StatusBar style="light" />
+          <RootNavigator />
+        </NavigationContainer>
+      </QueryClientProvider>
+    </View>
   )
 }

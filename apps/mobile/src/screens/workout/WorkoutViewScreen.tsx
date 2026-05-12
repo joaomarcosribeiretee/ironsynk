@@ -184,7 +184,7 @@ export function WorkoutViewScreen() {
           ) : null}
 
           {/* Start workout button */}
-          <TouchableOpacity activeOpacity={0.85} style={s.startBtnWrap}>
+          <TouchableOpacity activeOpacity={0.85} style={s.startBtnWrap} onPress={() => navigation.navigate('WorkoutExecution', { workoutId })}>
             <LinearGradient
               colors={['#2979FF', '#1565C0']}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}

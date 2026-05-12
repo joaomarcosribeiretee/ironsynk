@@ -7,13 +7,12 @@ const VALID_GOALS = ['HYPERTROPHY', 'STRENGTH', 'FAT_LOSS', 'ENDURANCE', 'HEALTH
 
 const CreateProgramBody = z.object({
   name: z.string().min(1).max(100),
-  goals: z.array(z.enum(VALID_GOALS)).min(1),
+  goals: z.array(z.enum(VALID_GOALS)).optional().default([]),
   description: z.string().max(500).optional(),
 })
 
 const UpdateProgramBody = z.object({
   name: z.string().min(1).max(100).optional(),
-  goals: z.array(z.enum(VALID_GOALS)).min(1).optional(),
   description: z.string().max(500).nullable().optional(),
 })
 
@@ -61,7 +60,6 @@ export async function programRoutes(fastify: FastifyInstance): Promise<void> {
       data: {
         ...(body.name !== undefined && { name: body.name }),
         ...('description' in body && { description: body.description }),
-        ...(body.goals && { goals: body.goals }),
         updatedAt: new Date(),
       },
       include: { _count: { select: { workouts: true } } },

@@ -79,7 +79,7 @@ export function ExerciseAdminScreen() {
   const load = useCallback(async (group: string) => {
     setLoading(true)
     try {
-      const { data } = await api.exercises.list(group === 'ALL' ? undefined : group)
+      const { data } = await api.exercises.list(group === 'ALL' ? undefined : { muscleGroup: group })
       setExercises(data.exercises)
     } finally {
       setLoading(false)

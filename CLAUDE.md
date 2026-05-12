@@ -850,4 +850,4 @@ JWT_SECRET=
 
 ---
 
-*Last updated: project kickoff — Phase 1*
+*Last updated: project kickoff — Phase 2*

@@ -485,9 +485,6 @@ export function WorkoutDetailScreen() {
   const [techniquePicker, setTechniquePicker] = useState<{ visible: boolean; teId: string | null; setId: string | null }>({ visible: false, teId: null, setId: null })
   const [supersetPicker, setSupersetPicker] = useState<{ visible: boolean; type: 'BISET' | 'SUPERSET'; sourceTeId: string | null }>({ visible: false, type: 'BISET', sourceTeId: null })
   const [addingSet, setAddingSet] = useState<Record<string, boolean>>({})
-  const [descExpanded, setDescExpanded] = useState(false)
-  const [editDescOpen, setEditDescOpen] = useState(false)
-  const [editDescDraft, setEditDescDraft] = useState('')
 
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const pendingTEChanges = useRef<Record<string, Partial<{ notes: string | null; restSeconds: number | null }>>>({})
@@ -798,6 +795,10 @@ export function WorkoutDetailScreen() {
   const existingExerciseIds = exercises.map(te => te.exercise.id)
   const totalSets = exercises.reduce((acc, te) => {
     const sets = localSets[te.id] ?? te.sets
+    return acc + sets.length
+  }, 0)
+  const validSets = exercises.reduce((acc, te) => {
+    const sets = localSets[te.id] ?? te.sets
     return acc + sets.filter(s => s.setType === 'WORKING').length
   }, 0)
 
@@ -809,24 +810,35 @@ export function WorkoutDetailScreen() {
   return (
     <SafeAreaView style={s.safe}>
       {/* Header */}
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
-          <Ionicons name="chevron-back" size={22} color="#F0F0F5" />
-        </TouchableOpacity>
+      <View style={s.headerWrap}>
+        <View style={s.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+            <Ionicons name="chevron-back" size={22} color="#F0F0F5" />
+          </TouchableOpacity>
+          <TextInput
+            style={s.headerTitle}
+            value={workoutName}
+            onChangeText={handleNameChange}
+            placeholder="Nome do treino"
+            placeholderTextColor="#4A4A5A"
+            returnKeyType="done"
+          />
+          <TouchableOpacity onPress={handleSave} activeOpacity={0.85}>
+            <LinearGradient colors={['#2979FF', '#1565C0']} style={s.savePill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+              <Text style={s.saveText}>Salvar</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
         <TextInput
-          style={s.headerTitle}
-          value={workoutName}
-          onChangeText={handleNameChange}
-          placeholder="Nome do treino"
-          placeholderTextColor="#4A4A5A"
-          returnKeyType="done"
-          blurOnSubmit
+          style={s.descInline}
+          value={workoutNotes}
+          onChangeText={handleWorkoutNotesChange}
+          placeholder="Adicionar descrição..."
+          placeholderTextColor="#3A3A4A"
+          multiline
+          numberOfLines={2}
+          maxLength={300}
         />
-        <TouchableOpacity onPress={handleSave} activeOpacity={0.85}>
-          <LinearGradient colors={['#2979FF', '#1565C0']} style={s.savePill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-            <Text style={s.saveText}>Salvar</Text>
-          </LinearGradient>
-        </TouchableOpacity>
       </View>
 
       {/* Fixed summary row */}
@@ -838,6 +850,8 @@ export function WorkoutDetailScreen() {
         <Text style={s.headerMetaText}>
           {totalSets} {totalSets === 1 ? 'série' : 'séries'}
         </Text>
+        <View style={s.headerMetaDot} />
+        <Text style={s.headerMetaText}>{validSets} válidas</Text>
       </View>
 
       {isLoading ? (
@@ -846,28 +860,6 @@ export function WorkoutDetailScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-          {/* Description — only shown when non-empty */}
-          {workoutNotes.trim() ? (
-            <>
-              <View style={s.descSection}>
-                <TouchableOpacity onPress={() => setDescExpanded(v => !v)} activeOpacity={0.7} style={{ flex: 1 }}>
-                  <Text style={s.descText} numberOfLines={descExpanded ? undefined : 2}>
-                    {workoutNotes}
-                  </Text>
-                </TouchableOpacity>
-                <View style={s.descRowRight}>
-                  <Ionicons name={descExpanded ? 'chevron-up' : 'chevron-down'} size={13} color="#555560" />
-                  <TouchableOpacity
-                    onPress={() => { setEditDescDraft(workoutNotes); setEditDescOpen(true) }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={s.descEditBtn}>Editar</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <View style={s.sectionDivider} />
-            </>
-          ) : null}
 
           {exercises.length === 0 ? (
             <View style={s.emptyWrap}>
@@ -1132,36 +1124,7 @@ export function WorkoutDetailScreen() {
         onClose={() => setTechniquePicker({ visible: false, teId: null, setId: null })}
       />
 
-      <Modal visible={editDescOpen} transparent animationType="fade" onRequestClose={() => setEditDescOpen(false)}>
-        <View style={s.editDescOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditDescOpen(false)} />
-          <View style={s.editDescSheet}>
-            <Text style={s.editDescTitle}>Descrição do treino</Text>
-            <TextInput
-              style={s.editDescInput}
-              value={editDescDraft}
-              onChangeText={setEditDescDraft}
-              placeholder="Adicionar descrição..."
-              placeholderTextColor="#3A3A4A"
-              multiline
-              autoFocus
-            />
-            <TouchableOpacity
-              style={s.editDescSaveBtn}
-              onPress={() => {
-                setWorkoutNotes(editDescDraft)
-                handleWorkoutNotesChange(editDescDraft)
-                setEditDescOpen(false)
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={s.editDescSaveText}>Salvar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <SupersetPickerModal
+<SupersetPickerModal
         visible={supersetPicker.visible}
         type={supersetPicker.type}
         sourceTeId={supersetPicker.sourceTeId ?? ''}
@@ -1189,9 +1152,17 @@ export function WorkoutDetailScreen() {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#141418' },
 
+  headerWrap: {
+    paddingBottom: 6,
+  },
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingLeft: 12, paddingRight: 18, paddingTop: 4, paddingBottom: 10, gap: 8,
+    paddingLeft: 12, paddingRight: 18, paddingTop: 4, paddingBottom: 4, gap: 8,
+  },
+  descInline: {
+    color: '#6A6A7A', fontSize: 12, fontStyle: 'italic', lineHeight: 17,
+    paddingLeft: 54, paddingRight: 18, paddingBottom: 6,
+    maxHeight: 38,
   },
   backBtn: { width: 34, height: 34, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
   headerTitle: {
@@ -1217,40 +1188,6 @@ const s = StyleSheet.create({
   headerMetaText: { color: '#555560', fontSize: 12 },
   headerMetaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#3A3A4A' },
 
-  descSection: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8, gap: 8,
-  },
-  descText: { color: '#8A8A9A', fontSize: 13, fontStyle: 'italic', lineHeight: 19, flex: 1 },
-  descRowRight: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0, paddingTop: 2 },
-  descEditBtn: { color: '#4FC3F7', fontSize: 12 },
-  descInput: {
-    color: '#8A8A9A', fontSize: 13,
-    paddingHorizontal: 10, paddingVertical: 8,
-    backgroundColor: 'rgba(42,42,53,0.5)',
-    borderWidth: 1, borderColor: '#252530',
-    borderRadius: 10, minHeight: 40,
-  },
-  editDescOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.72)',
-    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24,
-  },
-  editDescSheet: {
-    backgroundColor: '#1E1E24', borderRadius: 20, width: '100%',
-    paddingTop: 22, paddingBottom: 20, paddingHorizontal: 20,
-  },
-  editDescTitle: { color: '#F0F0F5', fontSize: 16, fontWeight: '600', marginBottom: 14 },
-  editDescInput: {
-    color: '#F0F0F5', fontSize: 14, lineHeight: 20,
-    backgroundColor: '#141418', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
-    minHeight: 90, textAlignVertical: 'top', marginBottom: 16,
-  },
-  editDescSaveBtn: {
-    height: 48, borderRadius: 12, backgroundColor: '#2979FF',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  editDescSaveText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
   emptyWrap: { alignItems: 'center', paddingTop: 80, gap: 8 },

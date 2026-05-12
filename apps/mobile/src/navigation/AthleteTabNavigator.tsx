@@ -23,7 +23,7 @@ const TAB_BAR_STYLE = {
   height: 60,
   paddingBottom: 4,
   paddingTop: 6,
-  marginBottom: 20,
+  marginBottom: 28,
   marginHorizontal: 20,
 } as const
 

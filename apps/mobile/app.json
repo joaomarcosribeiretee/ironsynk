@@ -4,6 +4,7 @@
     "slug": "ironsynk",
     "version": "1.0.0",
     "orientation": "portrait",
+    "entryPoint": "./index.ts",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -31,6 +32,11 @@
     "plugins": [
       "expo-web-browser",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "cb6265b8-4a60-40c9-bdcd-628b1bdd1854"
+      }
+    }
   }
 }

@@ -248,6 +248,65 @@ export type AddSetInput = {
 
 export type UpdateSetInput = AddSetInput
 
+// ─── Execution / Session types ────────────────────────────────────────────────
+
+export type ExecutionSetLogRecord = {
+  id: string
+  trainingLogId: string
+  executionExerciseId: string | null
+  exerciseId: string
+  setNumber: number
+  order: number
+  setType: SetType
+  technique: PlannedSetTechnique
+  techniqueConfig: TechniqueConfig | null
+  repsCompleted: number | null
+  weightKg: number | null
+  isChecked: boolean
+  checkedAt: string | null
+  isPersonalRecord: boolean
+  notes: string | null
+  plannedSetId: string | null
+}
+
+export type ExecutionExerciseRecord = {
+  id: string
+  trainingLogId: string
+  exerciseId: string
+  trainingExId: string | null
+  order: number
+  exerciseNotes: string | null
+  exercise: ExerciseDetail
+  sets: ExecutionSetLogRecord[]
+}
+
+export type SessionRecord = {
+  id: string
+  userId: string
+  workoutId: string | null
+  isFreeWorkout: boolean
+  workoutName: string | null
+  programName: string | null
+  startedAt: string
+  finishedAt: string | null
+  durationMin: number | null
+  notes: string | null
+  isPosted: boolean
+  totalVolume: number | null
+  totalSets: number | null
+  totalValidSets: number | null
+  hasChanges: boolean
+  exercises: ExecutionExerciseRecord[]
+}
+
+export type UpdateExecSetInput = {
+  repsCompleted?: number | null
+  weightKg?: number | null
+  isChecked?: boolean
+  notes?: string | null
+  techniqueConfig?: TechniqueConfig | null
+}
+
 export type ExerciseListParams = {
   muscleGroup?: string
   equipment?: string
@@ -402,5 +461,28 @@ export const api = {
       request<{ data: { plannedSet: PlannedSetRecord } }>(`/api/v1/planned-sets/${id}`, { method: 'PUT', body }),
     delete: (id: string) =>
       request<{ data: { success: boolean } }>(`/api/v1/planned-sets/${id}`, { method: 'DELETE' }),
+  },
+  sessions: {
+    start: (body: { workoutId?: string }) =>
+      request<{ data: { session: SessionRecord } }>('/api/v1/sessions/start', { method: 'POST', body }),
+    get: (id: string) =>
+      request<{ data: { session: SessionRecord } }>(`/api/v1/sessions/${id}`),
+    updateSet: (sessionId: string, setId: string, body: UpdateExecSetInput) =>
+      request<{ data: { set: ExecutionSetLogRecord; isPR: boolean; previousBest?: { weightKg: number; reps: number } } }>(
+        `/api/v1/sessions/${sessionId}/sets/${setId}`, { method: 'PUT', body }),
+    addExercise: (sessionId: string, body: { exerciseId: string; sets?: number }) =>
+      request<{ data: { exercise: ExecutionExerciseRecord } }>(`/api/v1/sessions/${sessionId}/exercises`, { method: 'POST', body }),
+    removeExercise: (sessionId: string, execExId: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/sessions/${sessionId}/exercises/${execExId}`, { method: 'DELETE' }),
+    addSet: (sessionId: string, execExId: string) =>
+      request<{ data: { set: ExecutionSetLogRecord } }>(`/api/v1/sessions/${sessionId}/exercises/${execExId}/sets`, { method: 'POST', body: {} }),
+    removeSet: (sessionId: string, setId: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/sessions/${sessionId}/sets/${setId}`, { method: 'DELETE' }),
+    updateExerciseNotes: (sessionId: string, execExId: string, notes: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/sessions/${sessionId}/exercises/${execExId}/notes`, { method: 'PUT', body: { notes } }),
+    finish: (sessionId: string, applyChanges: boolean) =>
+      request<{ data: { session: SessionRecord; hasChanges: boolean } }>(`/api/v1/sessions/${sessionId}/finish`, { method: 'POST', body: { applyChanges } }),
+    cancel: (sessionId: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/sessions/${sessionId}`, { method: 'DELETE' }),
   },
 }
