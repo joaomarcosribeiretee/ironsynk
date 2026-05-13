@@ -30,6 +30,10 @@ enum SetTechnique {
   CLUSTER_SET
   MUSCLE_ROUND
   MYOREP
+  WARMUP
+  FEEDER
+  BISET
+  SUPERSET
 }
 
 enum MuscleGroup {
@@ -70,11 +74,10 @@ enum DietGoal {
 // ─────────────────────────────────────────────
 
 model User {
-  id           String  @id @default(uuid())
-  email        String  @unique
-  passwordHash String?
-  role         Role    @default(ATHLETE)
-  isActive     Boolean @default(true)
+  id        String   @id @default(uuid())
+  email     String   @unique
+  role      Role     @default(ATHLETE)
+  isActive  Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -153,15 +156,16 @@ model Exercise {
   createdById String?
   sourceId    String?
 
-  trainingExercises TrainingExercise[]
+  trainingExercises   TrainingExercise[]
+  executionExercises  ExecutionExercise[]
 }
 
 model Program {
-  id          String        @id @default(uuid())
+  id          String         @id @default(uuid())
   name        String
   description String?
-  goal        TrainingGoal?
-  isTemplate  Boolean       @default(false)
+  goals       TrainingGoal[]
+  isTemplate  Boolean        @default(false)
   isPublic    Boolean       @default(false)
   createdById String
   createdAt   DateTime      @default(now())
@@ -186,55 +190,107 @@ model Workout {
 }
 
 model TrainingExercise {
-  id          String  @id @default(uuid())
-  workoutId   String
-  exerciseId  String
-  order       Int
-  targetSets  Int
-  targetReps  String
-  targetRIR   Int?
-  targetRPE   Float?
-  restSeconds Int?
-  notes       String?
+  id              String       @id @default(uuid())
+  workoutId       String
+  exerciseId      String
+  order           Int
+  targetSets      Int
+  targetReps      String
+  targetRIR       Int?
+  targetRPE       Float?
+  restSeconds     Int?
+  notes           String?
+  technique       SetTechnique @default(NONE)
+  techniqueConfig Json?
+  supersetGroupId String?
 
-  workout  Workout  @relation(fields: [workoutId], references: [id])
-  exercise Exercise @relation(fields: [exerciseId], references: [id])
-  setLogs  SetLog[]
+  workout     Workout      @relation(fields: [workoutId], references: [id])
+  exercise    Exercise     @relation(fields: [exerciseId], references: [id])
+  setLogs     SetLog[]
+  plannedSets PlannedSet[]
+
+  @@index([supersetGroupId])
+}
+
+model PlannedSet {
+  id              String       @id @default(uuid())
+  trainingExId    String
+  order           Int
+  setType         SetType      @default(WORKING)
+  technique       SetTechnique @default(NONE)
+  techniqueConfig Json?
+  targetReps      String?
+  targetWeight    Float?
+  restSeconds     Int?
+
+  trainingExercise TrainingExercise @relation(fields: [trainingExId], references: [id], onDelete: Cascade)
+
+  @@index([trainingExId])
 }
 
 model TrainingLog {
-  id          String    @id @default(uuid())
-  userId      String
-  workoutId   String?
-  startedAt   DateTime  @default(now())
-  finishedAt  DateTime?
-  durationMin Int?
-  notes       String?
-  isPosted    Boolean   @default(false)
+  id             String    @id @default(uuid())
+  userId         String
+  workoutId      String?
+  isFreeWorkout  Boolean   @default(false)
+  workoutName    String?
+  programName    String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  durationMin    Int?
+  notes          String?
+  isPosted       Boolean   @default(false)
+  totalVolume    Float?
+  totalSets      Int?
+  totalValidSets Int?
+  hasChanges     Boolean   @default(false)
 
-  user    User     @relation(fields: [userId], references: [id])
-  workout Workout? @relation(fields: [workoutId], references: [id])
-  sets    SetLog[]
-  post    Post?
+  user               User                @relation(fields: [userId], references: [id])
+  workout            Workout?            @relation(fields: [workoutId], references: [id])
+  sets               SetLog[]
+  executionExercises ExecutionExercise[]
+  post               Post?
+}
+
+model ExecutionExercise {
+  id            String  @id @default(uuid())
+  trainingLogId String
+  exerciseId    String
+  trainingExId  String?
+  order         Int
+  exerciseNotes String?
+
+  trainingLog TrainingLog @relation(fields: [trainingLogId], references: [id], onDelete: Cascade)
+  exercise    Exercise    @relation(fields: [exerciseId], references: [id])
+  setLogs     SetLog[]
+
+  @@index([trainingLogId])
 }
 
 model SetLog {
-  id                 String       @id @default(uuid())
-  trainingLogId      String
-  trainingExerciseId String?
-  exerciseId         String
-  setNumber          Int
-  setType            SetType      @default(WORKING)
-  technique          SetTechnique @default(NONE)
-  repsCompleted      Int
-  weightKg           Float
-  rir                Int?
-  rpe                Float?
-  isPersonalRecord   Boolean      @default(false)
-  notes              String?
+  id                  String       @id @default(uuid())
+  trainingLogId       String
+  executionExerciseId String?
+  trainingExerciseId  String?
+  exerciseId          String
+  setNumber           Int
+  order               Int          @default(0)
+  setType             SetType      @default(WORKING)
+  technique           SetTechnique @default(NONE)
+  techniqueConfig     Json?
+  repsCompleted       Int?
+  weightKg            Float?
+  rir                 Int?
+  rpe                 Float?
+  isChecked           Boolean      @default(false)
+  checkedAt           DateTime?
+  isPersonalRecord    Boolean      @default(false)
+  notes               String?
+  plannedSetId        String?
 
-  trainingLog      TrainingLog       @relation(fields: [trainingLogId], references: [id])
-  trainingExercise TrainingExercise? @relation(fields: [trainingExerciseId], references: [id])
+  trainingLog        TrainingLog        @relation(fields: [trainingLogId], references: [id])
+  executionExercise  ExecutionExercise? @relation(fields: [executionExerciseId], references: [id])
+  trainingExercise   TrainingExercise?  @relation(fields: [trainingExerciseId], references: [id])
 }
 
 model PersonalRecord {

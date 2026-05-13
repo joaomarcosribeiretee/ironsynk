@@ -1,26 +1,65 @@
 import React from 'react'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import { View, Text } from 'react-native'
+import { useAuthStore } from '../store/authStore'
+import { AthleteTabNavigator } from './AthleteTabNavigator'
+import { TrainerTabNavigator } from './TrainerTabNavigator'
+import { EditAthleteProfileScreen } from '../screens/app/EditAthleteProfileScreen'
+import { EditTrainerProfileScreen } from '../screens/app/EditTrainerProfileScreen'
+import { SettingsScreen } from '../screens/app/SettingsScreen'
+import { ExerciseDebugScreen } from '../screens/debug/ExerciseDebugScreen' // DEBUG — remove before launch
+import { ExerciseCurationScreen } from '../screens/debug/ExerciseCurationScreen' // DEBUG — remove before launch
+import { ExerciseAdminScreen } from '../screens/debug/ExerciseAdminScreen' // DEBUG — remove before launch
+import { WorkoutDetailScreen } from '../screens/workout/WorkoutDetailScreen'
+import { WorkoutViewScreen } from '../screens/workout/WorkoutViewScreen'
+import { WorkoutExecutionScreen } from '../screens/workout/WorkoutExecutionScreen'
+import { WorkoutPostScreen } from '../screens/workout/WorkoutPostScreen'
+import type { ExecutionExerciseRecord } from '../lib/api'
 
 export type AppStackParamList = {
-  Home: undefined
+  AthleteTabs: undefined
+  TrainerTabs: undefined
+  EditAthleteProfile: undefined
+  EditTrainerProfile: undefined
+  Settings: undefined
+  WorkoutDetail: { workoutId: string }
+  WorkoutView: { workoutId: string }
+  WorkoutExecution: { workoutId?: string }
+  WorkoutPost: {
+    sessionId: string
+    workoutName: string
+    durationMin: number
+    totalSets: number
+    totalValidSets: number
+    totalVolume: number
+    exercises: ExecutionExerciseRecord[]
+  }
+  ExerciseDebug: undefined // DEBUG — remove before launch
+  ExerciseCuration: undefined // DEBUG — remove before launch
+  ExerciseAdmin: undefined // DEBUG — remove before launch
 }
 
 const Stack = createNativeStackNavigator<AppStackParamList>()
 
-function HomeScreen() {
-  return (
-    <View className="flex-1 items-center justify-center bg-background">
-      <Text className="text-text-primary text-2xl font-bold">IronSynk</Text>
-      <Text className="text-text-secondary mt-2">App coming soon — Phase 2+</Text>
-    </View>
-  )
-}
-
 export function AppNavigator() {
+  const isTrainer = useAuthStore((s) => s.user?.role === 'TRAINER')
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Home" component={HomeScreen} />
+      {isTrainer ? (
+        <Stack.Screen name="TrainerTabs" component={TrainerTabNavigator} />
+      ) : (
+        <Stack.Screen name="AthleteTabs" component={AthleteTabNavigator} />
+      )}
+      <Stack.Screen name="EditAthleteProfile" component={EditAthleteProfileScreen} />
+      <Stack.Screen name="EditTrainerProfile" component={EditTrainerProfileScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="WorkoutDetail" component={WorkoutDetailScreen} />
+      <Stack.Screen name="WorkoutView" component={WorkoutViewScreen} />
+      <Stack.Screen name="WorkoutExecution" component={WorkoutExecutionScreen} />
+      <Stack.Screen name="WorkoutPost" component={WorkoutPostScreen} />
+      <Stack.Screen name="ExerciseDebug" component={ExerciseDebugScreen} />{/* DEBUG — remove before launch */}
+      <Stack.Screen name="ExerciseCuration" component={ExerciseCurationScreen} />{/* DEBUG — remove before launch */}
+      <Stack.Screen name="ExerciseAdmin" component={ExerciseAdminScreen} />{/* DEBUG — remove before launch */}
     </Stack.Navigator>
   )
 }

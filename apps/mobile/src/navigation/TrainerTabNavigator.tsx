@@ -1,0 +1,97 @@
+import React from 'react'
+import { View } from 'react-native'
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
+import { Ionicons } from '@expo/vector-icons'
+import { TrainerDashboardScreen } from '../screens/trainer/TrainerDashboardScreen'
+import { StudentsScreen } from '../screens/trainer/StudentsScreen'
+import { ConsultationsScreen } from '../screens/trainer/ConsultationsScreen'
+import { ProfileScreen } from '../screens/app/ProfileScreen'
+
+export type TrainerTabParamList = {
+  Dashboard: undefined
+  Students: undefined
+  Consultations: undefined
+  Profile: undefined
+}
+
+const Tab = createBottomTabNavigator<TrainerTabParamList>()
+
+const TAB_BAR_STYLE = {
+  backgroundColor: '#141418',
+  borderTopWidth: 0,
+  borderRadius: 16,
+  height: 60,
+  paddingBottom: 4,
+  paddingTop: 6,
+  marginBottom: 20,
+  marginHorizontal: 20,
+} as const
+
+const FullWidthSeparator = () => (
+  <View
+    style={{
+      position: 'absolute',
+      top: 0,
+      left: -20,
+      right: -20,
+      height: 1,
+      backgroundColor: '#2A2A35',
+    }}
+  />
+)
+
+export function TrainerTabNavigator() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: TAB_BAR_STYLE,
+        tabBarActiveTintColor: '#4FC3F7',
+        tabBarInactiveTintColor: '#8A8A9A',
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+        tabBarBackground: () => <FullWidthSeparator />,
+      }}
+    >
+      <Tab.Screen
+        name="Dashboard"
+        component={TrainerDashboardScreen}
+        options={{
+          tabBarLabel: 'Dashboard',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'stats-chart' : 'stats-chart-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Students"
+        component={StudentsScreen}
+        options={{
+          tabBarLabel: 'Alunos',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'people' : 'people-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Consultations"
+        component={ConsultationsScreen}
+        options={{
+          tabBarLabel: 'Consultas',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarLabel: 'Perfil',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  )
+}
