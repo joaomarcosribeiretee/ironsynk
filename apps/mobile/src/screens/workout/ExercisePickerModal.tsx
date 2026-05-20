@@ -210,6 +210,7 @@ export function ExercisePickerModal({
         style={[s.exRow, isSelected && s.exRowSelected, alreadyIn && s.exRowDim]}
         onPress={() => {
           if (alreadyIn) return
+          if (onSelect) { onSelect(ex); onClose(); return }
           mode === 'add' ? toggleSelect(ex) : handleReplace(ex)
         }}
         activeOpacity={alreadyIn ? 1 : 0.75}
@@ -263,10 +264,11 @@ export function ExercisePickerModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.overlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       <View style={s.container}>
+        <View style={s.handle} />
         <View style={s.header}>
           <Text style={s.title}>{mode === 'add' ? 'Adicionar Exercício' : 'Substituir Exercício'}</Text>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -339,6 +341,7 @@ export function ExercisePickerModal({
         <View style={s.separator} />
 
         <FlatList
+          style={{ flex: 1 }}
           data={exercises}
           keyExtractor={ex => ex.id}
           renderItem={renderExercise}
@@ -411,14 +414,13 @@ export function ExercisePickerModal({
 const s = StyleSheet.create({
   overlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: 0,
+    justifyContent: 'flex-end',
   },
   container: {
-    width: '100%', maxHeight: '92%',
+    width: '100%', height: '88%',
     backgroundColor: '#141418',
-    borderRadius: 20, overflow: 'hidden',
-    flex: 1,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    overflow: 'hidden',
   },
 
   handle: { width: 36, height: 4, backgroundColor: '#2A2A35', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
