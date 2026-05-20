@@ -305,6 +305,8 @@ export type UpdateExecSetInput = {
   isChecked?: boolean
   notes?: string | null
   techniqueConfig?: TechniqueConfig | null
+  setType?: SetType
+  technique?: PlannedSetTechnique
 }
 
 export type ExerciseListParams = {

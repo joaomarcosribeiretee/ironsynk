@@ -210,6 +210,8 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
       isChecked: z.boolean().optional(),
       notes: z.string().nullable().optional(),
       techniqueConfig: z.record(z.string(), z.unknown()).nullable().optional(),
+      setType: z.enum(['WORKING', 'WARMUP', 'FEEDER']).optional(),
+      technique: z.enum(['NONE', 'DROP_SET', 'BACK_OFF', 'REST_PAUSE', 'CLUSTER_SET', 'MUSCLE_ROUND', 'MYOREP']).optional(),
     }).parse(request.body)
 
     const check = await ownerCheck(id, request.authUser.id)
@@ -227,6 +229,8 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
         }),
         ...(body.notes !== undefined && { notes: body.notes }),
         ...(body.techniqueConfig !== undefined && { techniqueConfig: body.techniqueConfig as unknown as Prisma.InputJsonValue | undefined }),
+        ...(body.setType !== undefined && { setType: body.setType }),
+        ...(body.technique !== undefined && { technique: body.technique }),
       },
     })
 
@@ -260,7 +264,7 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /api/v1/sessions/:id/exercises
   fastify.post('/:id/exercises', { preHandler: authMiddleware }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const body = z.object({ exerciseId: z.string(), setCount: z.number().int().min(1).default(3) }).parse(request.body)
+    const body = z.object({ exerciseId: z.string(), setCount: z.number().int().min(0).default(0) }).parse(request.body)
 
     const check = await ownerCheck(id, request.authUser.id)
     if (!check.ok) return reply.status(check.status).send({ error: { code: check.status === 404 ? 'NOT_FOUND' : 'FORBIDDEN' } })

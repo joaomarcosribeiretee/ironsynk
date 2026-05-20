@@ -56,7 +56,7 @@ export function WorkoutPostScreen() {
     try {
       await api.posts.create({ trainingLogId: sessionId, content: description.trim() || undefined })
       showToast('Treino publicado!')
-      navigation.popToTop()
+      navigation.navigate('AthleteTabs', { screen: 'Workout' })
     } catch {
       showToast('Erro ao publicar')
       setPublishing(false)
@@ -65,7 +65,7 @@ export function WorkoutPostScreen() {
 
   function handleSkip() {
     showToast('Treino salvo!')
-    navigation.popToTop()
+    navigation.navigate('AthleteTabs', { screen: 'Workout' })
   }
 
   return (
@@ -146,7 +146,7 @@ export function WorkoutPostScreen() {
             <TouchableOpacity style={ps.modalBtnPrimary} onPress={() => setDiscardModal(false)}>
               <Text style={ps.modalBtnPrimaryText}>Continuar editando</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[ps.modalBtnPrimary, { backgroundColor: '#2A2A35' }]} onPress={() => { setDiscardModal(false); navigation.popToTop() }}>
+            <TouchableOpacity style={[ps.modalBtnPrimary, { backgroundColor: '#2A2A35' }]} onPress={() => { setDiscardModal(false); navigation.navigate('AthleteTabs', { screen: 'Workout' }) }}>
               <Text style={[ps.modalBtnPrimaryText, { color: '#8A8A9A' }]}>Descartar</Text>
             </TouchableOpacity>
           </View>

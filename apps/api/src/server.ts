@@ -10,6 +10,7 @@ import { workoutRoutes } from './routes/workouts/index.js'
 import { trainingExerciseRoutes } from './routes/training-exercises/index.js'
 import { plannedSetRoutes } from './routes/planned-sets/index.js'
 import { sessionRoutes } from './routes/sessions/index.js'
+import { postRoutes } from './routes/posts/index.js'
 import { supabaseAdmin } from './lib/supabase.js'
 
 const server = Fastify({ logger: true })
@@ -44,6 +45,7 @@ async function bootstrap(): Promise<void> {
   await server.register(trainingExerciseRoutes, { prefix: '/api/v1/training-exercises' })
   await server.register(plannedSetRoutes, { prefix: '/api/v1/planned-sets' })
   await server.register(sessionRoutes, { prefix: '/api/v1/sessions' })
+  await server.register(postRoutes, { prefix: '/api/v1/posts' })
 
   const port = Number(process.env['PORT'] ?? 3333)
   await server.listen({ port, host: '0.0.0.0' })
