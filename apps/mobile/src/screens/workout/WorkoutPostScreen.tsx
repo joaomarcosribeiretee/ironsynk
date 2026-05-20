@@ -54,7 +54,7 @@ export function WorkoutPostScreen() {
   async function handlePublish() {
     setPublishing(true)
     try {
-      await api.sessions.updateSet  // placeholder — post route not yet built, skip for now
+      await api.posts.create({ trainingLogId: sessionId, content: description.trim() || undefined })
       showToast('Treino publicado!')
       navigation.popToTop()
     } catch {
@@ -64,6 +64,7 @@ export function WorkoutPostScreen() {
   }
 
   function handleSkip() {
+    showToast('Treino salvo!')
     navigation.popToTop()
   }
 

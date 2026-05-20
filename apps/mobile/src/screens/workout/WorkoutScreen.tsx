@@ -96,6 +96,7 @@ export function WorkoutScreen() {
   const openAddWorkout = useCallback((programId: string) => setWorkoutModal({ open: true, programId, editing: null }), [])
   const navigateToWorkout = useCallback((w: WorkoutRecord) => navigation.navigate('WorkoutDetail', { workoutId: w.id }), [navigation])
   const navigateToView = useCallback((w: WorkoutRecord) => navigation.navigate('WorkoutView', { workoutId: w.id }), [navigation])
+  const navigateToExecution = useCallback((w: WorkoutRecord) => navigation.navigate('WorkoutExecution', { workoutId: w.id }), [navigation])
 
   async function handleTrenoLivre() {
     const seen = await SecureStore.getItemAsync(FREE_WORKOUT_KEY)
@@ -220,6 +221,7 @@ export function WorkoutScreen() {
                 onAddWorkout={openAddWorkout}
                 onNavigateWorkout={navigateToWorkout}
                 onViewWorkout={navigateToView}
+                onStartWorkout={navigateToExecution}
                 onDrag={drag}
                 isDragging={isActive}
                 onWorkoutDragStart={() => setDragging(true)}

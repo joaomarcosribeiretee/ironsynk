@@ -11,6 +11,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useSessionStore } from '../../store/sessionStore'
 import { ExercisePickerModal } from './ExercisePickerModal'
 import { showToast } from '../../components/Toast'
+import * as Haptics from 'expo-haptics'
 import { api } from '../../lib/api'
 import type {
   ExecutionExerciseRecord, ExecutionSetLogRecord,
@@ -102,7 +103,7 @@ function PRBadge() {
 
 // ─── Check button ─────────────────────────────────────────────────────────────
 
-function CheckButton({ checked, onPress, size = 32 }: { checked: boolean; onPress: () => void; size?: number }) {
+function CheckButton({ checked, onPress, size = 36 }: { checked: boolean; onPress: () => void; size?: number }) {
   const anim = useRef(new Animated.Value(1)).current
   function handlePress() {
     Animated.sequence([
@@ -148,6 +149,7 @@ function SimpleSetRow({ set, index, isPR, restSeconds, onChecked, onRestEnd, onR
   function handleCheck() {
     const r = reps ? parseInt(reps, 10) : null
     const w = weight ? parseFloat(weight) : null
+    if (!set.isChecked) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     onChecked(set.id, r, w, null)
     if (!set.isChecked && restSeconds && restSeconds > 0) setShowRest(true)
   }
@@ -177,7 +179,7 @@ function SimpleSetRow({ set, index, isPR, restSeconds, onChecked, onRestEnd, onR
               value={reps}
               onChangeText={setReps}
               placeholder="—"
-              placeholderTextColor="#555560"
+              placeholderTextColor="#333344"
               keyboardType="number-pad"
             />
             <Text style={ex.inputSep}>×</Text>
@@ -186,7 +188,7 @@ function SimpleSetRow({ set, index, isPR, restSeconds, onChecked, onRestEnd, onR
               value={weight}
               onChangeText={setWeight}
               placeholder="—"
-              placeholderTextColor="#555560"
+              placeholderTextColor="#333344"
               keyboardType="decimal-pad"
             />
             <Text style={ex.kgLabel}>kg</Text>
@@ -281,6 +283,7 @@ function TechSetRow({ set, index, isPR, onChecked, onRemove }: TechSetRowProps) 
   const allChecked = blocks.every(b => b.checked)
 
   function handleParentCheck() {
+    if (!set.isChecked && !allChecked) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     // Mark all blocks done, then fire parent check
     const updated = blocks.map(b => ({ ...b, checked: true }))
     setBlocks(updated)
@@ -362,9 +365,9 @@ function TechSetRow({ set, index, isPR, onChecked, onRemove }: TechSetRowProps) 
               </>
             ) : (
               <>
-                <TextInput style={ex.repsInputSm} value={block.reps} onChangeText={v => updateBlock(bi, 'reps', v)} placeholder="—" placeholderTextColor="#555560" keyboardType="number-pad" />
+                <TextInput style={ex.repsInputSm} value={block.reps} onChangeText={v => updateBlock(bi, 'reps', v)} placeholder="—" placeholderTextColor="#333344" keyboardType="number-pad" />
                 <Text style={[ex.inputSep, { fontSize: 12 }]}>×</Text>
-                <TextInput style={ex.weightInputSm} value={block.weight} onChangeText={v => updateBlock(bi, 'weight', v)} placeholder="—" placeholderTextColor="#555560" keyboardType="decimal-pad" />
+                <TextInput style={ex.weightInputSm} value={block.weight} onChangeText={v => updateBlock(bi, 'weight', v)} placeholder="—" placeholderTextColor="#333344" keyboardType="decimal-pad" />
                 <Text style={[ex.kgLabel, { fontSize: 11 }]}>kg</Text>
               </>
             )}
@@ -490,10 +493,18 @@ function ExerciseCard({ exercise, prSets, onSetChecked, onAddSet, onRemoveSet, o
           )
         })}
 
-        <TouchableOpacity style={ex.addSetBtn} onPress={() => onAddSet(exercise.id)} activeOpacity={0.7}>
-          <Ionicons name="add" size={15} color="#4FC3F7" />
-          <Text style={ex.addSetText}>Adicionar série</Text>
-        </TouchableOpacity>
+        <View style={ex.setActionsRow}>
+          <TouchableOpacity style={ex.setActionBtn} onPress={() => onAddSet(exercise.id)} activeOpacity={0.7}>
+            <Ionicons name="add" size={14} color="#4FC3F7" />
+            <Text style={ex.setActionText}>+ série</Text>
+          </TouchableOpacity>
+          {exercise.sets.length > 0 && (
+            <TouchableOpacity style={ex.setActionBtn} onPress={() => onRemoveSet(exercise.id, exercise.sets[exercise.sets.length - 1]!.id)} activeOpacity={0.7}>
+              <Ionicons name="remove" size={14} color="#555560" />
+              <Text style={[ex.setActionText, { color: '#555560' }]}>- série</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </View>
   )
@@ -591,7 +602,7 @@ export function WorkoutExecutionScreen() {
     if (!sessionId) return
     setPickerOpen(false)
     try {
-      const res = await api.sessions.addExercise(sessionId, { exerciseId, sets: 3 })
+      const res = await api.sessions.addExercise(sessionId, { exerciseId, setCount: 3 })
       store.addExercise(res.data.exercise)
     } catch {
       showToast('Erro ao adicionar exercício')
@@ -671,25 +682,26 @@ export function WorkoutExecutionScreen() {
   }
 
   const exercises = session?.exercises ?? []
+  const totalSets = exercises.reduce((acc, ex) => acc + ex.sets.length, 0)
+  const checkedSets = exercises.reduce((acc, ex) => acc + ex.sets.filter(s => s.isChecked).length, 0)
+  const progress = totalSets > 0 ? checkedSets / totalSets : 0
 
   return (
     <SafeAreaView style={s.safe}>
       {/* Sticky header */}
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => setCancelModal(true)} style={s.headerBtn}>
-          <Ionicons name="close" size={22} color="#8A8A9A" />
-        </TouchableOpacity>
-
-        <View style={s.headerCenter}>
+      <View style={s.headerWrap}>
+        <View style={s.header}>
+          <TouchableOpacity onPress={() => setCancelModal(true)} style={s.headerSideBtn}>
+            <Ionicons name="close" size={22} color="#8A8A9A" />
+          </TouchableOpacity>
           <Text style={s.headerTitle} numberOfLines={1}>
             {session?.workoutName ?? 'Treino Livre'}
           </Text>
           <Text style={s.timer}>{formatElapsed(store.elapsedSeconds)}</Text>
         </View>
-
-        <TouchableOpacity onPress={onFinalizarPress} style={s.headerBtn}>
-          <Text style={s.finalizarBtn}>Finalizar</Text>
-        </TouchableOpacity>
+        <View style={s.progressTrack}>
+          <View style={[s.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
@@ -718,6 +730,15 @@ export function WorkoutExecutionScreen() {
           <Text style={s.addExText}>Adicionar exercício</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Finalizar footer */}
+      <View style={s.footer}>
+        <TouchableOpacity onPress={onFinalizarPress} activeOpacity={0.85} style={s.footerBtn}>
+          <LinearGradient colors={['#2979FF', '#1565C0']} style={s.footerBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+            <Text style={s.footerBtnText}>Finalizar treino</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
 
       {/* Cancel modal */}
       <Modal visible={cancelModal} transparent animationType="fade" onRequestClose={() => setCancelModal(false)}>
@@ -770,16 +791,20 @@ const s = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
   loadingText: { color: '#8A8A9A', fontSize: 14 },
 
+  headerWrap: { borderBottomWidth: 1, borderBottomColor: '#1E1E24' },
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 12, paddingVertical: 10,
-    borderBottomWidth: 1, borderBottomColor: '#1E1E24',
   },
-  headerBtn: { width: 52, justifyContent: 'center', alignItems: 'flex-start' },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  headerTitle: { color: '#F0F0F5', fontSize: 15, fontWeight: '500', maxWidth: 200, textAlign: 'center' },
-  timer: { color: '#4FC3F7', fontSize: 13, fontFamily: 'monospace', marginTop: 2 },
-  finalizarBtn: { color: '#4FC3F7', fontSize: 16, fontWeight: '500' },
+  headerSideBtn: { width: 44, justifyContent: 'center', alignItems: 'flex-start' },
+  headerTitle: { flex: 1, color: '#F0F0F5', fontSize: 17, fontWeight: '500', textAlign: 'center' },
+  timer: { width: 56, color: '#4FC3F7', fontSize: 13, fontFamily: 'monospace', textAlign: 'right' },
+  progressTrack: { height: 3, backgroundColor: '#2A2A35' },
+  progressFill: { height: 3, backgroundColor: '#4FC3F7' },
+  footer: { paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#1E1E24' },
+  footerBtn: { borderRadius: 14, overflow: 'hidden' },
+  footerBtnGradient: { height: 50, justifyContent: 'center', alignItems: 'center' },
+  footerBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 
   scroll: { paddingBottom: 60, paddingTop: 12, gap: 12, paddingHorizontal: 14 },
 
@@ -846,7 +871,7 @@ const ex = StyleSheet.create({
   setRowDone: { backgroundColor: 'rgba(0,230,118,0.06)' },
 
   check: {
-    borderWidth: 2, borderColor: '#333344', justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: '#2A2A35', justifyContent: 'center', alignItems: 'center',
   },
   checkDone: { backgroundColor: '#00E676', borderColor: '#00E676' },
 
@@ -890,12 +915,13 @@ const ex = StyleSheet.create({
   },
   prText: { color: '#FFB300', fontSize: 10, fontWeight: '700' },
 
-  // Add set
-  addSetBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 10, marginTop: 4,
+  // Serie actions row
+  setActionsRow: { flexDirection: 'row', gap: 0, marginTop: 4 },
+  setActionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, paddingVertical: 10,
   },
-  addSetText: { color: '#4FC3F7', fontSize: 13 },
+  setActionText: { color: '#4FC3F7', fontSize: 13 },
 
   // Technique set wrap
   techSetWrap: {
