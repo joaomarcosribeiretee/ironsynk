@@ -600,7 +600,6 @@ export function WorkoutExecutionScreen() {
   // ── Add exercise ──
   async function handleAddExercise(exerciseId: string) {
     if (!sessionId) return
-    setPickerOpen(false)
     try {
       const res = await api.sessions.addExercise(sessionId, { exerciseId, setCount: 3 })
       store.addExercise(res.data.exercise)

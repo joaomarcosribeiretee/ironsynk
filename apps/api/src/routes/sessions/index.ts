@@ -284,6 +284,8 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
             exerciseId: body.exerciseId,
             setNumber: i + 1,
             order: i,
+            repsCompleted: 0,
+            weightKg: 0,
           },
         })
       }
@@ -335,6 +337,8 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
         exerciseId: execEx.exerciseId,
         setNumber: agg._count + 1,
         order: newOrder,
+        repsCompleted: 0,
+        weightKg: 0,
       },
     })
     return reply.status(201).send({ data: { set } })
