@@ -84,20 +84,6 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
     const userId = request.authUser.id
 
     const session = await prisma.$transaction(async (tx) => {
-      let workoutName: string | null = null
-      let programName: string | null = null
-
-      const log = await tx.trainingLog.create({
-        data: {
-          userId,
-          workoutId: body.workoutId ?? null,
-          isFreeWorkout: !body.workoutId,
-          workoutName: null,
-          programName: null,
-          startedAt: new Date(),
-        },
-      })
-
       if (body.workoutId) {
         const workout = await tx.workout.findUnique({
           where: { id: body.workoutId },
@@ -111,10 +97,16 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
         })
         if (!workout) throw new Error('WORKOUT_NOT_FOUND')
 
-        workoutName = workout.name
-        programName = workout.program?.name ?? null
-
-        await tx.trainingLog.update({ where: { id: log.id }, data: { workoutName, programName } })
+        const log = await tx.trainingLog.create({
+          data: {
+            userId,
+            workoutId: body.workoutId,
+            isFreeWorkout: false,
+            workoutName: workout.name,
+            programName: workout.program?.name ?? null,
+            startedAt: new Date(),
+          },
+        })
 
         let exOrder = 0
         for (const te of workout.exercises) {
@@ -163,9 +155,20 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
             })
           }
         }
+
+        return log
       }
 
-      return log
+      return tx.trainingLog.create({
+        data: {
+          userId,
+          workoutId: null,
+          isFreeWorkout: true,
+          workoutName: null,
+          programName: null,
+          startedAt: new Date(),
+        },
+      })
     })
 
     const full = await prisma.trainingLog.findUnique({
@@ -177,7 +180,7 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
         },
       },
     })
-    return reply.status(201).send({ data: { session: mapSession(full!) } })
+    return reply.status(201).send({ data: { sessionId: full!.id, session: mapSession(full!) } })
   })
 
   // GET /api/v1/sessions/:id
@@ -207,6 +210,8 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
       isChecked: z.boolean().optional(),
       notes: z.string().nullable().optional(),
       techniqueConfig: z.record(z.string(), z.unknown()).nullable().optional(),
+      setType: z.enum(['WORKING', 'WARMUP', 'FEEDER']).optional(),
+      technique: z.enum(['NONE', 'DROP_SET', 'BACK_OFF', 'REST_PAUSE', 'CLUSTER_SET', 'MUSCLE_ROUND', 'MYOREP']).optional(),
     }).parse(request.body)
 
     const check = await ownerCheck(id, request.authUser.id)
@@ -216,20 +221,24 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
       where: { id: setId },
       select: SET_SELECT,
       data: {
-        ...(body.repsCompleted !== undefined && { repsCompleted: body.repsCompleted ?? undefined }),
-        ...(body.weightKg !== undefined && { weightKg: body.weightKg ?? undefined }),
-        ...(body.isChecked !== undefined && { isChecked: body.isChecked }),
-        ...(body.isChecked ? { checkedAt: new Date() } : {}),
-        ...(body.notes !== undefined && { notes: body.notes ?? undefined }),
+        ...(body.repsCompleted !== undefined && { repsCompleted: body.repsCompleted }),
+        ...(body.weightKg !== undefined && { weightKg: body.weightKg }),
+        ...(body.isChecked !== undefined && {
+          isChecked: body.isChecked,
+          checkedAt: body.isChecked ? new Date() : null,
+        }),
+        ...(body.notes !== undefined && { notes: body.notes }),
         ...(body.techniqueConfig !== undefined && { techniqueConfig: body.techniqueConfig as unknown as Prisma.InputJsonValue | undefined }),
+        ...(body.setType !== undefined && { setType: body.setType }),
+        ...(body.technique !== undefined && { technique: body.technique }),
       },
     })
 
-    // PR check on check action
+    // PR check on check action — use final DB values after update
     let isPR = false
     let previousBest: { weightKg: number; reps: number } | undefined
-    const reps = body.repsCompleted ?? updated.repsCompleted
-    const weight = body.weightKg ?? updated.weightKg
+    const reps = updated.repsCompleted
+    const weight = updated.weightKg
 
     if (body.isChecked && reps != null && weight != null && reps > 0 && weight > 0) {
       const new1RM = calc1RM(weight, reps)
@@ -255,7 +264,7 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
   // POST /api/v1/sessions/:id/exercises
   fastify.post('/:id/exercises', { preHandler: authMiddleware }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const body = z.object({ exerciseId: z.string(), sets: z.number().int().min(1).default(3) }).parse(request.body)
+    const body = z.object({ exerciseId: z.string(), setCount: z.number().int().min(0).default(0) }).parse(request.body)
 
     const check = await ownerCheck(id, request.authUser.id)
     if (!check.ok) return reply.status(check.status).send({ error: { code: check.status === 404 ? 'NOT_FOUND' : 'FORBIDDEN' } })
@@ -271,7 +280,7 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
         data: { trainingLogId: id, exerciseId: body.exerciseId, order },
         include: EXEC_EX_INCLUDE,
       })
-      for (let i = 0; i < body.sets; i++) {
+      for (let i = 0; i < body.setCount; i++) {
         await tx.setLog.create({
           data: {
             trainingLogId: id,
@@ -279,6 +288,8 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
             exerciseId: body.exerciseId,
             setNumber: i + 1,
             order: i,
+            repsCompleted: 0,
+            weightKg: 0,
           },
         })
       }
@@ -330,6 +341,8 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
         exerciseId: execEx.exerciseId,
         setNumber: agg._count + 1,
         order: newOrder,
+        repsCompleted: 0,
+        weightKg: 0,
       },
     })
     return reply.status(201).send({ data: { set } })
@@ -376,7 +389,6 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
     })
     if (!session) return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
 
-    // Calculate stats
     const now = new Date()
     const durationMin = Math.round((now.getTime() - session.startedAt.getTime()) / 60000)
     let totalVolume = 0
@@ -404,7 +416,6 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
       },
     })
 
-    // If applyChanges: sync original workout to match execution
     if (applyChanges && session.workoutId) {
       await syncWorkoutFromSession(session.workoutId, id)
     }
@@ -443,14 +454,12 @@ async function syncWorkoutFromSession(workoutId: string, sessionId: string): Pro
   if (!session) return
 
   await prisma.$transaction(async (tx) => {
-    // Remove existing exercises and planned sets from workout
     const existing = await tx.trainingExercise.findMany({ where: { workoutId }, select: { id: true } })
     for (const te of existing) {
       await tx.plannedSet.deleteMany({ where: { trainingExId: te.id } })
     }
     await tx.trainingExercise.deleteMany({ where: { workoutId } })
 
-    // Rebuild from execution
     let order = 0
     for (const ee of session.executionExercises) {
       const te = await tx.trainingExercise.create({

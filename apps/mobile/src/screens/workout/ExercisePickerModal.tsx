@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, TextInput,
   FlatList, Modal, ActivityIndicator, Image, Pressable, ScrollView,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -166,10 +167,10 @@ export function ExercisePickerModal({
 
   async function handleAddSelected() {
     if (isSubmitting || selectedIds.size === 0) return
-    // onSelect mode: just return the first selected exercise without API call
     if (onSelect) {
-      const ex = exercises.find(e => selectedIds.has(e.id))
-      if (ex) { onSelect(ex); onClose() }
+      const selected = exercises.filter(e => selectedIds.has(e.id))
+      selected.forEach(ex => onSelect(ex))
+      onClose()
       return
     }
     if (!workoutId || !onAdded) return
@@ -263,17 +264,18 @@ export function ExercisePickerModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={s.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      <View style={s.container}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
+        {/* Header */}
         <View style={s.header}>
-          <Text style={s.title}>{mode === 'add' ? 'Adicionar Exercício' : 'Substituir Exercício'}</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <TouchableOpacity onPress={onClose} style={s.headerClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Ionicons name="close" size={22} color="#8A8A9A" />
           </TouchableOpacity>
+          <Text style={s.title}>{mode === 'add' ? 'Adicionar Exercício' : 'Substituir Exercício'}</Text>
+          <View style={s.headerSpacer} />
         </View>
 
+        {/* Search */}
         <View style={s.searchBar}>
           <Ionicons name="search-outline" size={18} color="#555560" />
           <TextInput
@@ -290,6 +292,7 @@ export function ExercisePickerModal({
           )}
         </View>
 
+        {/* Filters */}
         <View style={s.filterRow}>
           <TouchableOpacity
             style={[s.filterBtn, selectedMuscle !== '' && s.filterBtnActive]}
@@ -338,12 +341,15 @@ export function ExercisePickerModal({
 
         <View style={s.separator} />
 
+        {/* List */}
         <FlatList
+          style={{ flex: 1 }}
           data={exercises}
           keyExtractor={ex => ex.id}
           renderItem={renderExercise}
           onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage() }}
           onEndReachedThreshold={0.3}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             isLoading ? (
               <View style={s.listEmpty}>
@@ -364,8 +370,9 @@ export function ExercisePickerModal({
           }
         />
 
+        {/* CTA — only in add mode with selections */}
         {mode === 'add' && selectedIds.size > 0 && (
-          <View style={[s.ctaBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={s.ctaBar}>
             <TouchableOpacity
               style={[s.ctaBtn, isSubmitting && s.ctaBtnDisabled]}
               onPress={handleAddSelected}
@@ -373,21 +380,25 @@ export function ExercisePickerModal({
               disabled={isSubmitting}
             >
               {isSubmitting ? (
-                <ActivityIndicator size="small" color="#4FC3F7" />
+                <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <>
-                  <Ionicons name="add-circle-outline" size={16} color="#4FC3F7" />
+                <LinearGradient
+                  colors={['#2979FF', '#1565C0']}
+                  style={s.ctaBtnGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color="#fff" />
                   <Text style={s.ctaBtnText}>
                     Adicionar {selectedIds.size} exercício{selectedIds.size !== 1 ? 's' : ''}
                   </Text>
-                </>
+                </LinearGradient>
               )}
             </TouchableOpacity>
           </View>
         )}
-      </View>
+      </SafeAreaView>
 
-      </View>
       <FilterPicker
         visible={musclePickerOpen}
         title="Grupo muscular"
@@ -409,26 +420,20 @@ export function ExercisePickerModal({
 }
 
 const s = StyleSheet.create({
-  overlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: 0,
-  },
-  container: {
-    width: '100%', maxHeight: '92%',
-    backgroundColor: '#141418',
-    borderRadius: 20, overflow: 'hidden',
-    flex: 1,
-  },
+  safe: { flex: 1, backgroundColor: '#141418' },
 
-  handle: { width: 36, height: 4, backgroundColor: '#2A2A35', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
-
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, paddingTop: 16 },
-  title: { flex: 1, color: '#F0F0F5', fontSize: 18, fontWeight: '500' },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#1E1E24',
+  },
+  headerClose: { width: 44 },
+  headerSpacer: { width: 44 },
+  title: { flex: 1, color: '#F0F0F5', fontSize: 17, fontWeight: '600', textAlign: 'center' },
 
   searchBar: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 16, marginBottom: 12, height: 44,
+    marginHorizontal: 16, marginTop: 14, marginBottom: 12, height: 44,
     backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
     borderRadius: 12, paddingHorizontal: 12,
   },
@@ -453,13 +458,13 @@ const s = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
 
-  separator: { height: 1, backgroundColor: '#2A2A35', marginBottom: 0 },
+  separator: { height: 1, backgroundColor: '#2A2A35' },
 
   exRow: {
     height: 68, flexDirection: 'row', alignItems: 'center',
     borderBottomWidth: 1, borderBottomColor: '#1E1E24',
   },
-  exRowSelected: { backgroundColor: 'rgba(41,121,255,0.06)' },
+  exRowSelected: { backgroundColor: 'rgba(41,121,255,0.08)' },
   exRowDim: { opacity: 0.45 },
   exNameDim: { color: '#8A8A9A' },
   exImgWrap: {
@@ -489,25 +494,20 @@ const s = StyleSheet.create({
   listFooter: { padding: 16, alignItems: 'center' },
 
   ctaBar: {
-    paddingHorizontal: 16, paddingTop: 10,
-    backgroundColor: '#141418',
+    paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12,
     borderTopWidth: 1, borderTopColor: '#2A2A35',
+    backgroundColor: '#141418',
   },
-  ctaBtn: {
-    height: 48, borderRadius: 12,
-    backgroundColor: '#1E1E24',
-    borderWidth: 1.5, borderColor: 'rgba(41,121,255,0.4)',
-    flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8,
+  ctaBtn: { borderRadius: 14, overflow: 'hidden' },
+  ctaBtnGradient: {
+    height: 50, flexDirection: 'row',
+    justifyContent: 'center', alignItems: 'center', gap: 8,
   },
   ctaBtnDisabled: { opacity: 0.5 },
-  ctaBtnText: { color: '#4FC3F7', fontSize: 15, fontWeight: '600' },
+  ctaBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 })
 
 const fp = StyleSheet.create({
-  backdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
   overlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.72)',
     justifyContent: 'center', alignItems: 'center',

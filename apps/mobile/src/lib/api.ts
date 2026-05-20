@@ -305,6 +305,8 @@ export type UpdateExecSetInput = {
   isChecked?: boolean
   notes?: string | null
   techniqueConfig?: TechniqueConfig | null
+  setType?: SetType
+  technique?: PlannedSetTechnique
 }
 
 export type ExerciseListParams = {
@@ -470,7 +472,7 @@ export const api = {
     updateSet: (sessionId: string, setId: string, body: UpdateExecSetInput) =>
       request<{ data: { set: ExecutionSetLogRecord; isPR: boolean; previousBest?: { weightKg: number; reps: number } } }>(
         `/api/v1/sessions/${sessionId}/sets/${setId}`, { method: 'PUT', body }),
-    addExercise: (sessionId: string, body: { exerciseId: string; sets?: number }) =>
+    addExercise: (sessionId: string, body: { exerciseId: string; setCount?: number }) =>
       request<{ data: { exercise: ExecutionExerciseRecord } }>(`/api/v1/sessions/${sessionId}/exercises`, { method: 'POST', body }),
     removeExercise: (sessionId: string, execExId: string) =>
       request<{ data: { success: boolean } }>(`/api/v1/sessions/${sessionId}/exercises/${execExId}`, { method: 'DELETE' }),
@@ -484,5 +486,9 @@ export const api = {
       request<{ data: { session: SessionRecord; hasChanges: boolean } }>(`/api/v1/sessions/${sessionId}/finish`, { method: 'POST', body: { applyChanges } }),
     cancel: (sessionId: string) =>
       request<{ data: { success: boolean } }>(`/api/v1/sessions/${sessionId}`, { method: 'DELETE' }),
+  },
+  posts: {
+    create: (body: { trainingLogId: string; content?: string }) =>
+      request<{ data: { post: { id: string } } }>('/api/v1/posts', { method: 'POST', body }),
   },
 }

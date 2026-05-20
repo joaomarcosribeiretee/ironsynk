@@ -1,7 +1,9 @@
 import React from 'react'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
+import type { NavigatorScreenParams } from '@react-navigation/native'
 import { useAuthStore } from '../store/authStore'
 import { AthleteTabNavigator } from './AthleteTabNavigator'
+import type { AthleteTabParamList } from './AthleteTabNavigator'
 import { TrainerTabNavigator } from './TrainerTabNavigator'
 import { EditAthleteProfileScreen } from '../screens/app/EditAthleteProfileScreen'
 import { EditTrainerProfileScreen } from '../screens/app/EditTrainerProfileScreen'
@@ -16,7 +18,7 @@ import { WorkoutPostScreen } from '../screens/workout/WorkoutPostScreen'
 import type { ExecutionExerciseRecord } from '../lib/api'
 
 export type AppStackParamList = {
-  AthleteTabs: undefined
+  AthleteTabs: NavigatorScreenParams<AthleteTabParamList>
   TrainerTabs: undefined
   EditAthleteProfile: undefined
   EditTrainerProfile: undefined

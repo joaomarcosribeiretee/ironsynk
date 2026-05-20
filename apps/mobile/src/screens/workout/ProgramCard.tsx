@@ -26,6 +26,7 @@ type Props = {
   onAddWorkout: (programId: string) => void
   onNavigateWorkout: (workout: WorkoutRecord) => void
   onViewWorkout: (workout: WorkoutRecord) => void
+  onStartWorkout: (workout: WorkoutRecord) => void
   onDrag?: () => void
   isDragging?: boolean
   onWorkoutDragStart?: () => void
@@ -33,7 +34,7 @@ type Props = {
 }
 
 export function ProgramCard({
-  program, onEditProgram, onAddWorkout, onNavigateWorkout, onViewWorkout, onDrag, isDragging, onWorkoutDragStart, onWorkoutDragEnd,
+  program, onEditProgram, onAddWorkout, onNavigateWorkout, onViewWorkout, onStartWorkout, onDrag, isDragging, onWorkoutDragStart, onWorkoutDragEnd,
 }: Props) {
   const qc = useQueryClient()
   const [isOpen, setIsOpen] = useState(false)
@@ -153,7 +154,7 @@ export function ProgramCard({
     return (
       <View style={[s.workoutRow, isActive && s.workoutRowActive]}>
         <TouchableOpacity
-          onPress={() => onNavigateWorkout(workout)}
+          onPress={() => onStartWorkout(workout)}
           activeOpacity={0.6}
           style={s.playBtnWrap}
         >
