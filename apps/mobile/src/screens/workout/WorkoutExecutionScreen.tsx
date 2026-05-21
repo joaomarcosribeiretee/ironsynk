@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   TextInput, Image, ActivityIndicator, Modal, Pressable, Animated,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
@@ -515,6 +515,7 @@ export function WorkoutExecutionScreen() {
   const route = useRoute<RouteProps>()
   const { workoutId } = route.params
 
+  const insets = useSafeAreaInsets()
   const store = useSessionStore()
   const [isLoading, setIsLoading] = useState(true)
   const [cancelModal, setCancelModal] = useState(false)
@@ -523,6 +524,9 @@ export function WorkoutExecutionScreen() {
   const [techniquePicker, setTechniquePicker] = useState<{
     visible: boolean; execExId: string | null; setId: string | null
   }>({ visible: false, execExId: null, setId: null })
+  const [barRestRemaining, setBarRestRemaining] = useState(0)
+  const [restPickerVisible, setRestPickerVisible] = useState(false)
+  const barRestRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const session = store.session
   const sessionId = store.sessionId
@@ -532,6 +536,31 @@ export function WorkoutExecutionScreen() {
     const ex = session?.exercises.find(e => e.id === techniquePicker.execExId)
     return ex?.sets.find(s => s.id === techniquePicker.setId) ?? null
   })()
+
+  useEffect(() => {
+    return () => { if (barRestRef.current) clearInterval(barRestRef.current) }
+  }, [])
+
+  function startBarRest(seconds: number) {
+    if (barRestRef.current) clearInterval(barRestRef.current)
+    setBarRestRemaining(seconds)
+    barRestRef.current = setInterval(() => {
+      setBarRestRemaining(prev => {
+        if (prev <= 1) {
+          clearInterval(barRestRef.current!)
+          barRestRef.current = null
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  function cancelBarRest() {
+    if (barRestRef.current) { clearInterval(barRestRef.current); barRestRef.current = null }
+    setBarRestRemaining(0)
+  }
 
   useEffect(() => {
     async function init() {
@@ -560,6 +589,7 @@ export function WorkoutExecutionScreen() {
     if (!set) return
     const wasChecked = set.isChecked
     store.updateSet(execExId, setId, { isChecked: !wasChecked, repsCompleted: reps, weightKg: weight })
+    if (!wasChecked) startBarRest(90)
     try {
       await api.sessions.updateSet(sessionId, setId, {
         isChecked: !wasChecked, repsCompleted: reps, weightKg: weight, techniqueConfig: cfg,
@@ -702,7 +732,7 @@ export function WorkoutExecutionScreen() {
           <Text style={s.headerTitle} numberOfLines={1}>
             {session?.workoutName ?? 'Treino Livre'}
           </Text>
-          <Text style={s.timer}>{formatElapsed(store.elapsedSeconds)}</Text>
+          <View style={s.headerSideBtn} />
         </View>
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
@@ -743,10 +773,62 @@ export function WorkoutExecutionScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      <View style={s.footer}>
-        <TouchableOpacity onPress={onFinalizarPress} activeOpacity={0.85} style={s.footerBtn}>
-          <LinearGradient colors={['#2979FF', '#1565C0']} style={s.footerBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-            <Text style={s.footerBtnText}>Finalizar treino</Text>
+      {/* Bottom control bar */}
+      <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        {/* Rest timer */}
+        <TouchableOpacity
+          style={s.barSection}
+          onPress={barRestRemaining > 0 ? cancelBarRest : () => setRestPickerVisible(true)}
+          activeOpacity={0.7}
+        >
+          {barRestRemaining > 0 ? (
+            <>
+              <Text style={s.barRestCountdown}>
+                {String(Math.floor(barRestRemaining / 60)).padStart(2, '0')}:{String(barRestRemaining % 60).padStart(2, '0')}
+              </Text>
+              <Text style={s.barSubLabel}>pular</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="timer-outline" size={22} color="#555560" />
+              <Text style={s.barSubLabel}>Descanso</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <View style={s.barDivider} />
+
+        {/* Session timer with pause/resume */}
+        <TouchableOpacity
+          style={[s.barSection, { flex: 1.3 }]}
+          onPress={() => store.isPaused ? store.resumeTimer() : store.pauseTimer()}
+          activeOpacity={0.7}
+        >
+          <Text style={[s.barTimerText, store.isPaused && { color: '#555560' }]}>
+            {formatElapsed(store.elapsedSeconds)}
+          </Text>
+          <View style={s.barTimerRow}>
+            <Ionicons
+              name={store.isPaused ? 'play-outline' : 'pause-outline'}
+              size={11}
+              color="#555560"
+            />
+            <Text style={s.barSubLabel}>{store.isPaused ? 'retomar' : 'pausar'}</Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={s.barDivider} />
+
+        {/* Finish */}
+        <TouchableOpacity onPress={onFinalizarPress} activeOpacity={0.85} style={s.barFinishBtn}>
+          <LinearGradient
+            colors={['#2979FF', '#1565C0']}
+            style={s.barFinishGrad}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <Ionicons name="checkmark-done-outline" size={16} color="#fff" />
+            <Text style={s.barFinishText}>Finalizar</Text>
           </LinearGradient>
         </TouchableOpacity>
       </View>
@@ -778,6 +860,30 @@ export function WorkoutExecutionScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={[s.modalBtnPrimary, { backgroundColor: '#2A2A35' }]} onPress={() => handleFinish(false)}>
               <Text style={[s.modalBtnPrimaryText, { color: '#8A8A9A' }]}>Manter original</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Rest time picker */}
+      <Modal visible={restPickerVisible} transparent animationType="fade" onRequestClose={() => setRestPickerVisible(false)}>
+        <View style={s.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setRestPickerVisible(false)} />
+          <View style={s.modal}>
+            <Text style={s.modalTitle}>Tempo de descanso</Text>
+            {[30, 60, 90, 120, 180].map(sec => (
+              <TouchableOpacity
+                key={sec}
+                style={[s.modalBtnPrimary, { backgroundColor: '#252530' }]}
+                onPress={() => { startBarRest(sec); setRestPickerVisible(false) }}
+              >
+                <Text style={[s.modalBtnPrimaryText, { color: '#F0F0F5' }]}>
+                  {sec < 60 ? `${sec}s` : sec % 60 === 0 ? `${sec / 60}min` : `${Math.floor(sec / 60)}min ${sec % 60}s`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={s.modalBtnDanger} onPress={() => setRestPickerVisible(false)}>
+              <Text style={s.modalBtnDangerText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -819,16 +925,52 @@ const s = StyleSheet.create({
   },
   headerSideBtn: { width: 44, justifyContent: 'center', alignItems: 'flex-start' },
   headerTitle: { flex: 1, color: '#F0F0F5', fontSize: 17, fontWeight: '500', textAlign: 'center' },
-  timer: { width: 56, color: '#4FC3F7', fontSize: 13, fontFamily: 'monospace', textAlign: 'right' },
   progressTrack: { height: 2, backgroundColor: '#2A2A35' },
   progressFill: { height: 2, backgroundColor: '#4FC3F7' },
 
-  footer: { paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#1E1E24' },
-  footerBtn: { borderRadius: 14, overflow: 'hidden' },
-  footerBtnGradient: { height: 50, justifyContent: 'center', alignItems: 'center' },
-  footerBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1E1E24',
+    backgroundColor: '#141418',
+    gap: 6,
+  },
+  barSection: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    gap: 4,
+  },
+  barDivider: { width: 1, height: 34, backgroundColor: '#2A2A35' },
+  barRestCountdown: {
+    color: '#4FC3F7',
+    fontSize: 22,
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+  barTimerText: {
+    color: '#F0F0F5',
+    fontSize: 22,
+    fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+  barTimerRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  barSubLabel: { color: '#555560', fontSize: 10 },
+  barFinishBtn: { flex: 1.4, borderRadius: 12, overflow: 'hidden' },
+  barFinishGrad: {
+    height: 54,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  barFinishText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 
-  scroll: { paddingBottom: 60, paddingTop: 10, gap: 10, paddingHorizontal: 14 },
+  scroll: { paddingBottom: 16, paddingTop: 10, gap: 10, paddingHorizontal: 14 },
 
   emptyWrap: { alignItems: 'center', paddingVertical: 60, gap: 12 },
   emptyText: { color: '#555560', fontSize: 14, textAlign: 'center' },

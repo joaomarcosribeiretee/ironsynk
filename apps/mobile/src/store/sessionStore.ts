@@ -5,6 +5,7 @@ type SessionState = {
   sessionId: string | null
   session: SessionRecord | null
   isActive: boolean
+  isPaused: boolean
   startedAt: Date | null
   elapsedSeconds: number
 }
@@ -18,6 +19,8 @@ type SessionActions = {
   removeSet: (execExId: string, setId: string) => void
   updateExerciseNotes: (execExId: string, notes: string | null) => void
   startTimer: () => void
+  pauseTimer: () => void
+  resumeTimer: () => void
   stopTimer: () => void
   clearSession: () => void
 }
@@ -28,6 +31,7 @@ export const useSessionStore = create<SessionState & SessionActions>((set, get) 
   sessionId: null,
   session: null,
   isActive: false,
+  isPaused: false,
   startedAt: null,
   elapsedSeconds: 0,
 
@@ -106,6 +110,20 @@ export const useSessionStore = create<SessionState & SessionActions>((set, get) 
 
   startTimer: () => {
     if (_timerInterval) clearInterval(_timerInterval)
+    set({ isPaused: false })
+    _timerInterval = setInterval(() => {
+      set(s => ({ elapsedSeconds: s.elapsedSeconds + 1 }))
+    }, 1000)
+  },
+
+  pauseTimer: () => {
+    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null }
+    set({ isPaused: true })
+  },
+
+  resumeTimer: () => {
+    if (_timerInterval) clearInterval(_timerInterval)
+    set({ isPaused: false })
     _timerInterval = setInterval(() => {
       set(s => ({ elapsedSeconds: s.elapsedSeconds + 1 }))
     }, 1000)
@@ -117,6 +135,6 @@ export const useSessionStore = create<SessionState & SessionActions>((set, get) 
 
   clearSession: () => {
     if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null }
-    set({ sessionId: null, session: null, isActive: false, startedAt: null, elapsedSeconds: 0 })
+    set({ sessionId: null, session: null, isActive: false, isPaused: false, startedAt: null, elapsedSeconds: 0 })
   },
 }))
