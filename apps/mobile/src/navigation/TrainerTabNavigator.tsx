@@ -1,7 +1,8 @@
 import React from 'react'
-import { View } from 'react-native'
+import { Platform } from 'react-native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { TrainerDashboardScreen } from '../screens/trainer/TrainerDashboardScreen'
 import { StudentsScreen } from '../screens/trainer/StudentsScreen'
 import { ConsultationsScreen } from '../screens/trainer/ConsultationsScreen'
@@ -16,40 +17,31 @@ export type TrainerTabParamList = {
 
 const Tab = createBottomTabNavigator<TrainerTabParamList>()
 
-const TAB_BAR_STYLE = {
-  backgroundColor: '#141418',
-  borderTopWidth: 0,
-  borderRadius: 16,
-  height: 60,
-  paddingBottom: 4,
-  paddingTop: 6,
-  marginBottom: 20,
-  marginHorizontal: 20,
-} as const
-
-const FullWidthSeparator = () => (
-  <View
-    style={{
-      position: 'absolute',
-      top: 0,
-      left: -20,
-      right: -20,
-      height: 1,
-      backgroundColor: '#2A2A35',
-    }}
-  />
-)
+const CONTENT_HEIGHT = Platform.OS === 'ios' ? 78 : 72
 
 export function TrainerTabNavigator() {
+  const insets = useSafeAreaInsets()
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle: TAB_BAR_STYLE,
+        tabBarStyle: {
+          backgroundColor: '#141418',
+          borderTopWidth: 1,
+          borderTopColor: '#2A2A35',
+          height: CONTENT_HEIGHT + insets.bottom,
+          paddingBottom: insets.bottom,
+          paddingTop: 8,
+          paddingHorizontal: 16,
+          elevation: 0,
+          shadowOpacity: 0,
+          shadowColor: 'transparent',
+        },
         tabBarActiveTintColor: '#4FC3F7',
         tabBarInactiveTintColor: '#8A8A9A',
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '500', marginTop: 2 },
-        tabBarBackground: () => <FullWidthSeparator />,
+        tabBarIconStyle: { marginBottom: 0 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '500', marginTop: 6 },
       }}
     >
       <Tab.Screen
