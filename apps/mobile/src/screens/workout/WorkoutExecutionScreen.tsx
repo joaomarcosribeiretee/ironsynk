@@ -52,7 +52,7 @@ function getBadge(setType: SetType, technique: PlannedSetTechnique, idx: number)
   return String(idx + 1)
 }
 
-// ─── Elapsed time ─────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatElapsed(s: number) {
   const h = Math.floor(s / 3600)
@@ -60,6 +60,11 @@ function formatElapsed(s: number) {
   const sec = s % 60
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
+function formatVolume(v: number) {
+  if (v >= 1000) return `${(v / 1000).toFixed(1)}k`
+  return v % 1 === 0 ? String(v) : v.toFixed(1)
 }
 
 // ─── Done button (rounded-rect, replaces round circle) ───────────────────────
@@ -466,6 +471,7 @@ export function WorkoutExecutionScreen() {
   const [isLoading, setIsLoading] = useState(true)
   const [cancelModal, setCancelModal] = useState(false)
   const [finishModal, setFinishModal] = useState(false)
+  const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [techniquePicker, setTechniquePicker] = useState<{
     visible: boolean; execExId: string | null; setId: string | null
@@ -664,6 +670,26 @@ export function WorkoutExecutionScreen() {
   }
 
   const exercises = session?.exercises ?? []
+
+  const analyticsData = (() => {
+    let totalVolume = 0
+    let validSetsCount = 0
+    const perExercise = exercises.map(ex => {
+      let exVolume = 0
+      let exValidSets = 0
+      for (const set of ex.sets) {
+        if (set.isChecked) {
+          exVolume += (set.repsCompleted ?? 0) * (set.weightKg ?? 0)
+          if (set.setType === 'WORKING') exValidSets++
+        }
+      }
+      totalVolume += exVolume
+      validSetsCount += exValidSets
+      return { id: ex.id, name: ex.exercise.name, muscleGroup: ex.exercise.muscleGroup, volume: exVolume, validSets: exValidSets }
+    }).filter(e => e.volume > 0 || e.validSets > 0)
+    return { totalVolume, validSetsCount, perExercise }
+  })()
+
   const totalSets = exercises.reduce((acc, e) => acc + e.sets.length, 0)
   const checkedSets = exercises.reduce((acc, e) => acc + e.sets.filter(s => s.isChecked).length, 0)
   const progress = totalSets > 0 ? checkedSets / totalSets : 0
@@ -678,7 +704,9 @@ export function WorkoutExecutionScreen() {
           <Text style={s.headerTitle} numberOfLines={1}>
             {session?.workoutName ?? 'Treino Livre'}
           </Text>
-          <View style={s.headerSideBtn} />
+          <TouchableOpacity onPress={() => setAnalyticsOpen(true)} style={s.headerSideBtn}>
+            <Ionicons name="stats-chart-outline" size={20} color="#8A8A9A" />
+          </TouchableOpacity>
         </View>
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
@@ -771,6 +799,51 @@ export function WorkoutExecutionScreen() {
           </LinearGradient>
         </TouchableOpacity>
       </View>
+
+      <Modal visible={analyticsOpen} transparent animationType="slide" onRequestClose={() => setAnalyticsOpen(false)}>
+        <View style={s.analyticsOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setAnalyticsOpen(false)} />
+          <View style={[s.analyticsSheet, { paddingBottom: Math.max(insets.bottom + 12, 24) }]}>
+            <View style={s.analyticsHandle} />
+            <Text style={s.analyticsTitle}>Análise da sessão</Text>
+
+            <View style={s.analyticsSummary}>
+              <View style={s.analyticsCard}>
+                <Text style={s.analyticsCardNum}>{formatVolume(analyticsData.totalVolume)}</Text>
+                <Text style={s.analyticsCardUnit}>kg volume</Text>
+              </View>
+              <View style={s.analyticsDivider} />
+              <View style={s.analyticsCard}>
+                <Text style={s.analyticsCardNum}>{analyticsData.validSetsCount}</Text>
+                <Text style={s.analyticsCardUnit}>séries válidas</Text>
+              </View>
+            </View>
+
+            {analyticsData.perExercise.length > 0 ? (
+              <ScrollView style={s.analyticsScroll} showsVerticalScrollIndicator={false}>
+                {analyticsData.perExercise.map((e, i) => (
+                  <View key={e.id} style={[s.analyticsRow, i === analyticsData.perExercise.length - 1 && { borderBottomWidth: 0 }]}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={s.analyticsExName} numberOfLines={1}>{e.name}</Text>
+                      <Text style={s.analyticsExMuscle}>{e.muscleGroup.toLowerCase()}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                      {e.volume > 0 && <Text style={s.analyticsExVol}>{formatVolume(e.volume)} kg</Text>}
+                      {e.validSets > 0 && (
+                        <Text style={s.analyticsExSets}>{e.validSets} {e.validSets === 1 ? 'série' : 'séries'}</Text>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={s.analyticsEmpty}>
+                <Text style={s.analyticsEmptyText}>Complete séries para ver análise</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={cancelModal} transparent animationType="fade" onRequestClose={() => setCancelModal(false)}>
         <View style={s.overlay}>
@@ -912,6 +985,46 @@ const s = StyleSheet.create({
   modalBtnPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   modalBtnDanger: { height: 48, borderRadius: 14, backgroundColor: 'rgba(255,82,82,0.10)', justifyContent: 'center', alignItems: 'center' },
   modalBtnDangerText: { color: '#FF5252', fontSize: 15, fontWeight: '600' },
+
+  analyticsOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
+  analyticsSheet: {
+    backgroundColor: '#1E1E24',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    maxHeight: '78%',
+  },
+  analyticsHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#2A2A35', alignSelf: 'center', marginBottom: 18 },
+  analyticsTitle: { color: '#F0F0F5', fontSize: 16, fontWeight: '600', marginBottom: 16 },
+  analyticsSummary: {
+    flexDirection: 'row',
+    backgroundColor: '#141418',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#252530',
+  },
+  analyticsCard: { flex: 1, alignItems: 'center', gap: 4 },
+  analyticsCardNum: { color: '#F0F0F5', fontSize: 30, fontWeight: '700', fontFamily: 'monospace' },
+  analyticsCardUnit: { color: '#8A8A9A', fontSize: 11 },
+  analyticsDivider: { width: 1, backgroundColor: '#2A2A35', marginHorizontal: 8 },
+  analyticsScroll: { maxHeight: 320 },
+  analyticsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#252530',
+    gap: 12,
+  },
+  analyticsExName: { color: '#F0F0F5', fontSize: 14, fontWeight: '500' },
+  analyticsExMuscle: { color: '#555560', fontSize: 11, textTransform: 'capitalize', marginTop: 2 },
+  analyticsExVol: { color: '#4FC3F7', fontSize: 14, fontWeight: '600' },
+  analyticsExSets: { color: '#8A8A9A', fontSize: 11 },
+  analyticsEmpty: { paddingVertical: 40, alignItems: 'center' },
+  analyticsEmptyText: { color: '#555560', fontSize: 14 },
 })
 
 // ─── Exercise card styles ──────────────────────────────────────────────────────
