@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, ActivityIndicator, Modal, Pressable, Animated,
+  TextInput, ActivityIndicator, Modal, Pressable, Animated, Image,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -69,7 +69,7 @@ function formatVolume(v: number) {
 
 // ─── Done button (rounded-rect, replaces round circle) ───────────────────────
 
-function DoneButton({ checked, onPress, size = 36 }: { checked: boolean; onPress: () => void; size?: number }) {
+function DoneButton({ checked, onPress, size = 38 }: { checked: boolean; onPress: () => void; size?: number }) {
   const scale = useRef(new Animated.Value(1)).current
   const ring = useRef(new Animated.Value(0)).current
 
@@ -112,14 +112,14 @@ function DoneButton({ checked, onPress, size = 36 }: { checked: boolean; onPress
           checked ? {
             backgroundColor: '#00E676',
             shadowColor: '#00E676',
-            shadowOpacity: 0.4,
-            shadowRadius: 6,
+            shadowOpacity: 0.45,
+            shadowRadius: 8,
             shadowOffset: { width: 0, height: 0 },
-            elevation: 4,
+            elevation: 5,
           } : {
             borderWidth: 1.5,
-            borderColor: '#333344',
-            backgroundColor: 'transparent',
+            borderColor: '#3A3A50',
+            backgroundColor: 'rgba(255,255,255,0.03)',
           },
         ]}>
           {checked && <Ionicons name="checkmark" size={Math.round(size * 0.52)} color="#fff" />}
@@ -164,41 +164,46 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
         <Text style={[ex.badgeText, { color: ts.badgeText }]}>{badge}</Text>
       </TouchableOpacity>
 
-      {set.isChecked ? (
-        <Text style={ex.inputDone}>{reps || '—'}</Text>
-      ) : (
-        <TextInput
-          style={ex.repsInput}
-          value={reps}
-          onChangeText={setReps}
-          placeholder="—"
-          placeholderTextColor="#3A3A4A"
-          keyboardType="number-pad"
-        />
-      )}
+      <View style={ex.inputCol}>
+        <Text style={ex.inputColLabel}>REPS</Text>
+        {set.isChecked ? (
+          <Text style={ex.inputDone}>{reps || '—'}</Text>
+        ) : (
+          <TextInput
+            style={ex.repsInput}
+            value={reps}
+            onChangeText={setReps}
+            placeholder="—"
+            placeholderTextColor="#3A3A4A"
+            keyboardType="number-pad"
+          />
+        )}
+      </View>
 
       <Text style={ex.inputSep}>×</Text>
 
-      {set.isChecked ? (
-        <Text style={[ex.inputDone, ex.inputDoneWide]}>{weight || '—'}</Text>
-      ) : (
-        <TextInput
-          style={ex.weightInput}
-          value={weight}
-          onChangeText={setWeight}
-          placeholder="—"
-          placeholderTextColor="#3A3A4A"
-          keyboardType="decimal-pad"
-        />
-      )}
-      <Text style={ex.kgLabel}>kg</Text>
+      <View style={ex.inputCol}>
+        <Text style={ex.inputColLabel}>KG</Text>
+        {set.isChecked ? (
+          <Text style={[ex.inputDone, ex.inputDoneWide]}>{weight || '—'}</Text>
+        ) : (
+          <TextInput
+            style={ex.weightInput}
+            value={weight}
+            onChangeText={setWeight}
+            placeholder="—"
+            placeholderTextColor="#3A3A4A"
+            keyboardType="decimal-pad"
+          />
+        )}
+      </View>
 
       <View style={{ flex: 1 }} />
 
       {isNonVolume && <Text style={ex.nonVolLabel}>—vol</Text>}
 
       <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 10, right: 4 }} style={ex.removeSetBtn}>
-        <Ionicons name="close" size={13} color="#3A3A4A" />
+        <Ionicons name="close" size={14} color="#3A3A4A" />
       </TouchableOpacity>
 
       <DoneButton checked={set.isChecked} onPress={handleCheck} />
@@ -389,12 +394,19 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
 
   return (
     <View style={ex.card}>
-      {/* Header: static placeholder, no GIF loading in execution */}
       <View style={ex.cardHeader}>
         <View style={ex.imgBox}>
-          <View style={ex.imgPlaceholder}>
-            <Ionicons name="barbell-outline" size={20} color="#3A3A4A" />
-          </View>
+          {exercise.exercise.gifUrl ? (
+            <Image
+              source={{ uri: exercise.exercise.gifUrl }}
+              style={ex.imgThumb}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={ex.imgPlaceholder}>
+              <Ionicons name="barbell-outline" size={22} color="#3A3A4A" />
+            </View>
+          )}
         </View>
         <View style={ex.headerInfo}>
           <Text style={ex.exName} numberOfLines={2}>{exercise.exercise.name}</Text>
@@ -405,7 +417,7 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
           style={ex.removeExBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="trash-outline" size={13} color="#3A3A4A" />
+          <Ionicons name="close" size={15} color="#3A3A4A" />
         </TouchableOpacity>
       </View>
 
@@ -1050,6 +1062,10 @@ const ex = StyleSheet.create({
     height: CARD_IMG,
     flexShrink: 0,
   },
+  imgThumb: {
+    width: CARD_IMG,
+    height: CARD_IMG,
+  },
   imgPlaceholder: {
     width: CARD_IMG,
     height: CARD_IMG,
@@ -1106,11 +1122,11 @@ const ex = StyleSheet.create({
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
-    gap: 6,
+    paddingVertical: 5,
+    gap: 7,
     borderRadius: 9,
     paddingHorizontal: 2,
-    marginBottom: 1,
+    marginBottom: 2,
   },
   setRowDone: {
     backgroundColor: 'rgba(0,230,118,0.09)',
@@ -1118,56 +1134,72 @@ const ex = StyleSheet.create({
 
   // Badge
   badge: {
-    width: 28,
-    height: 24,
-    borderRadius: 6,
+    width: 32,
+    height: 28,
+    borderRadius: 7,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     flexShrink: 0,
   },
   badgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
+  },
+
+  // Input columns with label
+  inputCol: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  inputColLabel: {
+    color: '#4A4A5A',
+    fontSize: 8,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
 
   // Inputs — slim, no heavy border
   repsInput: {
-    width: 48,
-    height: 34,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    width: 54,
+    height: 38,
+    backgroundColor: 'rgba(0,0,0,0.25)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 7,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 8,
     color: '#F0F0F5',
-    fontSize: 14,
+    fontSize: 15,
     textAlign: 'center',
     fontWeight: '500',
+    paddingHorizontal: 4,
   },
   weightInput: {
-    width: 60,
-    height: 34,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    width: 66,
+    height: 38,
+    backgroundColor: 'rgba(0,0,0,0.25)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 7,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 8,
     color: '#F0F0F5',
-    fontSize: 14,
+    fontSize: 15,
     textAlign: 'center',
     fontWeight: '500',
+    paddingHorizontal: 4,
   },
-  inputSep: { color: '#3A3A4A', fontSize: 13 },
+  inputSep: { color: '#3A3A4A', fontSize: 14 },
   kgLabel: { color: '#3A3A4A', fontSize: 11 },
   inputDone: {
     color: '#4A6A55',
-    fontSize: 14,
-    width: 48,
+    fontSize: 15,
+    width: 54,
+    height: 38,
     textAlign: 'center',
+    textAlignVertical: 'center',
     fontWeight: '600',
   },
-  inputDoneWide: { width: 60 },
+  inputDoneWide: { width: 66 },
   nonVolLabel: { color: '#3A3A4A', fontSize: 9, marginRight: 2 },
-  removeSetBtn: { width: 24, height: 24, justifyContent: 'center', alignItems: 'center' },
+  removeSetBtn: { width: 26, height: 26, justifyContent: 'center', alignItems: 'center' },
 
   // Add set
   addSetBtn: {
