@@ -149,6 +149,14 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
   const badge = getBadge(set.setType, set.technique, index)
   const isNonVolume = set.setType === 'WARMUP' || set.setType === 'FEEDER'
   const hasAccent = isNonVolume || set.technique === 'BACK_OFF'
+  const flashAnim = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    if (set.isChecked) {
+      flashAnim.setValue(0.28)
+      Animated.timing(flashAnim, { toValue: 0, duration: 550, useNativeDriver: true }).start()
+    }
+  }, [set.isChecked])
 
   function handleCheck() {
     const r = reps ? parseInt(reps, 10) : null
@@ -190,7 +198,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
 
           <Text style={ex.inputSep}>×</Text>
 
-          <View style={[ex.inputCol, { flex: 1.3 }]}>
+          <View style={[ex.inputCol, { flex: 1 }]}>
             <Text style={ex.inputColLabel}>KG</Text>
             {set.isChecked ? (
               <Text style={ex.inputDone}>{weight || '—'}</Text>
@@ -208,12 +216,13 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
           </View>
         </View>
 
-        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 10, right: 4 }} style={ex.removeSetBtn}>
-          <Ionicons name="close" size={14} color="#3A3A4A" />
-        </TouchableOpacity>
-
         <DoneButton checked={set.isChecked} onPress={handleCheck} />
+
+        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 4, right: 6 }} style={ex.removeSetBtn}>
+          <Ionicons name="close" size={13} color="#3A3A4A" />
+        </TouchableOpacity>
       </View>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, ex.completionFlash, { opacity: flashAnim }]} />
       {isNonVolume && <Text style={ex.nonVolNote}>Não conta para o volume</Text>}
     </View>
   )
@@ -360,10 +369,10 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
             />
           </View>
         )}
-        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 10, right: 4 }} style={ex.removeSetBtn}>
+        <DoneButton checked={set.isChecked} onPress={handleDone} />
+        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 4, right: 6 }} style={ex.removeSetBtn}>
           <Ionicons name="close" size={13} color="#3A3A4A" />
         </TouchableOpacity>
-        <DoneButton checked={set.isChecked} onPress={handleDone} />
       </View>
 
       {/* Technique blocks */}
@@ -437,7 +446,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
 
 // ─── Exercise card ────────────────────────────────────────────────────────────
 
-const CARD_IMG = 56
+const CARD_IMG = 60
 
 type ExerciseCardProps = {
   exercise: ExecutionExerciseRecord
@@ -1167,13 +1176,13 @@ const ex = StyleSheet.create({
   },
   exName: {
     color: '#F0F0F5',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    lineHeight: 17,
+    lineHeight: 18,
   },
   exMuscle: {
     color: '#555560',
-    fontSize: 10,
+    fontSize: 11,
     textTransform: 'capitalize',
   },
   removeExBtn: {
@@ -1221,7 +1230,11 @@ const ex = StyleSheet.create({
     marginBottom: 0,
   },
   setRowDone: {
-    // completion is indicated solely by the DoneButton — no background tint
+    backgroundColor: 'rgba(0,230,118,0.03)',
+  },
+  completionFlash: {
+    backgroundColor: '#00E676',
+    borderRadius: 9,
   },
 
   // Badge
