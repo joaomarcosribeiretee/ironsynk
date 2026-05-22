@@ -182,6 +182,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
                 onChangeText={setReps}
                 placeholder="—"
                 placeholderTextColor="#3A3A4A"
+                selectionColor="#4FC3F7"
                 keyboardType="number-pad"
               />
             )}
@@ -200,6 +201,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
                 onChangeText={setWeight}
                 placeholder="—"
                 placeholderTextColor="#3A3A4A"
+                selectionColor="#4FC3F7"
                 keyboardType="decimal-pad"
               />
             )}
@@ -353,6 +355,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
               onChangeText={setMainWeight}
               placeholder="—"
               placeholderTextColor="#3A3A4A"
+              selectionColor="#4FC3F7"
               keyboardType="decimal-pad"
             />
           </View>
@@ -394,6 +397,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
                 onChangeText={v => updateBlock(bi, 'reps', v)}
                 placeholder="reps"
                 placeholderTextColor="#3A3A4A"
+                selectionColor="#4FC3F7"
                 keyboardType="number-pad"
               />
               {/* DROP_SET and MUSCLE_ROUND have per-block weights; CLUSTER/REST_PAUSE use mainWeight */}
@@ -406,6 +410,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
                     onChangeText={v => updateBlock(bi, 'weight', v)}
                     placeholder="kg"
                     placeholderTextColor="#3A3A4A"
+                    selectionColor="#4FC3F7"
                     keyboardType="decimal-pad"
                   />
                 </>
@@ -495,7 +500,8 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
           value={notes}
           onChangeText={handleNotesChange}
           placeholder="Notas..."
-          placeholderTextColor="#2A2A35"
+          placeholderTextColor="#363650"
+          selectionColor="#4FC3F7"
           multiline
         />
       </View>
@@ -1042,7 +1048,7 @@ const s = StyleSheet.create({
     paddingVertical: 6,
     gap: 4,
   },
-  barDivider: { width: 1, height: 34, backgroundColor: '#2A2A35' },
+  barDivider: { width: 1, height: 34, backgroundColor: 'rgba(41,121,255,0.2)' },
   barRestCountdown: { color: '#4FC3F7', fontSize: 22, fontFamily: 'monospace', fontWeight: '600' },
   barTimerText: { color: '#F0F0F5', fontSize: 22, fontFamily: 'monospace', fontWeight: '600' },
   barTimerRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
@@ -1059,7 +1065,8 @@ const s = StyleSheet.create({
   addExBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, marginTop: 2, paddingVertical: 14,
-    borderWidth: 1.5, borderColor: '#2A2A35', borderStyle: 'dashed', borderRadius: 14,
+    borderWidth: 1.5, borderColor: 'rgba(79,195,247,0.25)', borderStyle: 'dashed', borderRadius: 14,
+    backgroundColor: 'rgba(79,195,247,0.03)',
   },
   addExText: { color: '#4FC3F7', fontSize: 14, fontWeight: '500' },
 
@@ -1121,7 +1128,7 @@ const ex = StyleSheet.create({
     borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#252530',
+    borderColor: 'rgba(41,121,255,0.15)',
   },
 
   cardHeader: {
@@ -1129,7 +1136,7 @@ const ex = StyleSheet.create({
     alignItems: 'center',
     paddingRight: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#252530',
+    borderBottomColor: 'rgba(41,121,255,0.12)',
   },
   imgBox: {
     width: CARD_IMG,
@@ -1240,7 +1247,7 @@ const ex = StyleSheet.create({
     gap: 2,
   },
   inputColLabel: {
-    color: '#4A4A5A',
+    color: '#4A5272',
     fontSize: 8,
     fontWeight: '600',
     letterSpacing: 0.5,
@@ -1273,7 +1280,7 @@ const ex = StyleSheet.create({
     fontWeight: '500',
     paddingHorizontal: 4,
   },
-  inputSep: { color: '#3A3A4A', fontSize: 14, flexShrink: 0 },
+  inputSep: { color: '#3A4A5A', fontSize: 14, flexShrink: 0 },
   kgLabel: { color: '#3A3A4A', fontSize: 11 },
   inputDone: {
     alignSelf: 'stretch',
@@ -1316,8 +1323,9 @@ const ex = StyleSheet.create({
     marginTop: 4,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: '#252530',
+    borderColor: 'rgba(79,195,247,0.22)',
     borderRadius: 9,
+    backgroundColor: 'rgba(79,195,247,0.03)',
   },
   addSetText: { color: '#4FC3F7', fontSize: 12 },
 
@@ -1329,7 +1337,7 @@ const ex = StyleSheet.create({
     marginBottom: 4,
   },
   techSetNum: {
-    color: '#555560',
+    color: '#4A5A7A',
     fontSize: 12,
   },
 
@@ -1345,7 +1353,7 @@ const ex = StyleSheet.create({
     marginVertical: 3,
   },
   blockSepLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
-  blockSepLabel: { color: '#4A4A5A', fontSize: 10, marginHorizontal: 6 },
+  blockSepLabel: { color: '#3A5A70', fontSize: 10, marginHorizontal: 6 },
   blockSepThin: { height: 3 },
   blockRow: {
     backgroundColor: 'rgba(0,0,0,0.2)',
