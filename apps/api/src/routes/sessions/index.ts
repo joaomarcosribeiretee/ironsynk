@@ -138,7 +138,8 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
                 technique: ps.technique,
                 techniqueConfig: (techCfg ?? undefined) as unknown as Prisma.InputJsonValue | undefined,
                 plannedSetId: ps.id,
-                weightKg: ps.targetWeight ?? null,
+                repsCompleted: 0,
+                weightKg: ps.targetWeight ?? 0,
               },
             })
           }
@@ -153,6 +154,8 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
                 exerciseId: te.exerciseId,
                 setNumber: 1,
                 order: 0,
+                repsCompleted: 0,
+                weightKg: 0,
               },
             })
           }
