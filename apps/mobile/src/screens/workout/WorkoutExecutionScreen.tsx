@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import * as SecureStore from 'expo-secure-store'
 import { useSessionStore } from '../../store/sessionStore'
 import { ExercisePickerModal } from './ExercisePickerModal'
 import { TechniquePickerSheet, TechniqueSelection } from './TechniquePickerSheet'
@@ -19,6 +20,8 @@ import type {
   PlannedSetTechnique, SetType, TechniqueConfig,
 } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
+
+const REST_TIMER_TIP_KEY = 'rest_timer_tip_seen_v1'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -570,6 +573,8 @@ export function WorkoutExecutionScreen() {
   }>({ visible: false, execExId: null, setId: null })
   const [barRestRemaining, setBarRestRemaining] = useState(0)
   const [restPickerVisible, setRestPickerVisible] = useState(false)
+  const [restTimerTipVisible, setRestTimerTipVisible] = useState(false)
+  const [customRestInput, setCustomRestInput] = useState('')
   const barRestRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const session = store.session
@@ -582,8 +587,16 @@ export function WorkoutExecutionScreen() {
   })()
 
   useEffect(() => {
+    SecureStore.getItemAsync(REST_TIMER_TIP_KEY).then(val => {
+      if (val !== 'true') setRestTimerTipVisible(true)
+    })
     return () => { if (barRestRef.current) clearInterval(barRestRef.current) }
   }, [])
+
+  function dismissRestTimerTip(dontShowAgain: boolean) {
+    if (dontShowAgain) SecureStore.setItemAsync(REST_TIMER_TIP_KEY, 'true')
+    setRestTimerTipVisible(false)
+  }
 
   function startBarRest(seconds: number) {
     if (barRestRef.current) clearInterval(barRestRef.current)
@@ -640,7 +653,6 @@ export function WorkoutExecutionScreen() {
     if (!set) return
     const wasChecked = set.isChecked
     store.updateSet(execExId, setId, { isChecked: !wasChecked, repsCompleted: reps, weightKg: weight })
-    if (!wasChecked) startBarRest(90)
     try {
       await api.sessions.updateSet(sessionId, setId, {
         isChecked: !wasChecked, repsCompleted: reps, weightKg: weight, techniqueConfig: cfg,
@@ -985,19 +997,53 @@ export function WorkoutExecutionScreen() {
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setRestPickerVisible(false)} />
           <View style={s.modal}>
             <Text style={s.modalTitle}>Tempo de descanso</Text>
-            {[30, 60, 90, 120, 180].map(sec => (
-              <TouchableOpacity
-                key={sec}
-                style={[s.modalBtnPrimary, { backgroundColor: '#252530' }]}
-                onPress={() => { startBarRest(sec); setRestPickerVisible(false) }}
-              >
-                <Text style={[s.modalBtnPrimaryText, { color: '#F0F0F5' }]}>
-                  {sec < 60 ? `${sec}s` : sec % 60 === 0 ? `${sec / 60}min` : `${Math.floor(sec / 60)}min ${sec % 60}s`}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <Text style={s.modalBody}>Defina a duração do seu descanso</Text>
+            <View style={s.restInputRow}>
+              <TextInput
+                style={s.restInput}
+                value={customRestInput}
+                onChangeText={setCustomRestInput}
+                keyboardType="number-pad"
+                placeholder="90"
+                placeholderTextColor="#3A3A4A"
+                selectionColor="#4FC3F7"
+                autoFocus
+              />
+              <Text style={s.restInputUnit}>seg</Text>
+            </View>
+            <TouchableOpacity
+              style={s.modalBtnPrimary}
+              onPress={() => {
+                const sec = parseInt(customRestInput, 10)
+                if (sec > 0) { startBarRest(sec); setRestPickerVisible(false); setCustomRestInput('') }
+              }}
+            >
+              <Text style={s.modalBtnPrimaryText}>Iniciar descanso</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={s.modalBtnDanger} onPress={() => setRestPickerVisible(false)}>
               <Text style={s.modalBtnDangerText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={restTimerTipVisible} transparent animationType="fade" onRequestClose={() => dismissRestTimerTip(false)}>
+        <View style={s.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => dismissRestTimerTip(false)} />
+          <View style={s.modal}>
+            <View style={s.restTipIconRow}>
+              <Ionicons name="timer-outline" size={32} color="#4FC3F7" />
+            </View>
+            <Text style={s.modalTitle}>Temporizador de descanso</Text>
+            <Text style={s.modalBody}>O timer de descanso é opcional e você controla quando ativá-lo. Após completar uma série, toque em Descanso para iniciar a contagem. Defina a duração que quiser.</Text>
+            <TouchableOpacity style={s.modalBtnPrimary} onPress={() => dismissRestTimerTip(false)}>
+              <Text style={s.modalBtnPrimaryText}>Entendido</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.modalBtnDanger, { backgroundColor: 'transparent' }]}
+              onPress={() => dismissRestTimerTip(true)}
+            >
+              <Text style={[s.modalBtnDangerText, { color: '#555560' }]}>Não mostrar novamente</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1088,6 +1134,22 @@ const s = StyleSheet.create({
   modalBtnPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   modalBtnDanger: { height: 48, borderRadius: 14, backgroundColor: 'rgba(255,82,82,0.10)', justifyContent: 'center', alignItems: 'center' },
   modalBtnDangerText: { color: '#FF5252', fontSize: 15, fontWeight: '600' },
+
+  restInputRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginVertical: 4 },
+  restInput: {
+    width: 100,
+    height: 52,
+    backgroundColor: '#141418',
+    borderWidth: 1,
+    borderColor: '#252530',
+    borderRadius: 12,
+    color: '#F0F0F5',
+    fontSize: 24,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  restInputUnit: { color: '#8A8A9A', fontSize: 15 },
+  restTipIconRow: { alignItems: 'center', marginBottom: 4 },
 
   analyticsOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', paddingHorizontal: 20 },
   analyticsModal: {
