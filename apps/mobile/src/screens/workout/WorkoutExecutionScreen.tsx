@@ -892,17 +892,21 @@ export function WorkoutExecutionScreen() {
         </TouchableOpacity>
       </View>
 
-      <Modal visible={analyticsOpen} transparent animationType="slide" onRequestClose={() => setAnalyticsOpen(false)}>
+      <Modal visible={analyticsOpen} transparent animationType="fade" onRequestClose={() => setAnalyticsOpen(false)}>
         <View style={s.analyticsOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setAnalyticsOpen(false)} />
-          <View style={[s.analyticsSheet, { paddingBottom: Math.max(insets.bottom + 12, 24) }]}>
-            <View style={s.analyticsHandle} />
-            <Text style={s.analyticsTitle}>Análise da sessão</Text>
+          <View style={s.analyticsModal}>
+            <View style={s.analyticsHeader}>
+              <Text style={s.analyticsTitle}>Análise da sessão</Text>
+              <TouchableOpacity onPress={() => setAnalyticsOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color="#555560" />
+              </TouchableOpacity>
+            </View>
 
             <View style={s.analyticsSummary}>
               <View style={s.analyticsCard}>
                 <Text style={s.analyticsCardNum}>{formatVolume(analyticsData.totalVolume)}</Text>
-                <Text style={s.analyticsCardUnit}>kg volume</Text>
+                <Text style={s.analyticsCardUnit}>kg volume total</Text>
               </View>
               <View style={s.analyticsDivider} />
               <View style={s.analyticsCard}>
@@ -1079,37 +1083,39 @@ const s = StyleSheet.create({
   modalBtnDanger: { height: 48, borderRadius: 14, backgroundColor: 'rgba(255,82,82,0.10)', justifyContent: 'center', alignItems: 'center' },
   modalBtnDangerText: { color: '#FF5252', fontSize: 15, fontWeight: '600' },
 
-  analyticsOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
-  analyticsSheet: {
-    backgroundColor: '#1E1E24',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  analyticsOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', paddingHorizontal: 20 },
+  analyticsModal: {
+    backgroundColor: '#1A1A22',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(41,121,255,0.18)',
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 20,
+    paddingBottom: 20,
     maxHeight: '78%',
   },
-  analyticsHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#2A2A35', alignSelf: 'center', marginBottom: 18 },
-  analyticsTitle: { color: '#F0F0F5', fontSize: 16, fontWeight: '600', marginBottom: 16 },
+  analyticsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  analyticsTitle: { color: '#F0F0F5', fontSize: 16, fontWeight: '600' },
   analyticsSummary: {
     flexDirection: 'row',
     backgroundColor: '#141418',
     borderRadius: 14,
-    padding: 16,
+    padding: 18,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#252530',
+    borderColor: 'rgba(41,121,255,0.12)',
   },
   analyticsCard: { flex: 1, alignItems: 'center', gap: 4 },
-  analyticsCardNum: { color: '#F0F0F5', fontSize: 30, fontWeight: '700', fontFamily: 'monospace' },
+  analyticsCardNum: { color: '#4FC3F7', fontSize: 30, fontWeight: '700', fontFamily: 'monospace' },
   analyticsCardUnit: { color: '#8A8A9A', fontSize: 11 },
-  analyticsDivider: { width: 1, backgroundColor: '#2A2A35', marginHorizontal: 8 },
-  analyticsScroll: { maxHeight: 320 },
+  analyticsDivider: { width: 1, backgroundColor: 'rgba(41,121,255,0.15)', marginHorizontal: 8 },
+  analyticsScroll: { maxHeight: 300 },
   analyticsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#252530',
+    borderBottomColor: '#1E1E28',
     gap: 12,
   },
   analyticsExName: { color: '#F0F0F5', fontSize: 14, fontWeight: '500' },
