@@ -71,7 +71,8 @@ function formatVolume(v: number) {
 
 function DoneButton({ checked, onPress, size = 38 }: { checked: boolean; onPress: () => void; size?: number }) {
   const scale = useRef(new Animated.Value(1)).current
-  const ring = useRef(new Animated.Value(0)).current
+  // Start at 1 (opacity=0, scale=2) so the ring is invisible until first check press
+  const ring = useRef(new Animated.Value(1)).current
 
   function handlePress() {
     if (!checked) {
@@ -164,43 +165,43 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
         <Text style={[ex.badgeText, { color: ts.badgeText }]}>{badge}</Text>
       </TouchableOpacity>
 
-      <View style={ex.inputCol}>
-        <Text style={ex.inputColLabel}>REPS</Text>
-        {set.isChecked ? (
-          <Text style={ex.inputDone}>{reps || '—'}</Text>
-        ) : (
-          <TextInput
-            style={ex.repsInput}
-            value={reps}
-            onChangeText={setReps}
-            placeholder="—"
-            placeholderTextColor="#3A3A4A"
-            keyboardType="number-pad"
-          />
-        )}
+      <View style={ex.inputsGroup}>
+        <View style={[ex.inputCol, { flex: 1 }]}>
+          <Text style={ex.inputColLabel}>REPS</Text>
+          {set.isChecked ? (
+            <Text style={ex.inputDone}>{reps || '—'}</Text>
+          ) : (
+            <TextInput
+              style={ex.repsInput}
+              value={reps}
+              onChangeText={setReps}
+              placeholder="—"
+              placeholderTextColor="#3A3A4A"
+              keyboardType="number-pad"
+            />
+          )}
+        </View>
+
+        <Text style={ex.inputSep}>×</Text>
+
+        <View style={[ex.inputCol, { flex: 1.3 }]}>
+          <Text style={ex.inputColLabel}>KG</Text>
+          {set.isChecked ? (
+            <Text style={ex.inputDone}>{weight || '—'}</Text>
+          ) : (
+            <TextInput
+              style={ex.weightInput}
+              value={weight}
+              onChangeText={setWeight}
+              placeholder="—"
+              placeholderTextColor="#3A3A4A"
+              keyboardType="decimal-pad"
+            />
+          )}
+        </View>
+
+        {isNonVolume && <Text style={ex.nonVolLabel}>—vol</Text>}
       </View>
-
-      <Text style={ex.inputSep}>×</Text>
-
-      <View style={ex.inputCol}>
-        <Text style={ex.inputColLabel}>KG</Text>
-        {set.isChecked ? (
-          <Text style={[ex.inputDone, ex.inputDoneWide]}>{weight || '—'}</Text>
-        ) : (
-          <TextInput
-            style={ex.weightInput}
-            value={weight}
-            onChangeText={setWeight}
-            placeholder="—"
-            placeholderTextColor="#3A3A4A"
-            keyboardType="decimal-pad"
-          />
-        )}
-      </View>
-
-      <View style={{ flex: 1 }} />
-
-      {isNonVolume && <Text style={ex.nonVolLabel}>—vol</Text>}
 
       <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 10, right: 4 }} style={ex.removeSetBtn}>
         <Ionicons name="close" size={14} color="#3A3A4A" />
@@ -243,7 +244,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
     if (set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND') {
       const blks = cfg['execBlocks'] as { reps: null | number; weightKg: null | number; failed?: boolean }[] | undefined
       const count = (cfg['blocks'] as number) ?? (set.technique === 'MUSCLE_ROUND' ? 6 : 4)
-      return (blks ?? Array.from({ length: count }, () => ({ reps: null, weightKg: null }))).map(b => ({
+      return (blks ?? Array.from({ length: count }, () => ({ reps: null, weightKg: null, failed: undefined as boolean | undefined }))).map(b => ({
         reps: b.reps != null ? String(b.reps) : '',
         weight: b.weightKg != null ? String(b.weightKg) : '',
         failed: b.failed,
@@ -1123,13 +1124,13 @@ const ex = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 5,
-    gap: 7,
+    gap: 6,
     borderRadius: 9,
     paddingHorizontal: 2,
     marginBottom: 2,
   },
   setRowDone: {
-    backgroundColor: 'rgba(0,230,118,0.09)',
+    // completion is indicated solely by the DoneButton — no background tint
   },
 
   // Badge
@@ -1147,7 +1148,15 @@ const ex = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Input columns with label
+  // Inputs group — fills space between badge and action buttons
+  inputsGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  // Input columns with label — flex grows to fill inputsGroup
   inputCol: {
     alignItems: 'center',
     gap: 2,
@@ -1159,9 +1168,9 @@ const ex = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Inputs — slim, no heavy border
+  // Inputs — stretch to fill their flex column
   repsInput: {
-    width: 54,
+    alignSelf: 'stretch',
     height: 38,
     backgroundColor: 'rgba(0,0,0,0.25)',
     borderWidth: 1,
@@ -1174,7 +1183,7 @@ const ex = StyleSheet.create({
     paddingHorizontal: 4,
   },
   weightInput: {
-    width: 66,
+    alignSelf: 'stretch',
     height: 38,
     backgroundColor: 'rgba(0,0,0,0.25)',
     borderWidth: 1,
@@ -1186,20 +1195,21 @@ const ex = StyleSheet.create({
     fontWeight: '500',
     paddingHorizontal: 4,
   },
-  inputSep: { color: '#3A3A4A', fontSize: 14 },
+  inputSep: { color: '#3A3A4A', fontSize: 14, flexShrink: 0 },
   kgLabel: { color: '#3A3A4A', fontSize: 11 },
   inputDone: {
+    alignSelf: 'stretch',
     color: '#4A6A55',
     fontSize: 15,
-    width: 54,
     height: 38,
     textAlign: 'center',
     textAlignVertical: 'center',
     fontWeight: '600',
+    lineHeight: 38,
   },
-  inputDoneWide: { width: 66 },
-  nonVolLabel: { color: '#3A3A4A', fontSize: 9, marginRight: 2 },
-  removeSetBtn: { width: 26, height: 26, justifyContent: 'center', alignItems: 'center' },
+  inputDoneWide: {},
+  nonVolLabel: { color: '#3A3A4A', fontSize: 9, flexShrink: 0 },
+  removeSetBtn: { width: 26, height: 26, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
 
   // Add set
   addSetBtn: {
