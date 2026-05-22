@@ -153,14 +153,14 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
 
   useEffect(() => {
     if (set.isChecked) {
-      flashAnim.setValue(0.28)
-      Animated.timing(flashAnim, { toValue: 0, duration: 550, useNativeDriver: true }).start()
+      flashAnim.setValue(0.35)
+      Animated.timing(flashAnim, { toValue: 0, duration: 600, useNativeDriver: true }).start()
     }
   }, [set.isChecked])
 
   function handleCheck() {
-    const r = reps ? parseInt(reps, 10) : null
-    const w = weight ? parseFloat(weight) : null
+    const r = reps ? parseInt(reps, 10) : 0
+    const w = weight ? parseFloat(weight) : 0
     onChecked(set.id, r, w, null)
   }
 
@@ -180,7 +180,6 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
 
         <View style={ex.inputsGroup}>
           <View style={[ex.inputCol, { flex: 1 }]}>
-            <Text style={ex.inputColLabel}>REPS</Text>
             {set.isChecked ? (
               <Text style={ex.inputDone}>{reps || '—'}</Text>
             ) : (
@@ -189,7 +188,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
                 value={reps}
                 onChangeText={setReps}
                 placeholder="—"
-                placeholderTextColor="#3A3A4A"
+                placeholderTextColor="#2E2E3E"
                 selectionColor="#4FC3F7"
                 keyboardType="number-pad"
               />
@@ -199,7 +198,6 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
           <Text style={ex.inputSep}>×</Text>
 
           <View style={[ex.inputCol, { flex: 1 }]}>
-            <Text style={ex.inputColLabel}>KG</Text>
             {set.isChecked ? (
               <Text style={ex.inputDone}>{weight || '—'}</Text>
             ) : (
@@ -208,7 +206,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
                 value={weight}
                 onChangeText={setWeight}
                 placeholder="—"
-                placeholderTextColor="#3A3A4A"
+                placeholderTextColor="#2E2E3E"
                 selectionColor="#4FC3F7"
                 keyboardType="decimal-pad"
               />
@@ -218,8 +216,8 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
 
         <DoneButton checked={set.isChecked} onPress={handleCheck} />
 
-        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 4, right: 6 }} style={ex.removeSetBtn}>
-          <Ionicons name="close" size={13} color="#3A3A4A" />
+        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 4, right: 8 }} style={ex.removeSetBtn}>
+          <Ionicons name="close" size={13} color="#2E2E3E" />
         </TouchableOpacity>
       </View>
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, ex.completionFlash, { opacity: flashAnim }]} />
@@ -1061,7 +1059,7 @@ const s = StyleSheet.create({
     paddingVertical: 6,
     gap: 4,
   },
-  barDivider: { width: 1, height: 34, backgroundColor: 'rgba(41,121,255,0.2)' },
+  barDivider: { width: 1, height: 34, backgroundColor: '#252530' },
   barRestCountdown: { color: '#4FC3F7', fontSize: 22, fontFamily: 'monospace', fontWeight: '600' },
   barTimerText: { color: '#F0F0F5', fontSize: 22, fontFamily: 'monospace', fontWeight: '600' },
   barTimerRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
@@ -1078,8 +1076,7 @@ const s = StyleSheet.create({
   addExBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, marginTop: 2, paddingVertical: 14,
-    borderWidth: 1.5, borderColor: 'rgba(79,195,247,0.25)', borderStyle: 'dashed', borderRadius: 14,
-    backgroundColor: 'rgba(79,195,247,0.03)',
+    borderWidth: 1.5, borderColor: 'rgba(79,195,247,0.2)', borderStyle: 'dashed', borderRadius: 14,
   },
   addExText: { color: '#4FC3F7', fontSize: 14, fontWeight: '500' },
 
@@ -1097,7 +1094,7 @@ const s = StyleSheet.create({
     backgroundColor: '#1A1A22',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(41,121,255,0.18)',
+    borderColor: '#252530',
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 20,
@@ -1112,12 +1109,12 @@ const s = StyleSheet.create({
     padding: 18,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: 'rgba(41,121,255,0.12)',
+    borderColor: '#252530',
   },
   analyticsCard: { flex: 1, alignItems: 'center', gap: 4 },
   analyticsCardNum: { color: '#4FC3F7', fontSize: 30, fontWeight: '700', fontFamily: 'monospace' },
   analyticsCardUnit: { color: '#8A8A9A', fontSize: 11 },
-  analyticsDivider: { width: 1, backgroundColor: 'rgba(41,121,255,0.15)', marginHorizontal: 8 },
+  analyticsDivider: { width: 1, backgroundColor: '#252530', marginHorizontal: 8 },
   analyticsScroll: { maxHeight: 300 },
   analyticsRow: {
     flexDirection: 'row',
@@ -1139,11 +1136,11 @@ const s = StyleSheet.create({
 
 const ex = StyleSheet.create({
   card: {
-    backgroundColor: '#1E1E24',
+    backgroundColor: '#1A1A22',
     borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(41,121,255,0.15)',
+    borderColor: '#252530',
   },
 
   cardHeader: {
@@ -1151,7 +1148,7 @@ const ex = StyleSheet.create({
     alignItems: 'center',
     paddingRight: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(41,121,255,0.12)',
+    borderBottomColor: '#252530',
   },
   imgBox: {
     width: CARD_IMG,
@@ -1216,32 +1213,33 @@ const ex = StyleSheet.create({
 
   // Set row outer — wraps setRow; provides accent border for WARMUP/FEEDER/BACK_OFF
   setRowOuter: {
-    marginBottom: 4,
+    marginBottom: 6,
   },
 
   // Set row
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 5,
-    gap: 6,
-    borderRadius: 9,
-    paddingHorizontal: 2,
-    marginBottom: 0,
+    paddingVertical: 6,
+    gap: 8,
+    borderRadius: 10,
+    paddingHorizontal: 4,
   },
   setRowDone: {
-    backgroundColor: 'rgba(0,230,118,0.03)',
+    backgroundColor: 'rgba(0,230,118,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,230,118,0.18)',
   },
   completionFlash: {
     backgroundColor: '#00E676',
-    borderRadius: 9,
+    borderRadius: 10,
   },
 
   // Badge
   badge: {
-    width: 32,
-    height: 28,
-    borderRadius: 7,
+    width: 34,
+    height: 36,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -1260,13 +1258,12 @@ const ex = StyleSheet.create({
     gap: 6,
   },
 
-  // Input columns with label — flex grows to fill inputsGroup
+  // Input columns — flex grows to fill inputsGroup
   inputCol: {
     alignItems: 'center',
-    gap: 2,
   },
   inputColLabel: {
-    color: '#4A5272',
+    color: '#3A3A4A',
     fontSize: 8,
     fontWeight: '600',
     letterSpacing: 0.5,
@@ -1275,46 +1272,46 @@ const ex = StyleSheet.create({
   // Inputs — stretch to fill their flex column
   repsInput: {
     alignSelf: 'stretch',
-    height: 38,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    height: 40,
+    backgroundColor: '#0F0F14',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: '#252530',
     borderRadius: 8,
     color: '#F0F0F5',
-    fontSize: 15,
+    fontSize: 16,
     textAlign: 'center',
     fontWeight: '500',
     paddingHorizontal: 4,
   },
   weightInput: {
     alignSelf: 'stretch',
-    height: 38,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    height: 40,
+    backgroundColor: '#0F0F14',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: '#252530',
     borderRadius: 8,
     color: '#F0F0F5',
-    fontSize: 15,
+    fontSize: 16,
     textAlign: 'center',
     fontWeight: '500',
     paddingHorizontal: 4,
   },
-  inputSep: { color: '#3A4A5A', fontSize: 14, flexShrink: 0 },
+  inputSep: { color: '#3A3A4A', fontSize: 14, flexShrink: 0 },
   kgLabel: { color: '#3A3A4A', fontSize: 11 },
   inputDone: {
     alignSelf: 'stretch',
-    color: '#4A6A55',
-    fontSize: 15,
-    height: 38,
+    color: 'rgba(0,230,118,0.8)',
+    fontSize: 16,
+    height: 40,
     textAlign: 'center',
     textAlignVertical: 'center',
     fontWeight: '600',
-    lineHeight: 38,
+    lineHeight: 40,
   },
   inputDoneWide: {},
   nonVolLabel: { color: '#3A3A4A', fontSize: 9, flexShrink: 0 },
-  nonVolNote: { color: '#3A3A4A', fontSize: 9, marginLeft: 38, marginTop: -1, marginBottom: 2 },
-  removeSetBtn: { width: 26, height: 26, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  nonVolNote: { color: '#3A3A4A', fontSize: 9, marginLeft: 42, marginTop: 0, marginBottom: 2 },
+  removeSetBtn: { width: 28, height: 28, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
   techMainInput: {
     height: 36,
     width: 64,
@@ -1338,13 +1335,12 @@ const ex = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
-    paddingVertical: 8,
+    paddingVertical: 9,
     marginTop: 4,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: 'rgba(79,195,247,0.22)',
+    borderColor: '#252530',
     borderRadius: 9,
-    backgroundColor: 'rgba(79,195,247,0.03)',
   },
   addSetText: { color: '#4FC3F7', fontSize: 12 },
 
@@ -1356,7 +1352,7 @@ const ex = StyleSheet.create({
     marginBottom: 4,
   },
   techSetNum: {
-    color: '#4A5A7A',
+    color: '#555560',
     fontSize: 12,
   },
 
@@ -1372,7 +1368,7 @@ const ex = StyleSheet.create({
     marginVertical: 3,
   },
   blockSepLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
-  blockSepLabel: { color: '#3A5A70', fontSize: 10, marginHorizontal: 6 },
+  blockSepLabel: { color: '#555560', fontSize: 10, marginHorizontal: 6 },
   blockSepThin: { height: 3 },
   blockRow: {
     backgroundColor: 'rgba(0,0,0,0.2)',
