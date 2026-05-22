@@ -148,6 +148,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
   const ts = getTechStyle(set.setType, set.technique)
   const badge = getBadge(set.setType, set.technique, index)
   const isNonVolume = set.setType === 'WARMUP' || set.setType === 'FEEDER'
+  const hasAccent = isNonVolume || set.technique === 'BACK_OFF'
 
   function handleCheck() {
     const r = reps ? parseInt(reps, 10) : null
@@ -156,58 +157,62 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
   }
 
   return (
-    <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
-      <TouchableOpacity
-        onPress={onTechniqueTap}
-        activeOpacity={0.7}
-        style={[ex.badge, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]}
-      >
-        <Text style={[ex.badgeText, { color: ts.badgeText }]}>{badge}</Text>
-      </TouchableOpacity>
+    <View style={[
+      ex.setRowOuter,
+      hasAccent && { borderLeftWidth: 2, borderLeftColor: ts.borderColor, paddingLeft: 6, marginLeft: 2 },
+    ]}>
+      <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
+        <TouchableOpacity
+          onPress={onTechniqueTap}
+          activeOpacity={0.7}
+          style={[ex.badge, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]}
+        >
+          <Text style={[ex.badgeText, { color: ts.badgeText }]}>{badge}</Text>
+        </TouchableOpacity>
 
-      <View style={ex.inputsGroup}>
-        <View style={[ex.inputCol, { flex: 1 }]}>
-          <Text style={ex.inputColLabel}>REPS</Text>
-          {set.isChecked ? (
-            <Text style={ex.inputDone}>{reps || '—'}</Text>
-          ) : (
-            <TextInput
-              style={ex.repsInput}
-              value={reps}
-              onChangeText={setReps}
-              placeholder="—"
-              placeholderTextColor="#3A3A4A"
-              keyboardType="number-pad"
-            />
-          )}
+        <View style={ex.inputsGroup}>
+          <View style={[ex.inputCol, { flex: 1 }]}>
+            <Text style={ex.inputColLabel}>REPS</Text>
+            {set.isChecked ? (
+              <Text style={ex.inputDone}>{reps || '—'}</Text>
+            ) : (
+              <TextInput
+                style={ex.repsInput}
+                value={reps}
+                onChangeText={setReps}
+                placeholder="—"
+                placeholderTextColor="#3A3A4A"
+                keyboardType="number-pad"
+              />
+            )}
+          </View>
+
+          <Text style={ex.inputSep}>×</Text>
+
+          <View style={[ex.inputCol, { flex: 1.3 }]}>
+            <Text style={ex.inputColLabel}>KG</Text>
+            {set.isChecked ? (
+              <Text style={ex.inputDone}>{weight || '—'}</Text>
+            ) : (
+              <TextInput
+                style={ex.weightInput}
+                value={weight}
+                onChangeText={setWeight}
+                placeholder="—"
+                placeholderTextColor="#3A3A4A"
+                keyboardType="decimal-pad"
+              />
+            )}
+          </View>
         </View>
 
-        <Text style={ex.inputSep}>×</Text>
+        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 10, right: 4 }} style={ex.removeSetBtn}>
+          <Ionicons name="close" size={14} color="#3A3A4A" />
+        </TouchableOpacity>
 
-        <View style={[ex.inputCol, { flex: 1.3 }]}>
-          <Text style={ex.inputColLabel}>KG</Text>
-          {set.isChecked ? (
-            <Text style={ex.inputDone}>{weight || '—'}</Text>
-          ) : (
-            <TextInput
-              style={ex.weightInput}
-              value={weight}
-              onChangeText={setWeight}
-              placeholder="—"
-              placeholderTextColor="#3A3A4A"
-              keyboardType="decimal-pad"
-            />
-          )}
-        </View>
-
-        {isNonVolume && <Text style={ex.nonVolLabel}>—vol</Text>}
+        <DoneButton checked={set.isChecked} onPress={handleCheck} />
       </View>
-
-      <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 10, right: 4 }} style={ex.removeSetBtn}>
-        <Ionicons name="close" size={14} color="#3A3A4A" />
-      </TouchableOpacity>
-
-      <DoneButton checked={set.isChecked} onPress={handleCheck} />
+      {isNonVolume && <Text style={ex.nonVolNote}>Não conta para o volume</Text>}
     </View>
   )
 }
@@ -236,14 +241,24 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
     if (set.technique === 'REST_PAUSE') {
       const pts = cfg['execPoints'] as { reps: null | number; weightKg: null | number }[] | undefined
       const count = (cfg['failurePoints'] as number) ?? 3
+      // weight is shared via mainWeight — blocks only track reps
       return (pts ?? Array.from({ length: count }, () => ({ reps: null, weightKg: null }))).map(p => ({
         reps: p.reps != null ? String(p.reps) : '',
-        weight: p.weightKg != null ? String(p.weightKg) : '',
+        weight: '',
       }))
     }
-    if (set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND') {
+    if (set.technique === 'CLUSTER_SET') {
+      const blks = cfg['execBlocks'] as { reps: null | number; weightKg: null | number }[] | undefined
+      const count = (cfg['blocks'] as number) ?? 4
+      // weight is shared via mainWeight — blocks only track reps
+      return (blks ?? Array.from({ length: count }, () => ({ reps: null, weightKg: null }))).map(b => ({
+        reps: b.reps != null ? String(b.reps) : '',
+        weight: '',
+      }))
+    }
+    if (set.technique === 'MUSCLE_ROUND') {
       const blks = cfg['execBlocks'] as { reps: null | number; weightKg: null | number; failed?: boolean }[] | undefined
-      const count = (cfg['blocks'] as number) ?? (set.technique === 'MUSCLE_ROUND' ? 6 : 4)
+      const count = (cfg['blocks'] as number) ?? 6
       return (blks ?? Array.from({ length: count }, () => ({ reps: null, weightKg: null, failed: undefined as boolean | undefined }))).map(b => ({
         reps: b.reps != null ? String(b.reps) : '',
         weight: b.weightKg != null ? String(b.weightKg) : '',
@@ -264,6 +279,22 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
   const [blocks, setBlocks] = useState<BlockData[]>(initBlocks)
   const restSec = cfg ? ((cfg['restBetweenSeconds'] as number) ?? 0) : 0
 
+  // Shared load for techniques where all blocks use the same weight (CLUSTER, REST_PAUSE)
+  const [mainWeight, setMainWeight] = useState<string>(() => {
+    if (!cfg) return ''
+    if (set.technique === 'CLUSTER_SET') {
+      const blks = cfg['execBlocks'] as { weightKg: null | number }[] | undefined
+      const w = blks?.[0]?.weightKg
+      return w != null ? String(w) : ''
+    }
+    if (set.technique === 'REST_PAUSE') {
+      const pts = cfg['execPoints'] as { weightKg: null | number }[] | undefined
+      const w = pts?.[0]?.weightKg
+      return w != null ? String(w) : ''
+    }
+    return ''
+  })
+
   function updateBlock(i: number, field: 'reps' | 'weight', val: string) {
     setBlocks(prev => prev.map((b, bi) => bi !== i ? b : { ...b, [field]: val }))
   }
@@ -274,9 +305,9 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
   function buildCfg(bks: BlockData[]): TechniqueConfig | null {
     if (!cfg) return null
     if (set.technique === 'REST_PAUSE')
-      return { ...cfg, execPoints: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(b.weight) || null })) } as TechniqueConfig
+      return { ...cfg, execPoints: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(mainWeight) || null })) } as TechniqueConfig
     if (set.technique === 'CLUSTER_SET')
-      return { ...cfg, execBlocks: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(b.weight) || null })) } as TechniqueConfig
+      return { ...cfg, execBlocks: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(mainWeight) || null })) } as TechniqueConfig
     if (set.technique === 'MUSCLE_ROUND')
       return { ...cfg, execBlocks: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(b.weight) || null, failed: !!b.failed })) } as TechniqueConfig
     if (set.technique === 'DROP_SET')
@@ -286,9 +317,13 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
 
   function handleDone() {
     const totalReps = blocks.reduce((sum, b) => sum + (parseInt(b.reps, 10) || 0), 0)
-    const maxWeight = blocks.reduce((mx, b) => Math.max(mx, parseFloat(b.weight) || 0), 0)
+    const maxWeight = (set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE')
+      ? (parseFloat(mainWeight) || 0)
+      : blocks.reduce((mx, b) => Math.max(mx, parseFloat(b.weight) || 0), 0)
     onChecked(set.id, totalReps || null, maxWeight || null, buildCfg(blocks))
   }
+
+  const showMainWeight = set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE'
 
   const blockLabel = (i: number) => {
     if (set.technique === 'REST_PAUSE') return `Falha ${i + 1}`
@@ -298,6 +333,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
 
   return (
     <View style={[ex.techSetWrap, { borderLeftColor: ts.borderColor }]}>
+      {/* Header row — badge, label, optional shared weight, remove, done */}
       <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
         <TouchableOpacity
           onPress={onTechniqueTap}
@@ -308,23 +344,48 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
         </TouchableOpacity>
         <Text style={ex.techSetNum}>Série {index + 1}</Text>
         <View style={{ flex: 1 }} />
+        {showMainWeight && (
+          <View style={ex.inputCol}>
+            <Text style={ex.inputColLabel}>KG</Text>
+            <TextInput
+              style={ex.techMainInput}
+              value={mainWeight}
+              onChangeText={setMainWeight}
+              placeholder="—"
+              placeholderTextColor="#3A3A4A"
+              keyboardType="decimal-pad"
+            />
+          </View>
+        )}
         <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 10, right: 4 }} style={ex.removeSetBtn}>
           <Ionicons name="close" size={13} color="#3A3A4A" />
         </TouchableOpacity>
         <DoneButton checked={set.isChecked} onPress={handleDone} />
       </View>
 
+      {/* Technique blocks */}
       <View style={ex.techBlocks}>
         {blocks.map((block, bi) => (
           <View key={bi}>
-            {bi > 0 && restSec > 0 && (
+            {/* Drop set: arrow connector between drops */}
+            {bi > 0 && set.technique === 'DROP_SET' && (
+              <View style={ex.dropConnector}>
+                <View style={ex.dropConnectorLine} />
+                <Text style={ex.dropConnectorLabel}>↓ drop</Text>
+                <View style={ex.dropConnectorLine} />
+              </View>
+            )}
+            {/* Other techniques: rest separator */}
+            {bi > 0 && set.technique !== 'DROP_SET' && restSec > 0 && (
               <View style={ex.blockSep}>
                 <View style={ex.blockSepLine} />
                 <Text style={ex.blockSepLabel}>{restSec}s</Text>
                 <View style={ex.blockSepLine} />
               </View>
             )}
-            {bi > 0 && restSec === 0 && <View style={ex.blockSepThin} />}
+            {bi > 0 && set.technique !== 'DROP_SET' && restSec === 0 && (
+              <View style={ex.blockSepThin} />
+            )}
             <View style={ex.blockRow}>
               <Text style={ex.blockLabel}>{blockLabel(bi)}</Text>
               <TextInput
@@ -335,15 +396,20 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
                 placeholderTextColor="#3A3A4A"
                 keyboardType="number-pad"
               />
-              <Text style={ex.blockX}>×</Text>
-              <TextInput
-                style={ex.blockInput}
-                value={block.weight}
-                onChangeText={v => updateBlock(bi, 'weight', v)}
-                placeholder="kg"
-                placeholderTextColor="#3A3A4A"
-                keyboardType="decimal-pad"
-              />
+              {/* DROP_SET and MUSCLE_ROUND have per-block weights; CLUSTER/REST_PAUSE use mainWeight */}
+              {(set.technique === 'DROP_SET' || set.technique === 'MUSCLE_ROUND') && (
+                <>
+                  <Text style={ex.blockX}>×</Text>
+                  <TextInput
+                    style={ex.blockInput}
+                    value={block.weight}
+                    onChangeText={v => updateBlock(bi, 'weight', v)}
+                    placeholder="kg"
+                    placeholderTextColor="#3A3A4A"
+                    keyboardType="decimal-pad"
+                  />
+                </>
+              )}
               {set.technique === 'MUSCLE_ROUND' && (
                 <TouchableOpacity
                   style={[ex.failDot, block.failed && ex.failDotActive]}
@@ -531,9 +597,16 @@ export function WorkoutExecutionScreen() {
     async function init() {
       try {
         if (store.isActive && store.session) {
-          setIsLoading(false)
-          store.startTimer()
-          return
+          const sessionMatchesRoute = workoutId
+            ? store.session.workoutId === workoutId
+            : store.session.isFreeWorkout
+          if (sessionMatchesRoute) {
+            setIsLoading(false)
+            store.startTimer()
+            return
+          }
+          // Active session is for a different workout — discard and start fresh
+          store.clearSession()
         }
         const res = await api.sessions.start(workoutId ? { workoutId } : {})
         store.setSession(res.data.session)
@@ -1119,6 +1192,11 @@ const ex = StyleSheet.create({
     paddingBottom: 10,
   },
 
+  // Set row outer — wraps setRow; provides accent border for WARMUP/FEEDER/BACK_OFF
+  setRowOuter: {
+    marginBottom: 4,
+  },
+
   // Set row
   setRow: {
     flexDirection: 'row',
@@ -1127,7 +1205,7 @@ const ex = StyleSheet.create({
     gap: 6,
     borderRadius: 9,
     paddingHorizontal: 2,
-    marginBottom: 2,
+    marginBottom: 0,
   },
   setRowDone: {
     // completion is indicated solely by the DoneButton — no background tint
@@ -1209,7 +1287,24 @@ const ex = StyleSheet.create({
   },
   inputDoneWide: {},
   nonVolLabel: { color: '#3A3A4A', fontSize: 9, flexShrink: 0 },
+  nonVolNote: { color: '#3A3A4A', fontSize: 9, marginLeft: 38, marginTop: -1, marginBottom: 2 },
   removeSetBtn: { width: 26, height: 26, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  techMainInput: {
+    height: 36,
+    width: 64,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 8,
+    color: '#F0F0F5',
+    fontSize: 13,
+    textAlign: 'center',
+    fontWeight: '500',
+    paddingHorizontal: 4,
+  },
+  dropConnector: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
+  dropConnectorLine: { flex: 1, height: 1, backgroundColor: 'rgba(239,68,68,0.3)' },
+  dropConnectorLabel: { color: '#EF4444', fontSize: 10, marginHorizontal: 6 },
 
   // Add set
   addSetBtn: {
@@ -1263,7 +1358,7 @@ const ex = StyleSheet.create({
   },
   blockLabel: { color: '#555560', fontSize: 11, flex: 1 },
   blockInput: {
-    height: 30,
+    height: 36,
     width: 50,
     backgroundColor: 'rgba(0,0,0,0.3)',
     borderWidth: 1,
