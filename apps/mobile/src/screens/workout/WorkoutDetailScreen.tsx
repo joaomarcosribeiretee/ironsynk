@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, Image, ActivityIndicator, Modal, Pressable,
+  TextInput, ActivityIndicator, Modal, Pressable,
 } from 'react-native'
+import { ExerciseCardShell, cardMetaStyles, cardBodyStyles } from '../../components/ExerciseCardShell'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
@@ -883,88 +884,85 @@ export function WorkoutDetailScreen() {
               const isLastInPair = isInSuperset && nextTe?.supersetGroupId !== te.supersetGroupId
 
               return (
-                <View key={te.id} style={[
-                  s.card,
-                  isInSuperset && s.cardSuperset,
-                  isFirstInPair && s.cardSupersetFirst,
-                  isLastInPair && s.cardSupersetLast,
-                  !isLastInPair && isInSuperset && { marginBottom: 2 },
-                ]}>
-                  {isInSuperset && (
-                    <View style={s.supersetBadge}>
-                      <Text style={s.supersetBadgeText}>
-                        {te.technique === 'BISET' ? '⇅ BISET' : '⇅ SUPERSET'}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Exercise header */}
-                  <View style={s.cardTop}>
-                    <View style={s.imgContainer}>
-                      {te.exercise.gifUrl ? (
-                        <Image source={{ uri: te.exercise.gifUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-                      ) : (
-                        <Ionicons name="barbell-outline" size={24} color="#4A4A5A" />
-                      )}
-                    </View>
-                    <View style={s.cardMid}>
-                      <Text style={s.exName} numberOfLines={1}>{te.exercise.name}</Text>
-                      {te.exercise.equipment ? (
-                        <View style={s.equipPill}>
-                          <Text style={s.equipPillText}>{txEquip(te.exercise.equipment)}</Text>
-                        </View>
-                      ) : null}
-                    </View>
+                <ExerciseCardShell
+                  key={te.id}
+                  gifUrl={te.exercise.gifUrl ?? null}
+                  name={te.exercise.name}
+                  meta={
+                    te.exercise.equipment ? (
+                      <View style={cardMetaStyles.pill}>
+                        <Text style={cardMetaStyles.pillText}>{txEquip(te.exercise.equipment)}</Text>
+                      </View>
+                    ) : null
+                  }
+                  rightSlot={
                     <TouchableOpacity style={s.dotBtn} onPress={() => setSheet({ visible: true, teId: te.id })}>
                       <Ionicons name="ellipsis-vertical" size={18} color="#8A8A9A" />
                     </TouchableOpacity>
-                  </View>
-
-                  {/* Coach notes */}
-                  <TextInput
-                    style={s.exerciseNotesInput}
-                    value={notes}
-                    onChangeText={val => handleNotesChange(te.id, val)}
-                    placeholder="Observações do exercício..."
-                    placeholderTextColor="#3A3A4A"
-                    multiline
-                    blurOnSubmit
-                  />
-
-                  {/* Volume counter */}
-                  <VolumeCounter sets={sets} />
-
-                  {/* Set rows */}
-                  {sets.map((set, i) => {
-                    const rw = localRepsWeight[set.id] ?? { reps: set.targetReps ?? '', weight: set.targetWeight != null ? String(set.targetWeight) : '' }
-                    const bd = localBlockData[set.id]
-                    return (
-                      <SetRow
-                        key={set.id}
-                        set={set}
-                        index={i}
-                        reps={rw.reps}
-                        weight={rw.weight}
-                        blockData={bd}
-                        canDelete={sets.length > 1}
-                        onRepsChange={v => handleRepsChange(set.id, v)}
-                        onWeightChange={v => handleWeightChange(set.id, v)}
-                        onTechniqueTap={() => setTechniquePicker({ visible: true, teId: te.id, setId: set.id })}
-                        onDelete={() => {
-                          if (sets.length > 1)
-                            setConfirmDeleteSet({ visible: true, teId: te.id, setId: set.id })
-                        }}
-                        onBlockRepsChange={(idx, val) => handleBlockRepsChange(set.id, idx, val, set)}
-                        onBlockWeightChange={(idx, val) => handleBlockWeightChange(set.id, idx, val, set)}
-                        onFailedAtBlock={idx => handleFailedAtBlock(set.id, idx, set)}
+                  }
+                  topStrip={
+                    isInSuperset ? (
+                      <View style={s.supersetStrip}>
+                        <Text style={s.supersetStripText}>
+                          {te.technique === 'BISET' ? '⇅ BISET' : '⇅ SUPERSET'}
+                        </Text>
+                      </View>
+                    ) : undefined
+                  }
+                  cardStyle={[
+                    isInSuperset && { borderLeftWidth: 3, borderLeftColor: '#4FC3F7' },
+                    isFirstInPair && { borderBottomLeftRadius: 4, borderBottomRightRadius: 4 },
+                    isLastInPair && { borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+                  ]}
+                  shadowStyle={[
+                    isFirstInPair && { borderBottomLeftRadius: 4, borderBottomRightRadius: 4 },
+                    isLastInPair && { borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+                    !isLastInPair && isInSuperset ? { marginBottom: 2 } : { marginBottom: 12 },
+                  ]}
+                >
+                  <View style={s.cardBody}>
+                    <View style={cardBodyStyles.observationWrap}>
+                      <TextInput
+                        style={cardBodyStyles.observationInput}
+                        value={notes}
+                        onChangeText={val => handleNotesChange(te.id, val)}
+                        placeholder="Adicionar observação..."
+                        placeholderTextColor="#3A3A4A"
+                        multiline
+                        blurOnSubmit
                       />
-                    )
-                  })}
+                    </View>
 
-                  {/* Add set */}
-                  <View style={s.setActions}>
+                    <VolumeCounter sets={sets} />
+
+                    {sets.map((set, i) => {
+                      const rw = localRepsWeight[set.id] ?? { reps: set.targetReps ?? '', weight: set.targetWeight != null ? String(set.targetWeight) : '' }
+                      const bd = localBlockData[set.id]
+                      return (
+                        <SetRow
+                          key={set.id}
+                          set={set}
+                          index={i}
+                          reps={rw.reps}
+                          weight={rw.weight}
+                          blockData={bd}
+                          canDelete={sets.length > 1}
+                          onRepsChange={v => handleRepsChange(set.id, v)}
+                          onWeightChange={v => handleWeightChange(set.id, v)}
+                          onTechniqueTap={() => setTechniquePicker({ visible: true, teId: te.id, setId: set.id })}
+                          onDelete={() => {
+                            if (sets.length > 1)
+                              setConfirmDeleteSet({ visible: true, teId: te.id, setId: set.id })
+                          }}
+                          onBlockRepsChange={(idx, val) => handleBlockRepsChange(set.id, idx, val, set)}
+                          onBlockWeightChange={(idx, val) => handleBlockWeightChange(set.id, idx, val, set)}
+                          onFailedAtBlock={idx => handleFailedAtBlock(set.id, idx, set)}
+                        />
+                      )
+                    })}
+
                     <TouchableOpacity
-                      style={s.addSerieBtn}
+                      style={cardBodyStyles.addSetBtn}
                       onPress={() => handleAddSet(te.id)}
                       disabled={addingSet[te.id]}
                       activeOpacity={0.7}
@@ -974,24 +972,23 @@ export function WorkoutDetailScreen() {
                       ) : (
                         <>
                           <Ionicons name="add-circle-outline" size={14} color="#4FC3F7" />
-                          <Text style={s.addSerieText}>Adicionar série</Text>
+                          <Text style={cardBodyStyles.addSetText}>Adicionar série</Text>
                         </>
                       )}
                     </TouchableOpacity>
-                  </View>
 
-                  {/* Rest time */}
-                  <TouchableOpacity
-                    style={s.restRow}
-                    onPress={() => setRestPicker({ visible: true, teId: te.id })}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="timer-outline" size={14} color="#555560" />
-                    <Text style={s.restLabel}>Descanso</Text>
-                    <Text style={s.restValue}>{formatRest(rest)}</Text>
-                    <Ionicons name="chevron-forward" size={12} color="#3A3A4A" />
-                  </TouchableOpacity>
-                </View>
+                    <TouchableOpacity
+                      style={s.restRow}
+                      onPress={() => setRestPicker({ visible: true, teId: te.id })}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="timer-outline" size={14} color="#555560" />
+                      <Text style={s.restLabel}>Descanso</Text>
+                      <Text style={s.restValue}>{formatRest(rest)}</Text>
+                      <Ionicons name="chevron-forward" size={12} color="#3A3A4A" />
+                    </TouchableOpacity>
+                  </View>
+                </ExerciseCardShell>
               )
             })
           )}
@@ -1203,44 +1200,16 @@ const s = StyleSheet.create({
 
   scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 110 },
 
-  card: {
-    backgroundColor: '#1E1E24',
-    borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 14, padding: 14, marginBottom: 12,
-  },
-  cardSuperset: { borderLeftWidth: 3, borderLeftColor: '#4FC3F7' },
-  cardSupersetFirst: { borderBottomLeftRadius: 4, borderBottomRightRadius: 4 },
-  cardSupersetLast: { borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-  imgContainer: {
-    width: 64, height: 64, borderRadius: 12, overflow: 'hidden',
-    backgroundColor: '#2A2A35', justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  cardMid: { flex: 1 },
-  exName: { color: '#F0F0F5', fontSize: 15, fontWeight: '500' },
-  equipPill: {
-    backgroundColor: '#141418', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2, marginTop: 5, alignSelf: 'flex-start',
-  },
-  equipPillText: { color: '#8A8A9A', fontSize: 11 },
+  cardBody: { paddingHorizontal: 10, paddingBottom: 10 },
+
   dotBtn: { padding: 4, flexShrink: 0 },
 
-  exerciseNotesInput: {
-    color: '#8A8A9A', fontSize: 12,
-    paddingHorizontal: 8, paddingVertical: 6, marginBottom: 6,
-    backgroundColor: 'rgba(42,42,53,0.6)', borderRadius: 8, minHeight: 30,
+  supersetStrip: {
+    paddingHorizontal: 12, paddingVertical: 5,
+    backgroundColor: 'rgba(79,195,247,0.08)',
+    borderBottomWidth: 1, borderBottomColor: 'rgba(79,195,247,0.15)',
   },
-
-  setActions: {
-    flexDirection: 'row', alignItems: 'center',
-    marginTop: 4, marginBottom: 4,
-    borderTopWidth: 1, borderTopColor: '#252530', paddingTop: 8,
-  },
-  addSerieBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    height: 32,
-  },
-  addSerieText: { color: '#4FC3F7', fontSize: 13 },
+  supersetStripText: { color: '#4FC3F7', fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
 
   restRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6,
@@ -1249,14 +1218,6 @@ const s = StyleSheet.create({
   },
   restLabel: { flex: 1, color: '#8A8A9A', fontSize: 13 },
   restValue: { color: '#F0F0F5', fontSize: 13, fontWeight: '500' },
-
-  supersetBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(79,195,247,0.1)',
-    borderRadius: 6,
-    paddingHorizontal: 8, paddingVertical: 3, marginBottom: 8,
-  },
-  supersetBadgeText: { color: '#4FC3F7', fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
 
   fab: { position: 'absolute', left: 16, right: 16 },
   fabBtn: {

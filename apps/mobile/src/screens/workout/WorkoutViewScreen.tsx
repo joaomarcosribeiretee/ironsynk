@@ -1,7 +1,8 @@
 import React from 'react'
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator,
 } from 'react-native'
+import { ExerciseCardShell, cardMetaStyles } from '../../components/ExerciseCardShell'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -216,58 +217,46 @@ export function WorkoutViewScreen() {
                 const validSets = sets.filter((s: PlannedSetRecord) => s.setType === 'WORKING').length
 
                 return (
-                  <View key={te.id} style={s.card}>
-                    {/* Exercise header */}
-                    <View style={s.cardTop}>
-                      <View style={s.imgContainer}>
-                        {te.exercise.gifUrl ? (
-                          <Image
-                            source={{ uri: te.exercise.gifUrl }}
-                            style={StyleSheet.absoluteFill}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <Ionicons name="barbell-outline" size={24} color="#4A4A5A" />
-                        )}
-                      </View>
-                      <View style={s.cardMid}>
-                        <Text style={s.exName} numberOfLines={1}>{te.exercise.name}</Text>
-                        {te.exercise.equipment ? (
-                          <View style={s.equipPill}>
-                            <Text style={s.equipPillText}>{txEquip(te.exercise.equipment)}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    </View>
-
-                    {/* Read-only set rows */}
-                    {sets.length > 0 ? (
-                      sets.map((set: PlannedSetRecord, i: number) => (
-                        <ReadonlySetRow key={set.id} set={set} index={i} />
-                      ))
-                    ) : (
-                      // If no planned sets yet, show placeholder rows from targetSets
-                      Array.from({ length: te.targetSets }).map((_, i) => (
-                        <View key={i} style={rv.wrap}>
-                          <View style={rv.main}>
-                            <View style={[rv.badge, { backgroundColor: '#2A2A35' }]}>
-                              <Text style={[rv.badgeText, { color: '#8A8A9A' }]}>{i + 1}</Text>
-                            </View>
-                            <Text style={rv.dash}>—</Text>
-                            <Text style={rv.timesText}>×</Text>
-                            <Text style={rv.dash}>—</Text>
-                            <Text style={rv.kgText}>kg</Text>
-                          </View>
+                  <ExerciseCardShell
+                    key={te.id}
+                    gifUrl={te.exercise.gifUrl ?? null}
+                    name={te.exercise.name}
+                    meta={
+                      te.exercise.equipment ? (
+                        <View style={cardMetaStyles.pill}>
+                          <Text style={cardMetaStyles.pillText}>{txEquip(te.exercise.equipment)}</Text>
                         </View>
-                      ))
-                    )}
+                      ) : null
+                    }
+                    shadowStyle={{ marginBottom: 12 }}
+                  >
+                    <View style={s.cardBody}>
+                      {sets.length > 0 ? (
+                        sets.map((set: PlannedSetRecord, i: number) => (
+                          <ReadonlySetRow key={set.id} set={set} index={i} />
+                        ))
+                      ) : (
+                        Array.from({ length: te.targetSets }).map((_, i) => (
+                          <View key={i} style={rv.wrap}>
+                            <View style={rv.main}>
+                              <View style={[rv.badge, { backgroundColor: '#2A2A35' }]}>
+                                <Text style={[rv.badgeText, { color: '#8A8A9A' }]}>{i + 1}</Text>
+                              </View>
+                              <Text style={rv.dash}>—</Text>
+                              <Text style={rv.timesText}>×</Text>
+                              <Text style={rv.dash}>—</Text>
+                              <Text style={rv.kgText}>kg</Text>
+                            </View>
+                          </View>
+                        ))
+                      )}
 
-                    {/* Card footer */}
-                    <Text style={s.cardFooter}>
-                      {sets.length > 0 ? sets.length : te.targetSets} {((sets.length || te.targetSets) === 1) ? 'série' : 'séries'}
-                      {sets.length > 0 ? ` · ${validSets} válidas` : ''}
-                    </Text>
-                  </View>
+                      <Text style={s.cardFooter}>
+                        {sets.length > 0 ? sets.length : te.targetSets} {((sets.length || te.targetSets) === 1) ? 'série' : 'séries'}
+                        {sets.length > 0 ? ` · ${validSets} válidas` : ''}
+                      </Text>
+                    </View>
+                  </ExerciseCardShell>
                 )
               })}
             </>
@@ -328,23 +317,7 @@ const s = StyleSheet.create({
     textTransform: 'uppercase', marginBottom: 10,
   },
 
-  card: {
-    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 14, padding: 14, marginBottom: 12,
-  },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  imgContainer: {
-    width: 64, height: 64, borderRadius: 12, overflow: 'hidden',
-    backgroundColor: '#2A2A35', justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  cardMid: { flex: 1 },
-  exName: { color: '#F0F0F5', fontSize: 15, fontWeight: '500' },
-  equipPill: {
-    backgroundColor: '#141418', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2, marginTop: 5, alignSelf: 'flex-start',
-  },
-  equipPillText: { color: '#8A8A9A', fontSize: 11 },
-
+  cardBody: { paddingHorizontal: 10, paddingTop: 4, paddingBottom: 10 },
   cardFooter: { color: '#8A8A9A', fontSize: 12, marginTop: 10 },
 
   emptyWrap: { alignItems: 'center', paddingTop: 60, gap: 8 },

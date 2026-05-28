@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, ActivityIndicator, Modal, Pressable, Animated, Image,
+  TextInput, ActivityIndicator, Modal, Pressable, Animated,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { ExerciseCardShell, cardMetaStyles, cardBodyStyles, CARD_IMG_SIZE } from '../../components/ExerciseCardShell'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
@@ -447,8 +448,6 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
 
 // ─── Exercise card ────────────────────────────────────────────────────────────
 
-const CARD_IMG = 64
-
 type ExerciseCardProps = {
   exercise: ExecutionExerciseRecord
   onSetChecked: (execExId: string, setId: string, reps: number | null, weight: number | null, cfg: TechniqueConfig | null) => void
@@ -475,30 +474,17 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
   }
 
   return (
-    <View style={ex.cardShadow}>
-    <View style={ex.card}>
-      <View style={ex.cardHeader}>
-        <View style={ex.imgBox}>
-          {exercise.exercise.gifUrl ? (
-            <Image
-              source={{ uri: exercise.exercise.gifUrl }}
-              style={ex.imgThumb}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={ex.imgPlaceholder}>
-              <Ionicons name="barbell-outline" size={22} color="#3A3A4A" />
-            </View>
-          )}
+    <ExerciseCardShell
+      gifUrl={exercise.exercise.gifUrl ?? null}
+      name={exercise.exercise.name}
+      meta={
+        <View style={cardMetaStyles.row}>
+          <Text style={cardMetaStyles.text}>{exercise.exercise.muscleGroup.toLowerCase()}</Text>
+          <Text style={cardMetaStyles.dot}>·</Text>
+          <Text style={cardMetaStyles.text}>{exercise.sets.length} {exercise.sets.length === 1 ? 'série' : 'séries'}</Text>
         </View>
-        <View style={ex.headerInfo}>
-          <Text style={ex.exName} numberOfLines={1}>{exercise.exercise.name}</Text>
-          <View style={ex.exMeta}>
-            <Text style={ex.exMetaText}>{exercise.exercise.muscleGroup.toLowerCase()}</Text>
-            <Text style={ex.exMetaDot}>·</Text>
-            <Text style={ex.exMetaText}>{exercise.sets.length} {exercise.sets.length === 1 ? 'série' : 'séries'}</Text>
-          </View>
-        </View>
+      }
+      rightSlot={
         <TouchableOpacity
           onPress={() => onRemoveExercise(exercise.id)}
           style={ex.removeExBtn}
@@ -506,12 +492,11 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
         >
           <Ionicons name="close" size={15} color="#3A3A4A" />
         </TouchableOpacity>
-      </View>
-
-      {/* Notes */}
-      <View style={ex.notesWrap}>
+      }
+    >
+      <View style={cardBodyStyles.observationWrap}>
         <TextInput
-          style={ex.notesInput}
+          style={cardBodyStyles.observationInput}
           value={notes}
           onChangeText={handleNotesChange}
           placeholder="Adicionar observação..."
@@ -521,7 +506,6 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
         />
       </View>
 
-      {/* Sets */}
       <View style={ex.setsWrap}>
         {exercise.sets.map((set, idx) => {
           if (needsBlockExpansion(set.technique)) {
@@ -550,13 +534,12 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
           )
         })}
 
-        <TouchableOpacity style={ex.addSetBtn} onPress={() => onAddSet(exercise.id)} activeOpacity={0.75}>
+        <TouchableOpacity style={cardBodyStyles.addSetBtn} onPress={() => onAddSet(exercise.id)} activeOpacity={0.75}>
           <Ionicons name="add-circle-outline" size={15} color="#4FC3F7" />
-          <Text style={ex.addSetText}>Adicionar série</Text>
+          <Text style={cardBodyStyles.addSetText}>Adicionar série</Text>
         </TouchableOpacity>
       </View>
-    </View>
-    </View>
+    </ExerciseCardShell>
   )
 }
 
@@ -1213,100 +1196,12 @@ const s = StyleSheet.create({
 // ─── Exercise card styles ──────────────────────────────────────────────────────
 
 const ex = StyleSheet.create({
-  cardShadow: {
-    shadowColor: '#2979FF',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-    borderRadius: 16,
-  },
-  card: {
-    backgroundColor: '#1E1E24',
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#2A2A35',
-  },
-
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingRight: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A2A35',
-    backgroundColor: '#23232D',
-  },
-  imgBox: {
-    width: CARD_IMG + 16,
-    height: CARD_IMG + 16,
-    padding: 8,
-    flexShrink: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imgThumb: {
-    width: CARD_IMG,
-    height: CARD_IMG,
-    borderRadius: 10,
-  },
-  imgPlaceholder: {
-    width: CARD_IMG,
-    height: CARD_IMG,
-    backgroundColor: '#2A2A35',
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerInfo: {
-    flex: 1,
-    paddingHorizontal: 10,
-    gap: 4,
-  },
-  exName: {
-    color: '#F0F0F5',
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 18,
-  },
-  exMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  exMetaText: {
-    color: '#8A8A9A',
-    fontSize: 11,
-    textTransform: 'capitalize',
-  },
-  exMetaDot: {
-    color: '#3A3A4A',
-    fontSize: 10,
-  },
   removeExBtn: {
     width: 30,
-    height: CARD_IMG + 16,
+    height: CARD_IMG_SIZE + 16,
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
-  },
-
-  notesWrap: {
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  notesInput: {
-    backgroundColor: '#23232D',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2A2A35',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#F0F0F5',
-    fontSize: 12,
-    height: 44,
-    textAlignVertical: 'center',
   },
 
   setsWrap: {
@@ -1432,21 +1327,6 @@ const ex = StyleSheet.create({
   dropConnector: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
   dropConnectorLine: { flex: 1, height: 1, backgroundColor: 'rgba(239,68,68,0.3)' },
   dropConnectorLabel: { color: '#EF4444', fontSize: 10, marginHorizontal: 6 },
-
-  // Add set
-  addSetBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    height: 40,
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(41,121,255,0.25)',
-    borderRadius: 12,
-    backgroundColor: 'rgba(41,121,255,0.08)',
-  },
-  addSetText: { color: '#4FC3F7', fontSize: 13, fontWeight: '500' },
 
   // Technique set
   techSetWrap: {
