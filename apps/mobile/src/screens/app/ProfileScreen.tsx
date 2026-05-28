@@ -39,7 +39,7 @@ function SectionTitle({ children }: { children: string }) {
 function EmptyState({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
   return (
     <View style={s.emptyState}>
-      <Text style={{ fontSize: 34, marginBottom: 10 }}>{icon}</Text>
+      <Ionicons name={icon as any} size={34} color="#4FC3F7" style={{ marginBottom: 10 }} />
       <Text style={s.emptyTitle}>{title}</Text>
       {!!sub && <Text style={s.emptySub}>{sub}</Text>}
     </View>
@@ -72,7 +72,7 @@ function HistoricoTab() {
   return (
     <View style={s.tabContent}>
       <EmptyState
-        icon="📋"
+        icon="calendar-outline"
         title="Nenhum treino registrado"
         sub="Complete seu primeiro treino para ver o histórico aqui"
       />
@@ -122,7 +122,7 @@ function DesempenhoTab() {
       {/* Records pessoais */}
       <SectionTitle>RECORDS PESSOAIS</SectionTitle>
       <View style={s.infoCard}>
-        <EmptyState icon="🏆" title="Nenhum record ainda" />
+        <EmptyState icon="trophy-outline" title="Nenhum record ainda" />
       </View>
 
       {/* Volume por grupamento */}
@@ -147,7 +147,7 @@ function DesempenhoTab() {
       <SectionTitle>EVOLUÇÃO DE CARGA</SectionTitle>
       <View style={s.infoCard}>
         <EmptyState
-          icon="📈"
+          icon="trending-up-outline"
           title="Sem dados suficientes"
           sub="Complete ao menos 3 sessões com o mesmo exercício para ver a evolução de carga"
         />
@@ -173,7 +173,7 @@ function ProgramaTab() {
       <SectionTitle>PROGRAMA DE TREINO</SectionTitle>
       <View style={[s.infoCard, s.emptyCard]}>
         <EmptyState
-          icon="🏋️"
+          icon="barbell-outline"
           title="Nenhum programa ativo"
           sub="Crie ou receba um programa de treino"
         />
@@ -182,7 +182,7 @@ function ProgramaTab() {
       <SectionTitle>DIETA ATIVA</SectionTitle>
       <View style={[s.infoCard, s.emptyCard]}>
         <EmptyState
-          icon="🥗"
+          icon="nutrition-outline"
           title="Nenhuma dieta ativa"
           sub="Crie ou receba um plano nutricional"
         />
@@ -240,7 +240,7 @@ function AlunosTab() {
     <View style={s.tabContent}>
       <Text style={s.countLbl}>0 alunos ativos</Text>
       <EmptyState
-        icon="👥"
+        icon="people-outline"
         title="Nenhum aluno vinculado ainda"
         sub="Alunos aparecerão aqui após o vínculo de consultoria"
       />
@@ -254,7 +254,7 @@ function ConsultasTab({ onCreateForm }: { onCreateForm: () => void }) {
   return (
     <View style={s.tabContent}>
       <EmptyState
-        icon="📝"
+        icon="document-text-outline"
         title="Nenhuma consulta criada ainda"
         sub="Crie formulários de avaliação para seus alunos"
       />

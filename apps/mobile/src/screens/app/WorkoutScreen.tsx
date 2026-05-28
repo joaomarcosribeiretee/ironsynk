@@ -16,10 +16,10 @@ export function WorkoutScreen() {
 
         {/* DEBUG — remove before launch */}
         <TouchableOpacity style={s.debugBtn} onPress={() => navigation.navigate('ExerciseDebug')}>
-          <Text style={s.debugBtnText}>🐛 Ver banco de exercícios</Text>
+          <Text style={s.debugBtnText}>Ver banco de exercícios</Text>
         </TouchableOpacity>
         <TouchableOpacity style={s.debugBtn} onPress={() => navigation.navigate('ExerciseAdmin')}>
-          <Text style={s.debugBtnText}>✏️ Admin exercícios</Text>
+          <Text style={s.debugBtnText}>Admin exercícios</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

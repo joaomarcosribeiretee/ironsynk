@@ -147,9 +147,12 @@ export function RegisterScreen({ navigation }: Props) {
                     }}
                     onPress={() => setRole(r)}
                   >
-                    <Text style={{ fontSize: 20, marginBottom: 4 }}>
-                      {r === 'ATHLETE' ? '🏋️' : '📋'}
-                    </Text>
+                    <Ionicons
+                      name={r === 'ATHLETE' ? 'barbell-outline' : 'clipboard-outline'}
+                      size={22}
+                      color={role === r ? '#4FC3F7' : '#8A8A9A'}
+                      style={{ marginBottom: 4 }}
+                    />
                     <Text style={{
                       fontSize: 14,
                       fontWeight: '600',
@@ -271,9 +274,11 @@ export function RegisterScreen({ navigation }: Props) {
                       minWidth: '48%',
                     }}
                   >
-                    <Text style={{ color: check.ok ? '#00E676' : '#8A8A9A', fontSize: 12 }}>
-                      {check.ok ? '✓' : '•'}
-                    </Text>
+                    <Ionicons
+                      name={check.ok ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={13}
+                      color={check.ok ? '#00E676' : '#8A8A9A'}
+                    />
                     <Text style={{ color: check.ok ? '#F0F0F5' : '#8A8A9A', fontSize: 12 }}>
                       {check.label}
                     </Text>

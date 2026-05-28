@@ -276,7 +276,7 @@ function MuscleRoundExpansion({ config, blockReps, blockWeights, failedAtBlock, 
                 activeOpacity={0.7}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
-                {isFailurePoint && <Text style={exp.failCircleX}>✗</Text>}
+                {isFailurePoint && <Ionicons name="close" size={11} color="#fff" />}
               </TouchableOpacity>
             </View>
           </React.Fragment>
@@ -1309,7 +1309,6 @@ const exp = StyleSheet.create({
     flexShrink: 0,
   },
   failCircleActive: { backgroundColor: '#FF5252', borderColor: '#FF5252' },
-  failCircleX: { color: '#fff', fontSize: 11, fontWeight: '700' },
   mrHint: { color: '#555560', fontSize: 11, marginTop: 8, textAlign: 'center' },
 })
 

@@ -14,6 +14,7 @@ import {
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import type { AuthStackParamList } from '../../navigation/AuthNavigator'
 import { api } from '../../lib/api'
@@ -42,11 +43,11 @@ type Step2TrainerData = {
 }
 
 const GOALS = [
-  { key: 'HYPERTROPHY', label: 'Hipertrofia', emoji: '💪' },
-  { key: 'FAT_LOSS', label: 'Perda de gordura', emoji: '🔥' },
-  { key: 'STRENGTH', label: 'Forca', emoji: '🏋️' },
-  { key: 'HEALTH', label: 'Saude', emoji: '❤️' },
-  { key: 'PERFORMANCE', label: 'Performance', emoji: '⚡' },
+  { key: 'HYPERTROPHY', label: 'Hipertrofia', icon: 'barbell-outline' },
+  { key: 'FAT_LOSS', label: 'Perda de gordura', icon: 'flame-outline' },
+  { key: 'STRENGTH', label: 'Forca', icon: 'fitness-outline' },
+  { key: 'HEALTH', label: 'Saude', icon: 'heart-outline' },
+  { key: 'PERFORMANCE', label: 'Performance', icon: 'flash-outline' },
 ]
 
 const DAYS_OPTIONS = [
@@ -351,12 +352,12 @@ export function OnboardingScreen({ navigation }: Props) {
                       }`}
                       onPress={() => setStep2Athlete((s) => ({ ...s, goal: g.key }))}
                     >
-                      <Text className="text-xl mr-3">{g.emoji}</Text>
+                      <Ionicons name={g.icon as any} size={20} color={step2Athlete.goal === g.key ? '#4FC3F7' : '#8A8A9A'} style={{ marginRight: 12 }} />
                       <Text className={`text-base font-medium ${step2Athlete.goal === g.key ? 'text-text-primary' : 'text-text-secondary'}`}>
                         {g.label}
                       </Text>
                       {step2Athlete.goal === g.key && (
-                        <Text className="ml-auto text-cyan text-lg">✓</Text>
+                        <Ionicons name="checkmark" size={18} color="#4FC3F7" style={{ marginLeft: 'auto' }} />
                       )}
                     </TouchableOpacity>
                   ))}
@@ -464,7 +465,7 @@ export function OnboardingScreen({ navigation }: Props) {
                   {loading ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text className="text-white font-bold text-base">Concluir 🚀</Text>
+                    <Text className="text-white font-bold text-base">Concluir</Text>
                   )}
                 </LinearGradient>
               </TouchableOpacity>

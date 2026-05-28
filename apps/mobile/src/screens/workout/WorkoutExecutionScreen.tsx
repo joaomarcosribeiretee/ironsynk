@@ -432,7 +432,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
                   onPress={() => toggleFailed(bi)}
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
-                  {block.failed && <Text style={ex.failDotX}>✗</Text>}
+                  {block.failed && <Ionicons name="close" size={10} color="#fff" />}
                 </TouchableOpacity>
               )}
             </View>
@@ -1388,6 +1388,5 @@ const ex = StyleSheet.create({
     alignItems: 'center',
   },
   failDotActive: { backgroundColor: '#FF5252', borderColor: '#FF5252' },
-  failDotX: { color: '#fff', fontSize: 10, fontWeight: '700' },
   mrHint: { color: '#555560', fontSize: 10, marginTop: 6, textAlign: 'center' },
 })
