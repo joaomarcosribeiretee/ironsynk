@@ -576,6 +576,7 @@ export function WorkoutExecutionScreen() {
   const [restTimerTipVisible, setRestTimerTipVisible] = useState(false)
   const [customRestInput, setCustomRestInput] = useState('')
   const barRestRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const tipSeenRef = useRef(false)
 
   const session = store.session
   const sessionId = store.sessionId
@@ -588,13 +589,16 @@ export function WorkoutExecutionScreen() {
 
   useEffect(() => {
     SecureStore.getItemAsync(REST_TIMER_TIP_KEY).then(val => {
-      if (val !== 'true') setRestTimerTipVisible(true)
+      tipSeenRef.current = val === 'true'
     })
     return () => { if (barRestRef.current) clearInterval(barRestRef.current) }
   }, [])
 
   function dismissRestTimerTip(dontShowAgain: boolean) {
-    if (dontShowAgain) SecureStore.setItemAsync(REST_TIMER_TIP_KEY, 'true')
+    if (dontShowAgain) {
+      tipSeenRef.current = true
+      SecureStore.setItemAsync(REST_TIMER_TIP_KEY, 'true')
+    }
     setRestTimerTipVisible(false)
   }
 
@@ -862,7 +866,13 @@ export function WorkoutExecutionScreen() {
       <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <TouchableOpacity
           style={s.barSection}
-          onPress={barRestRemaining > 0 ? cancelBarRest : () => setRestPickerVisible(true)}
+          onPress={barRestRemaining > 0 ? cancelBarRest : () => {
+            if (!tipSeenRef.current) {
+              setRestTimerTipVisible(true)
+            } else {
+              setRestPickerVisible(true)
+            }
+          }}
           activeOpacity={0.7}
         >
           {barRestRemaining > 0 ? (
