@@ -149,6 +149,8 @@ type SetRowProps = {
 function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRowProps) {
   const [reps, setReps] = useState(set.repsCompleted != null && set.repsCompleted > 0 ? String(set.repsCompleted) : '')
   const [weight, setWeight] = useState(set.weightKg != null && set.weightKg > 0 ? String(set.weightKg) : '')
+  const [repsFocused, setRepsFocused] = useState(false)
+  const [weightFocused, setWeightFocused] = useState(false)
   const ts = getTechStyle(set.setType, set.technique)
   const badge = getBadge(set.setType, set.technique, index)
   const isNonVolume = set.setType === 'WARMUP' || set.setType === 'FEEDER'
@@ -184,36 +186,52 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
 
         <View style={ex.inputsGroup}>
           <View style={[ex.inputCol, { flex: 1 }]}>
+            <Text style={ex.inputFieldLabel}>REPS</Text>
             {set.isChecked ? (
-              <Text style={ex.inputDone}>{reps || '—'}</Text>
+              <View style={[ex.inputFieldWrap, ex.inputFieldWrapDone]}>
+                <Ionicons name="repeat-outline" size={14} color="#555560" />
+                <Text style={ex.inputDone}>{reps || '—'}</Text>
+              </View>
             ) : (
-              <TextInput
-                style={ex.repsInput}
-                value={reps}
-                onChangeText={setReps}
-                placeholder="—"
-                placeholderTextColor="#2E2E3E"
-                selectionColor="#4FC3F7"
-                keyboardType="number-pad"
-              />
+              <View style={[ex.inputFieldWrap, repsFocused && ex.inputFieldWrapFocused]}>
+                <Ionicons name="repeat-outline" size={14} color={repsFocused ? '#4FC3F7' : '#555560'} />
+                <TextInput
+                  style={ex.repsInput}
+                  value={reps}
+                  onChangeText={setReps}
+                  placeholder="—"
+                  placeholderTextColor="#4A4A5A"
+                  selectionColor="#4FC3F7"
+                  keyboardType="number-pad"
+                  onFocus={() => setRepsFocused(true)}
+                  onBlur={() => setRepsFocused(false)}
+                />
+              </View>
             )}
           </View>
 
-          <Text style={ex.inputSep}>×</Text>
-
           <View style={[ex.inputCol, { flex: 1 }]}>
+            <Text style={ex.inputFieldLabel}>KG</Text>
             {set.isChecked ? (
-              <Text style={ex.inputDone}>{weight || '—'}</Text>
+              <View style={[ex.inputFieldWrap, ex.inputFieldWrapDone]}>
+                <Ionicons name="barbell-outline" size={14} color="#555560" />
+                <Text style={ex.inputDone}>{weight || '—'}</Text>
+              </View>
             ) : (
-              <TextInput
-                style={ex.weightInput}
-                value={weight}
-                onChangeText={setWeight}
-                placeholder="—"
-                placeholderTextColor="#2E2E3E"
-                selectionColor="#4FC3F7"
-                keyboardType="decimal-pad"
-              />
+              <View style={[ex.inputFieldWrap, weightFocused && ex.inputFieldWrapFocused]}>
+                <Ionicons name="barbell-outline" size={14} color={weightFocused ? '#4FC3F7' : '#555560'} />
+                <TextInput
+                  style={ex.weightInput}
+                  value={weight}
+                  onChangeText={setWeight}
+                  placeholder="—"
+                  placeholderTextColor="#4A4A5A"
+                  selectionColor="#4FC3F7"
+                  keyboardType="decimal-pad"
+                  onFocus={() => setWeightFocused(true)}
+                  onBlur={() => setWeightFocused(false)}
+                />
+              </View>
             )}
           </View>
         </View>
@@ -290,6 +308,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
   }, [])
 
   const [blocks, setBlocks] = useState<BlockData[]>(initBlocks)
+  const [rpWeightFocused, setRpWeightFocused] = useState(false)
   const restSec = cfg ? ((cfg['restBetweenSeconds'] as number) ?? 0) : 0
 
   // Shared load for techniques where all blocks use the same weight (CLUSTER, REST_PAUSE)
@@ -329,6 +348,37 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
   }
 
   function handleDone() {
+    if (set.technique === 'REST_PAUSE' || set.technique === 'CLUSTER_SET') {
+      if (!mainWeight || parseFloat(mainWeight) <= 0) {
+        showToast('Informe o peso antes de confirmar')
+        return
+      }
+      if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
+        const label = set.technique === 'REST_PAUSE' ? 'falhas' : 'blocos'
+        showToast(`Preencha as repetições de todos os ${label}`)
+        return
+      }
+    }
+    if (set.technique === 'MUSCLE_ROUND') {
+      if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
+        showToast('Preencha as repetições de todos os blocos')
+        return
+      }
+      if (blocks.some(b => !b.weight || parseFloat(b.weight) <= 0)) {
+        showToast('Informe o peso de todos os blocos')
+        return
+      }
+    }
+    if (set.technique === 'DROP_SET') {
+      if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
+        showToast('Preencha as repetições de todos os drops')
+        return
+      }
+      if (blocks.some(b => !b.weight || parseFloat(b.weight) <= 0)) {
+        showToast('Informe o peso de todos os drops')
+        return
+      }
+    }
     const totalReps = blocks.reduce((sum, b) => sum + (parseInt(b.reps, 10) || 0), 0)
     const maxWeight = (set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE')
       ? (parseFloat(mainWeight) || 0)
@@ -358,18 +408,27 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
         <Text style={ex.techSetNum}>Série {index + 1}</Text>
         <View style={{ flex: 1 }} />
         {showMainWeight && (
-          <View style={ex.inputCol}>
-            <Text style={ex.inputColLabel}>KG</Text>
-            <TextInput
-              style={ex.techMainInput}
-              value={mainWeight}
-              onChangeText={setMainWeight}
-              placeholder="—"
-              placeholderTextColor="#3A3A4A"
-              selectionColor="#4FC3F7"
-              keyboardType="decimal-pad"
-            />
-          </View>
+          set.isChecked ? (
+            <View style={ex.rpWeightWrap}>
+              <Text style={ex.rpWeightLabel}>KG</Text>
+              <Text style={ex.rpWeightDone}>{mainWeight || '—'}</Text>
+            </View>
+          ) : (
+            <View style={[ex.rpWeightWrap, rpWeightFocused && ex.rpWeightWrapFocused]}>
+              <Text style={ex.rpWeightLabel}>KG</Text>
+              <TextInput
+                style={ex.rpWeightInput}
+                value={mainWeight}
+                onChangeText={setMainWeight}
+                placeholder="—"
+                placeholderTextColor="#3A3A4A"
+                selectionColor="#4FC3F7"
+                keyboardType="decimal-pad"
+                onFocus={() => setRpWeightFocused(true)}
+                onBlur={() => setRpWeightFocused(false)}
+              />
+            </View>
+          )
         )}
         <DoneButton checked={set.isChecked} onPress={handleDone} />
         <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 4, right: 6 }} style={ex.removeSetBtn}>
@@ -1254,7 +1313,7 @@ const ex = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
 
   // Input columns — flex grows to fill inputsGroup
@@ -1268,44 +1327,62 @@ const ex = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Inputs — stretch to fill their flex column
-  repsInput: {
+  // Label above each input field
+  inputFieldLabel: {
+    color: '#8A8A9A',
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+    alignSelf: 'flex-start',
+  },
+
+  // Wrapper that holds icon + TextInput (or icon + done Text)
+  inputFieldWrap: {
     alignSelf: 'stretch',
-    height: 40,
-    backgroundColor: '#0F0F14',
+    height: 48,
+    backgroundColor: '#1E1E24',
     borderWidth: 1,
-    borderColor: '#252530',
-    borderRadius: 8,
+    borderColor: '#2A2A35',
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    gap: 6,
+  },
+  inputFieldWrapFocused: {
+    borderColor: '#2979FF',
+  },
+  inputFieldWrapDone: {
+    backgroundColor: '#141418',
+    borderColor: '#2A2A35',
+  },
+
+  // Inputs — live inside inputFieldWrap, no border/bg of their own
+  repsInput: {
+    flex: 1,
+    height: 48,
     color: '#F0F0F5',
     fontSize: 16,
     textAlign: 'center',
     fontWeight: '500',
-    paddingHorizontal: 4,
   },
   weightInput: {
-    alignSelf: 'stretch',
-    height: 40,
-    backgroundColor: '#0F0F14',
-    borderWidth: 1,
-    borderColor: '#252530',
-    borderRadius: 8,
+    flex: 1,
+    height: 48,
     color: '#F0F0F5',
     fontSize: 16,
     textAlign: 'center',
     fontWeight: '500',
-    paddingHorizontal: 4,
   },
-  inputSep: { color: '#3A3A4A', fontSize: 14, flexShrink: 0 },
   kgLabel: { color: '#3A3A4A', fontSize: 11 },
   inputDone: {
-    alignSelf: 'stretch',
+    flex: 1,
     color: 'rgba(0,230,118,0.8)',
     fontSize: 16,
-    height: 40,
     textAlign: 'center',
     textAlignVertical: 'center',
     fontWeight: '600',
-    lineHeight: 40,
   },
   inputDoneWide: {},
   nonVolLabel: { color: '#3A3A4A', fontSize: 9, flexShrink: 0 },
@@ -1323,6 +1400,43 @@ const ex = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
     paddingHorizontal: 4,
+  },
+
+  // Shared KG weight input for REST_PAUSE and CLUSTER_SET header row
+  rpWeightWrap: {
+    width: 68,
+    height: 48,
+    backgroundColor: '#1E1E24',
+    borderWidth: 1,
+    borderColor: '#2A2A35',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    gap: 2,
+  },
+  rpWeightWrapFocused: {
+    borderColor: '#2979FF',
+  },
+  rpWeightLabel: {
+    color: '#8A8A9A',
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  rpWeightInput: {
+    color: '#F0F0F5',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    width: '100%',
+    paddingVertical: 0,
+  },
+  rpWeightDone: {
+    color: 'rgba(0,230,118,0.8)',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   dropConnector: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
   dropConnectorLine: { flex: 1, height: 1, backgroundColor: 'rgba(239,68,68,0.3)' },
@@ -1372,8 +1486,10 @@ const ex = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: 5,
     textAlign: 'center',
+    textAlignVertical: 'center',
     color: '#F0F0F5',
     fontSize: 12,
+    paddingVertical: 0,
   },
   blockX: { color: '#3A3A4A', fontSize: 11 },
 
