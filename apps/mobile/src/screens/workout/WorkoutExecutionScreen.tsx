@@ -175,7 +175,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
       ex.setRowOuter,
       hasAccent && { borderLeftWidth: 2, borderLeftColor: ts.borderColor, paddingLeft: 6, marginLeft: 2 },
     ]}>
-      <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
+      <View style={[ex.setRow, { alignItems: 'flex-end' }, set.isChecked && ex.setRowDone]}>
         <TouchableOpacity
           onPress={onTechniqueTap}
           activeOpacity={0.7}
@@ -1386,7 +1386,7 @@ const ex = StyleSheet.create({
   },
   inputDoneWide: {},
   nonVolLabel: { color: '#3A3A4A', fontSize: 9, flexShrink: 0 },
-  nonVolNote: { color: '#3A3A4A', fontSize: 9, marginLeft: 42, marginTop: 0, marginBottom: 2 },
+  nonVolNote: { color: '#3A3A4A', fontSize: 9, marginLeft: 46, marginTop: 0, marginBottom: 2 },
   removeSetBtn: { width: 28, height: 28, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
   techMainInput: {
     height: 36,
@@ -1457,7 +1457,7 @@ const ex = StyleSheet.create({
   // Block expansion — matches WorkoutDetailScreen exp.* style
   techBlocks: {
     marginTop: 4,
-    marginLeft: 34,
+    marginLeft: 38,
     marginBottom: 4,
   },
   blockSep: {
