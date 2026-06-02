@@ -173,9 +173,22 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
   return (
     <View style={[
       ex.setRowOuter,
+      set.isChecked && ex.setRowDone,
       hasAccent && { borderLeftWidth: 2, borderLeftColor: ts.borderColor, paddingLeft: 6, marginLeft: 2 },
     ]}>
-      <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
+      {/* Labels row — mirrors setRow column layout so labels sit exactly above their inputs */}
+      <View style={ex.setLabelsRow}>
+        <View style={{ width: 34, flexShrink: 0 }} />
+        <View style={{ flex: 1, flexDirection: 'row', gap: 8 }}>
+          <Text style={ex.colLabel}>REPS</Text>
+          <Text style={ex.colLabel}>KG</Text>
+        </View>
+        <View style={{ width: 38, flexShrink: 0 }} />
+        <View style={{ width: 28, flexShrink: 0 }} />
+      </View>
+
+      {/* Input row — all items same height, alignItems center works correctly */}
+      <View style={ex.setRow}>
         <TouchableOpacity
           onPress={onTechniqueTap}
           activeOpacity={0.7}
@@ -185,8 +198,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
         </TouchableOpacity>
 
         <View style={ex.inputsGroup}>
-          <View style={ex.inputCol}>
-            <Text style={ex.inputFieldLabel}>REPS</Text>
+          <View style={ex.inputFlat}>
             {set.isChecked ? (
               <View style={[ex.inputFieldWrap, ex.inputFieldWrapDone]}>
                 <Ionicons name="repeat-outline" size={14} color="#555560" />
@@ -210,8 +222,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
             )}
           </View>
 
-          <View style={ex.inputCol}>
-            <Text style={ex.inputFieldLabel}>KG</Text>
+          <View style={ex.inputFlat}>
             {set.isChecked ? (
               <View style={[ex.inputFieldWrap, ex.inputFieldWrapDone]}>
                 <Ionicons name="barbell-outline" size={14} color="#555560" />
@@ -289,11 +300,12 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
       }))
     }
     if (set.technique === 'MUSCLE_ROUND') {
-      const blks = cfg['execBlocks'] as { reps: null | number; weightKg: null | number; failed?: boolean }[] | undefined
+      const blks = cfg['execBlocks'] as { reps: null | number; failed?: boolean }[] | undefined
       const count = (cfg['blocks'] as number) ?? 6
-      return (blks ?? Array.from({ length: count }, () => ({ reps: null, weightKg: null, failed: undefined as boolean | undefined }))).map(b => ({
+      // weight is now shared (mainWeight / dropWeight) — blocks only track reps and failure flag
+      return (blks ?? Array.from({ length: count }, () => ({ reps: null, failed: false }))).map(b => ({
         reps: b.reps != null ? String(b.reps) : '',
-        weight: b.weightKg != null ? String(b.weightKg) : '',
+        weight: '',
         failed: b.failed,
       }))
     }
@@ -310,9 +322,11 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
 
   const [blocks, setBlocks] = useState<BlockData[]>(initBlocks)
   const [rpWeightFocused, setRpWeightFocused] = useState(false)
+  const [mrMainFocused, setMrMainFocused] = useState(false)
+  const [mrDropFocused, setMrDropFocused] = useState(false)
   const restSec = cfg ? ((cfg['restBetweenSeconds'] as number) ?? 0) : 0
 
-  // Shared load for techniques where all blocks use the same weight (CLUSTER, REST_PAUSE)
+  // Shared weight for REST_PAUSE / CLUSTER_SET; main weight for MUSCLE_ROUND
   const [mainWeight, setMainWeight] = useState<string>(() => {
     if (!cfg) return ''
     if (set.technique === 'CLUSTER_SET') {
@@ -325,14 +339,32 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
       const w = pts?.[0]?.weightKg
       return w != null ? String(w) : ''
     }
+    if (set.technique === 'MUSCLE_ROUND') {
+      // prefer saved execConfig value, fall back to set's weightKg (seeded from targetWeight)
+      const w = cfg['mainWeightKg'] as number | null | undefined
+      if (w != null) return String(w)
+      return set.weightKg != null && set.weightKg > 0 ? String(set.weightKg) : ''
+    }
     return ''
+  })
+
+  // Drop weight for MUSCLE_ROUND (applied from the failure block onward)
+  const [dropWeight, setDropWeight] = useState<string>(() => {
+    if (set.technique !== 'MUSCLE_ROUND' || !cfg) return ''
+    const w = cfg['dropWeightKg'] as number | null | undefined
+    return w != null ? String(w) : ''
   })
 
   function updateBlock(i: number, field: 'reps' | 'weight', val: string) {
     setBlocks(prev => prev.map((b, bi) => bi !== i ? b : { ...b, [field]: val }))
   }
   function toggleFailed(i: number) {
-    setBlocks(prev => prev.map((b, bi) => bi !== i ? b : { ...b, failed: !b.failed }))
+    if (set.technique === 'MUSCLE_ROUND') {
+      // Only one failure point allowed; toggle off if clicking the same block
+      setBlocks(prev => prev.map((b, bi) => ({ ...b, failed: bi === i ? !b.failed : false })))
+    } else {
+      setBlocks(prev => prev.map((b, bi) => bi !== i ? b : { ...b, failed: !b.failed }))
+    }
   }
 
   function buildCfg(bks: BlockData[]): TechniqueConfig | null {
@@ -341,8 +373,16 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
       return { ...cfg, execPoints: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(mainWeight) || null })) } as TechniqueConfig
     if (set.technique === 'CLUSTER_SET')
       return { ...cfg, execBlocks: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(mainWeight) || null })) } as TechniqueConfig
-    if (set.technique === 'MUSCLE_ROUND')
-      return { ...cfg, execBlocks: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(b.weight) || null, failed: !!b.failed })) } as TechniqueConfig
+    if (set.technique === 'MUSCLE_ROUND') {
+      const failedAt = bks.findIndex(b => !!b.failed)
+      return {
+        ...cfg,
+        execBlocks: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, failed: !!b.failed })),
+        mainWeightKg: parseFloat(mainWeight) || null,
+        dropWeightKg: parseFloat(dropWeight) || null,
+        failedAtBlock: failedAt >= 0 ? failedAt : null,
+      } as TechniqueConfig
+    }
     if (set.technique === 'DROP_SET')
       return { ...cfg, execDrops: bks.map(b => ({ weightKg: parseFloat(b.weight) || null, reps: parseInt(b.reps, 10) || null })) } as TechniqueConfig
     return null
@@ -360,12 +400,17 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
       }
     }
     if (set.technique === 'MUSCLE_ROUND') {
-      if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        showToast('Preencha as repetições de todos os blocos')
+      if (!mainWeight || parseFloat(mainWeight) <= 0) {
+        showToast('Informe o peso principal')
         return
       }
-      if (blocks.some(b => !b.weight || parseFloat(b.weight) <= 0)) {
-        showToast('Informe o peso de todos os blocos')
+      const hasFailed = blocks.some(b => !!b.failed)
+      if (hasFailed && (!dropWeight || parseFloat(dropWeight) <= 0)) {
+        showToast('Informe o peso de queda')
+        return
+      }
+      if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
+        showToast('Preencha as repetições de todos os blocos')
         return
       }
     }
@@ -380,13 +425,15 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
       }
     }
     const totalReps = blocks.reduce((sum, b) => sum + (parseInt(b.reps, 10) || 0), 0)
-    const maxWeight = (set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE')
+    const maxWeight = (set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE' || set.technique === 'MUSCLE_ROUND')
       ? (parseFloat(mainWeight) || 0)
       : blocks.reduce((mx, b) => Math.max(mx, parseFloat(b.weight) || 0), 0)
     onChecked(set.id, totalReps || null, maxWeight || null, buildCfg(blocks))
   }
 
   const showMainWeight = set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE'
+  const isMuscleRound = set.technique === 'MUSCLE_ROUND'
+  const failedAtBlock = isMuscleRound ? blocks.findIndex(b => !!b.failed) : -1
 
   const blockLabel = (i: number) => {
     if (set.technique === 'REST_PAUSE') return i === 0 ? 'Série Principal' : `Falha ${i}`
@@ -396,7 +443,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
 
   return (
     <View style={[ex.techSetWrap, { borderLeftColor: ts.borderColor }]}>
-      {/* Header row — badge, label, optional shared weight, remove, done */}
+      {/* Header row — badge, label, optional shared weight (RP/CS), done, remove */}
       <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
         <TouchableOpacity
           onPress={onTechniqueTap}
@@ -436,69 +483,131 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
         </TouchableOpacity>
       </View>
 
+      {/* MUSCLE_ROUND: two-weight row — principal + queda */}
+      {isMuscleRound && (
+        <View style={ex.mrWeightsRow}>
+          {set.isChecked ? (
+            <>
+              <View style={ex.mrWeightBox}>
+                <Text style={ex.mrWeightLabel}>PRINCIPAL</Text>
+                <Text style={[ex.rpWeightDone, { flex: 1, textAlign: 'center' }]}>{mainWeight || '—'}</Text>
+                <Text style={ex.mrWeightUnit}>kg</Text>
+              </View>
+              <View style={[ex.mrWeightBox, ex.mrWeightBoxDrop]}>
+                <Text style={[ex.mrWeightLabel, { color: '#A78BFA' }]}>↓ QUEDA</Text>
+                <Text style={[ex.rpWeightDone, { flex: 1, textAlign: 'center' }]}>{dropWeight || '—'}</Text>
+                <Text style={ex.mrWeightUnit}>kg</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={[ex.mrWeightBox, mrMainFocused && ex.mrWeightBoxFocused]}>
+                <Text style={ex.mrWeightLabel}>PRINCIPAL</Text>
+                <TextInput
+                  style={ex.mrWeightInput}
+                  value={mainWeight}
+                  onChangeText={setMainWeight}
+                  placeholder="—"
+                  placeholderTextColor="#3A3A4A"
+                  selectionColor="#4FC3F7"
+                  keyboardType="decimal-pad"
+                  onFocus={() => setMrMainFocused(true)}
+                  onBlur={() => setMrMainFocused(false)}
+                />
+                <Text style={ex.mrWeightUnit}>kg</Text>
+              </View>
+              <View style={[ex.mrWeightBox, ex.mrWeightBoxDrop, mrDropFocused && ex.mrWeightBoxFocused]}>
+                <Text style={[ex.mrWeightLabel, { color: '#A78BFA' }]}>↓ QUEDA</Text>
+                <TextInput
+                  style={ex.mrWeightInput}
+                  value={dropWeight}
+                  onChangeText={setDropWeight}
+                  placeholder="—"
+                  placeholderTextColor="#3A3A4A"
+                  selectionColor="#7B61FF"
+                  keyboardType="decimal-pad"
+                  onFocus={() => setMrDropFocused(true)}
+                  onBlur={() => setMrDropFocused(false)}
+                />
+                <Text style={ex.mrWeightUnit}>kg</Text>
+              </View>
+            </>
+          )}
+        </View>
+      )}
+
       {/* Technique blocks */}
       <View style={ex.techBlocks}>
-        {blocks.map((block, bi) => (
-          <View key={bi}>
-            {/* Drop set: arrow connector between drops */}
-            {bi > 0 && set.technique === 'DROP_SET' && (
-              <View style={ex.dropConnector}>
-                <View style={ex.dropConnectorLine} />
-                <Text style={ex.dropConnectorLabel}>↓ drop</Text>
-                <View style={ex.dropConnectorLine} />
-              </View>
-            )}
-            {/* Other techniques: rest separator */}
-            {bi > 0 && set.technique !== 'DROP_SET' && restSec > 0 && (
-              <View style={ex.blockSep}>
-                <View style={ex.blockSepLine} />
-                <Text style={ex.blockSepLabel}>{restSec}s</Text>
-                <View style={ex.blockSepLine} />
-              </View>
-            )}
-            {bi > 0 && set.technique !== 'DROP_SET' && restSec === 0 && (
-              <View style={ex.blockSepThin} />
-            )}
-            <View style={ex.blockRow}>
-              <Text style={ex.blockLabel}>{blockLabel(bi)}</Text>
-              <TextInput
-                style={ex.blockInput}
-                value={block.reps}
-                onChangeText={v => updateBlock(bi, 'reps', v)}
-                placeholder="reps"
-                placeholderTextColor="#3A3A4A"
-                selectionColor="#4FC3F7"
-                keyboardType="number-pad"
-              />
-              {/* DROP_SET and MUSCLE_ROUND have per-block weights; CLUSTER/REST_PAUSE use mainWeight */}
-              {(set.technique === 'DROP_SET' || set.technique === 'MUSCLE_ROUND') && (
-                <>
-                  <Text style={ex.blockX}>×</Text>
-                  <TextInput
-                    style={ex.blockInput}
-                    value={block.weight}
-                    onChangeText={v => updateBlock(bi, 'weight', v)}
-                    placeholder="kg"
-                    placeholderTextColor="#3A3A4A"
-                    selectionColor="#4FC3F7"
-                    keyboardType="decimal-pad"
-                  />
-                </>
+        {blocks.map((block, bi) => {
+          const isFailureBlock = isMuscleRound && block.failed
+          const isDropBlock = isMuscleRound && failedAtBlock >= 0 && bi > failedAtBlock
+          return (
+            <View key={bi}>
+              {/* Drop set: arrow connector between drops */}
+              {bi > 0 && set.technique === 'DROP_SET' && (
+                <View style={ex.dropConnector}>
+                  <View style={ex.dropConnectorLine} />
+                  <Text style={ex.dropConnectorLabel}>↓ drop</Text>
+                  <View style={ex.dropConnectorLine} />
+                </View>
               )}
-              {set.technique === 'MUSCLE_ROUND' && (
-                <TouchableOpacity
-                  style={[ex.failDot, block.failed && ex.failDotActive]}
-                  onPress={() => toggleFailed(bi)}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  {block.failed && <Ionicons name="close" size={10} color="#fff" />}
-                </TouchableOpacity>
+              {/* Other techniques: rest separator */}
+              {bi > 0 && set.technique !== 'DROP_SET' && restSec > 0 && (
+                <View style={ex.blockSep}>
+                  <View style={ex.blockSepLine} />
+                  <Text style={ex.blockSepLabel}>{restSec}s</Text>
+                  <View style={ex.blockSepLine} />
+                </View>
               )}
+              {bi > 0 && set.technique !== 'DROP_SET' && restSec === 0 && (
+                <View style={ex.blockSepThin} />
+              )}
+              <View style={[ex.blockRow, isFailureBlock && ex.blockRowFailed, isDropBlock && ex.blockRowDrop]}>
+                {isDropBlock && <Text style={ex.mrDropIndicator}>↓</Text>}
+                <Text style={[ex.blockLabel, isDropBlock && ex.blockLabelDrop]}>{blockLabel(bi)}</Text>
+                <TextInput
+                  style={ex.blockInput}
+                  value={block.reps}
+                  onChangeText={v => updateBlock(bi, 'reps', v)}
+                  placeholder={set.technique === 'CLUSTER_SET' && cfg?.['repsPerBlock'] ? String(cfg['repsPerBlock']) : 'reps'}
+                  placeholderTextColor="#3A3A4A"
+                  selectionColor="#4FC3F7"
+                  keyboardType="number-pad"
+                />
+                {/* DROP_SET has per-block weights; MUSCLE_ROUND uses shared main/drop weight */}
+                {set.technique === 'DROP_SET' && (
+                  <>
+                    <Text style={ex.blockX}>×</Text>
+                    <TextInput
+                      style={ex.blockInput}
+                      value={block.weight}
+                      onChangeText={v => updateBlock(bi, 'weight', v)}
+                      placeholder="kg"
+                      placeholderTextColor="#3A3A4A"
+                      selectionColor="#4FC3F7"
+                      keyboardType="decimal-pad"
+                    />
+                  </>
+                )}
+                {isMuscleRound && (
+                  <TouchableOpacity
+                    style={[ex.failDot, isFailureBlock && ex.failDotActive]}
+                    onPress={() => toggleFailed(bi)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    {isFailureBlock && <Ionicons name="close" size={10} color="#fff" />}
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-          </View>
-        ))}
-        {set.technique === 'MUSCLE_ROUND' && (
-          <Text style={ex.mrHint}>Marque o bloco da falha</Text>
+          )
+        })}
+        {isMuscleRound && (
+          <Text style={ex.mrHint}>
+            {failedAtBlock >= 0
+              ? `Falha no bloco ${failedAtBlock + 1} — blocos restantes com peso de queda`
+              : 'Marque o bloco onde ocorreu a falha'}
+          </Text>
         )}
       </View>
     </View>
@@ -1275,13 +1384,30 @@ const ex = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // Set row
+  // Labels row — sits above the input row, mirrors setRow structure for perfect alignment
+  setLabelsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+    paddingTop: 6,
+    paddingBottom: 3,
+  },
+  colLabel: {
+    flex: 1,
+    color: '#8A8A9A',
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+
+  // Input row — only interactive elements, no labels inflating height
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingBottom: 6,
     gap: 8,
-    borderRadius: 10,
     paddingHorizontal: 4,
   },
   setRowDone: {
@@ -1316,28 +1442,8 @@ const ex = StyleSheet.create({
     alignItems: 'stretch',
     gap: 8,
   },
-
-  // Input columns — equal flex, stretch children to full column width
-  inputCol: {
-    flex: 1,
-    alignItems: 'stretch',
-  },
-  inputColLabel: {
-    color: '#3A3A4A',
-    fontSize: 8,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-
-  // Label above each input field
-  inputFieldLabel: {
-    color: '#8A8A9A',
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
+  // Each input column — equal width, children fill width naturally
+  inputFlat: { flex: 1 },
 
   // Wrapper that holds icon + TextInput (or icon + done Text)
   inputFieldWrap: {
@@ -1496,6 +1602,12 @@ const ex = StyleSheet.create({
   },
   blockX: { color: '#3A3A4A', fontSize: 11 },
 
+  // Muscle round block variants
+  blockRowFailed: { backgroundColor: 'rgba(255,82,82,0.1)' },
+  blockRowDrop: { backgroundColor: 'rgba(123,97,255,0.1)' },
+  blockLabelDrop: { color: '#A78BFA' },
+  mrDropIndicator: { color: '#7B61FF', fontSize: 10, marginRight: -2 },
+
   // Muscle round fail indicator
   failDot: {
     width: 20,
@@ -1508,4 +1620,50 @@ const ex = StyleSheet.create({
   },
   failDotActive: { backgroundColor: '#FF5252', borderColor: '#FF5252' },
   mrHint: { color: '#555560', fontSize: 10, marginTop: 6, textAlign: 'center' },
+
+  // MUSCLE_ROUND two-weight row (principal + queda)
+  mrWeightsRow: {
+    flexDirection: 'row',
+    marginLeft: 38,
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  mrWeightBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E1E24',
+    borderWidth: 1,
+    borderColor: '#2A2A35',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 6,
+  },
+  mrWeightBoxDrop: {
+    backgroundColor: 'rgba(123,97,255,0.08)',
+    borderColor: 'rgba(123,97,255,0.3)',
+  },
+  mrWeightBoxFocused: {
+    borderColor: '#7B61FF',
+  },
+  mrWeightLabel: {
+    color: '#8A8A9A',
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  mrWeightInput: {
+    flex: 1,
+    color: '#F0F0F5',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    paddingVertical: 0,
+  },
+  mrWeightUnit: {
+    color: '#555560',
+    fontSize: 11,
+  },
 })
