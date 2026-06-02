@@ -1244,14 +1244,14 @@ const sr = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: '700' },
   repsInput: {
     flex: 1, height: 40,
-    backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 8, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
+    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
+    borderRadius: 10, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
   },
   timesText: { width: 14, textAlign: 'center', color: '#2A2A35', fontSize: 13 },
   weightInput: {
     flex: 1.2, height: 40,
-    backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 8, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
+    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
+    borderRadius: 10, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
   },
   kgText: { width: 18, color: '#555560', fontSize: 11 },
   volumeHint: { color: '#8A8A9A', fontSize: 10, marginTop: 3, marginLeft: 35 },
@@ -1259,8 +1259,8 @@ const sr = StyleSheet.create({
   // Used when reps are hidden (e.g. ClusterSet) — weight takes remaining space
   weightInputFull: {
     flex: 1, height: 40,
-    backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 8, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
+    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
+    borderRadius: 10, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
   },
 })
 

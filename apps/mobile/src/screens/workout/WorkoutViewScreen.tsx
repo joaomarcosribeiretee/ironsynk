@@ -57,11 +57,12 @@ function ReadonlySetRow({ set, index }: { set: PlannedSetRecord; index: number }
   const hasLeftBorder = set.setType !== 'WORKING' || set.technique !== 'NONE'
   const c = set.techniqueConfig as Record<string, unknown> | null
 
-  const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND'
+  const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND' || set.technique === 'REST_PAUSE'
   const hideWeight = set.technique === 'MUSCLE_ROUND'
 
   // sub-row counts from config
   const rpBlocks = set.technique === 'REST_PAUSE' ? Math.max(1, Number(c?.['failurePoints'] ?? 3)) : 0
+  const rpRest = set.technique === 'REST_PAUSE' ? Number(c?.['restBetweenSeconds'] ?? 20) : 0
   const csBlocks = set.technique === 'CLUSTER_SET' ? Math.max(2, Number(c?.['blocks'] ?? 4)) : 0
   const mrBlocks = set.technique === 'MUSCLE_ROUND' ? Math.max(4, Number(c?.['blocks'] ?? 6)) : 0
   const dsDrops  = set.technique === 'DROP_SET'     ? Math.max(1, Number(c?.['drops'] ?? 2)) : 0
@@ -83,14 +84,23 @@ function ReadonlySetRow({ set, index }: { set: PlannedSetRecord; index: number }
         <Text style={rv.volumeHint}>Não conta no volume</Text>
       )}
 
-      {/* REST_PAUSE sub-rows */}
+      {/* REST_PAUSE sub-rows: Série Principal + failure blocks */}
       {rpBlocks > 0 && (
         <View style={rv.subWrap}>
-          {Array.from({ length: rpBlocks }).map((_, i) => (
-            <View key={i} style={rv.subRow}>
-              <Text style={rv.subLabel}>Falha {i + 1}</Text>
-              <Text style={rv.subDash}>—</Text>
-            </View>
+          {Array.from({ length: rpBlocks + 1 }).map((_, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && (
+                <View style={rv.restSep}>
+                  <View style={rv.restSepLine} />
+                  <Text style={rv.restSepText}>{rpRest}s</Text>
+                  <View style={rv.restSepLine} />
+                </View>
+              )}
+              <View style={rv.subRow}>
+                <Text style={rv.subLabel}>{i === 0 ? 'Série Principal' : `Falha ${i}`}</Text>
+                <Text style={rv.subDash}>—</Text>
+              </View>
+            </React.Fragment>
           ))}
         </View>
       )}
@@ -338,10 +348,9 @@ const rv = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: '700' },
   dash: {
     flex: 1, height: 40,
-    backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 8, textAlign: 'center', textAlignVertical: 'center',
+    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
+    borderRadius: 10, textAlign: 'center', textAlignVertical: 'center',
     color: '#444455', fontSize: 16, fontWeight: '500',
-    paddingTop: 10,
   },
   timesText: { width: 14, textAlign: 'center', color: '#2A2A35', fontSize: 13 },
   kgText: { width: 18, color: '#555560', fontSize: 11 },
@@ -355,4 +364,7 @@ const rv = StyleSheet.create({
   },
   subLabel: { color: '#8A8A9A', fontSize: 12 },
   subDash: { color: '#444455', fontSize: 13 },
+  restSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
+  restSepLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  restSepText: { color: '#4A4A5A', fontSize: 10, marginHorizontal: 8 },
 })
