@@ -175,7 +175,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
       ex.setRowOuter,
       hasAccent && { borderLeftWidth: 2, borderLeftColor: ts.borderColor, paddingLeft: 6, marginLeft: 2 },
     ]}>
-      <View style={[ex.setRow, { alignItems: 'flex-end' }, set.isChecked && ex.setRowDone]}>
+      <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
         <TouchableOpacity
           onPress={onTechniqueTap}
           activeOpacity={0.7}
@@ -185,7 +185,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
         </TouchableOpacity>
 
         <View style={ex.inputsGroup}>
-          <View style={[ex.inputCol, { flex: 1 }]}>
+          <View style={ex.inputCol}>
             <Text style={ex.inputFieldLabel}>REPS</Text>
             {set.isChecked ? (
               <View style={[ex.inputFieldWrap, ex.inputFieldWrapDone]}>
@@ -210,7 +210,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
             )}
           </View>
 
-          <View style={[ex.inputCol, { flex: 1 }]}>
+          <View style={ex.inputCol}>
             <Text style={ex.inputFieldLabel}>KG</Text>
             {set.isChecked ? (
               <View style={[ex.inputFieldWrap, ex.inputFieldWrapDone]}>
@@ -1312,13 +1312,14 @@ const ex = StyleSheet.create({
   inputsGroup: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: 8,
   },
 
-  // Input columns — flex grows to fill inputsGroup
+  // Input columns — equal flex, stretch children to full column width
   inputCol: {
-    alignItems: 'center',
+    flex: 1,
+    alignItems: 'stretch',
   },
   inputColLabel: {
     color: '#3A3A4A',
@@ -1334,12 +1335,11 @@ const ex = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.5,
     marginBottom: 4,
-    alignSelf: 'flex-start',
+    textAlign: 'center',
   },
 
   // Wrapper that holds icon + TextInput (or icon + done Text)
   inputFieldWrap: {
-    alignSelf: 'stretch',
     height: 48,
     backgroundColor: '#1E1E24',
     borderWidth: 1,
