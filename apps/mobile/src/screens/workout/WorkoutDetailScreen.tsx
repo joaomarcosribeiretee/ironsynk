@@ -161,7 +161,7 @@ function RestPickerModal({ visible, initialSeconds, onConfirm, onClose }: {
 
 // ─── Technique expansion sub-rows ─────────────────────────────────────────────
 
-type BlockData = { blockReps: string[]; blockWeights: string[]; failedAtBlock: number | null }
+type BlockData = { blockReps: string[]; blockWeights: string[]; failedAtBlock: number | null; dropWeight?: string }
 
 function RestSeparator({ seconds }: { seconds: number }) {
   return (
@@ -235,56 +235,49 @@ function ClusterSetExpansion({ config, blockReps, onBlockRepsChange }: {
   )
 }
 
-function MuscleRoundExpansion({ config, blockReps, blockWeights, failedAtBlock, onBlockRepsChange, onBlockWeightChange, onFailedAtBlock }: {
+function MuscleRoundExpansion({ config, blockReps, dropWeight, onBlockRepsChange, onDropWeightChange }: {
   config: TechniqueConfig | null
   blockReps: string[]
-  blockWeights: string[]
-  failedAtBlock: number | null
+  dropWeight: string
   onBlockRepsChange: (idx: number, val: string) => void
-  onBlockWeightChange: (idx: number, val: string) => void
-  onFailedAtBlock: (idx: number) => void
+  onDropWeightChange: (val: string) => void
 }) {
   const c = config as Record<string, unknown> | null
   const blocks = Math.min(10, Math.max(4, Number(c?.['blocks'] ?? 6)))
   const rest = Number(c?.['restBetweenSeconds'] ?? 35)
   return (
     <View style={exp.wrap}>
-      {Array.from({ length: blocks }).map((_, i) => {
-        const isFailurePoint = failedAtBlock === i
-        return (
-          <React.Fragment key={i}>
-            {i > 0 && <RestSeparator seconds={rest} />}
-            <View style={[exp.block, exp.blockMr, isFailurePoint && exp.blockMrFailed]}>
-              <TextInput
-                style={exp.blockInputSmall}
-                value={blockReps[i] ?? ''}
-                onChangeText={val => onBlockRepsChange(i, val)}
-                placeholder="reps"
-                placeholderTextColor="#3A3A4A"
-                keyboardType="number-pad"
-              />
-              <Text style={exp.blockSep}>×</Text>
-              <TextInput
-                style={exp.blockInputSmall}
-                value={blockWeights[i] ?? ''}
-                onChangeText={val => onBlockWeightChange(i, val)}
-                placeholder="kg"
-                placeholderTextColor="#3A3A4A"
-                keyboardType="decimal-pad"
-              />
-              <TouchableOpacity
-                style={[exp.failCircle, isFailurePoint && exp.failCircleActive]}
-                onPress={() => onFailedAtBlock(i)}
-                activeOpacity={0.7}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              >
-                {isFailurePoint && <Ionicons name="close" size={11} color="#fff" />}
-              </TouchableOpacity>
-            </View>
-          </React.Fragment>
-        )
-      })}
-      <Text style={exp.mrHint}>Marque o bloco onde ocorreu a falha</Text>
+      {/* Drop weight row — used from the failure block onward */}
+      <View style={[exp.block, exp.blockMr, { marginBottom: 6 }]}>
+        <Text style={[exp.blockLabel, { color: '#A78BFA' }]}>↓ Peso de queda</Text>
+        <TextInput
+          style={exp.blockInputSmall}
+          value={dropWeight}
+          onChangeText={onDropWeightChange}
+          placeholder="kg"
+          placeholderTextColor="#3A3A4A"
+          keyboardType="decimal-pad"
+        />
+        <Text style={[exp.blockSep, { color: '#A78BFA' }]}>kg</Text>
+      </View>
+      {/* Blocks — reps only; weight is determined during execution */}
+      {Array.from({ length: blocks }).map((_, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <RestSeparator seconds={rest} />}
+          <View style={[exp.block, exp.blockMr]}>
+            <TextInput
+              style={exp.blockInput}
+              value={blockReps[i] ?? ''}
+              onChangeText={val => onBlockRepsChange(i, val)}
+              placeholder="reps"
+              placeholderTextColor="#3A3A4A"
+              keyboardType="number-pad"
+            />
+            <Text style={exp.blockLabelRight}>Bloco {i + 1}</Text>
+          </View>
+        </React.Fragment>
+      ))}
+      <Text style={exp.mrHint}>Marque o bloco da falha durante a execução</Text>
     </View>
   )
 }
@@ -340,7 +333,7 @@ function DropSetExpansion({ config, blockReps, blockWeights, onBlockRepsChange, 
 function SetRow({
   set, index, reps, weight, blockData, canDelete,
   onRepsChange, onWeightChange, onTechniqueTap, onDelete,
-  onBlockRepsChange, onBlockWeightChange, onFailedAtBlock,
+  onBlockRepsChange, onBlockWeightChange, onFailedAtBlock, onDropWeightChange,
 }: {
   set: PlannedSetRecord
   index: number
@@ -355,19 +348,20 @@ function SetRow({
   onBlockRepsChange: (idx: number, val: string) => void
   onBlockWeightChange: (idx: number, val: string) => void
   onFailedAtBlock: (idx: number) => void
+  onDropWeightChange?: (val: string) => void
 }) {
   const ts = getTechStyle(set.setType, set.technique)
   const badge = getBadge(set.setType, set.technique, index)
   const volumeHint = getVolumeHint(set.setType)
-  const hasLeftBorder = set.setType !== 'WORKING' || set.technique !== 'NONE'
-  // Per-block techniques control reps/weight inside blocks; REST_PAUSE reps live in expansion
+  const hasLeftBorder = set.setType === 'WARMUP' || set.setType === 'FEEDER' || set.technique === 'BACK_OFF'
+  // Per-block techniques control reps inside blocks; MUSCLE_ROUND main weight shown in main row
   const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND' || set.technique === 'REST_PAUSE'
-  const hideWeight = set.technique === 'MUSCLE_ROUND'
+  const hideWeight = false
 
   return (
-    <View style={[sr.wrap, { backgroundColor: ts.bgColor }, hasLeftBorder && { borderLeftWidth: 3, borderLeftColor: ts.borderColor }]}>
+    <View style={[sr.wrap, hasLeftBorder && { borderLeftWidth: 2, borderLeftColor: ts.borderColor }]}>
       <View style={sr.main}>
-        <TouchableOpacity style={[sr.badge, { backgroundColor: ts.badgeBg }]} onPress={onTechniqueTap} activeOpacity={0.7}>
+        <TouchableOpacity style={[sr.badge, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]} onPress={onTechniqueTap} activeOpacity={0.7}>
           <Text style={[sr.badgeText, { color: ts.badgeText }]}>{badge}</Text>
         </TouchableOpacity>
 
@@ -428,11 +422,9 @@ function SetRow({
         <MuscleRoundExpansion
           config={set.techniqueConfig}
           blockReps={blockData?.blockReps ?? []}
-          blockWeights={blockData?.blockWeights ?? []}
-          failedAtBlock={blockData?.failedAtBlock ?? null}
+          dropWeight={blockData?.dropWeight ?? ''}
           onBlockRepsChange={onBlockRepsChange}
-          onBlockWeightChange={onBlockWeightChange}
-          onFailedAtBlock={onFailedAtBlock}
+          onDropWeightChange={onDropWeightChange ?? (() => {})}
         />
       )}
       {set.setType === 'WORKING' && set.technique === 'DROP_SET' && (
@@ -570,8 +562,9 @@ export function WorkoutDetailScreen() {
           const b = Number(c?.['blocks'] ?? 6)
           newBlockData[s.id] = {
             blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(b).fill(''),
-            blockWeights: (c?.['blockWeights'] as string[] | undefined) ?? Array(b).fill(''),
-            failedAtBlock: c?.['failedAtBlock'] != null ? Number(c['failedAtBlock']) : null,
+            blockWeights: [],
+            failedAtBlock: null,
+            dropWeight: c?.['dropWeightKg'] != null ? String(c['dropWeightKg']) : '',
           }
         } else if (s.technique === 'DROP_SET') {
           const d = Number(c?.['drops'] ?? 2)
@@ -612,10 +605,12 @@ export function WorkoutDetailScreen() {
       case 'CLUSTER_SET':
         newConfig = { ...c, blockReps: data.blockReps }
         break
-      case 'MUSCLE_ROUND':
-        newConfig = { ...c, blockReps: data.blockReps, blockWeights: data.blockWeights }
-        if (data.failedAtBlock != null) newConfig['failedAtBlock'] = data.failedAtBlock
+      case 'MUSCLE_ROUND': {
+        newConfig = { ...c, blockReps: data.blockReps }
+        const dropN = data.dropWeight != null ? parseFloat(data.dropWeight) : NaN
+        if (!isNaN(dropN) && dropN > 0) newConfig['dropWeightKg'] = dropN
         break
+      }
       case 'DROP_SET':
         newConfig = { ...c, blockReps: data.blockReps, blockWeights: data.blockWeights }
         break
@@ -672,6 +667,14 @@ export function WorkoutDetailScreen() {
     scheduleBlockDataSave(setId, set.technique, next, set.techniqueConfig)
   }
 
+  function handleMrDropWeightChange(setId: string, val: string, set: PlannedSetRecord) {
+    const cur = localBlockDataRef.current[setId] ?? { blockReps: [], blockWeights: [], failedAtBlock: null }
+    const next = { ...cur, dropWeight: val }
+    localBlockDataRef.current[setId] = next
+    setLocalBlockData(prev => ({ ...prev, [setId]: next }))
+    scheduleBlockDataSave(setId, set.technique, next, set.techniqueConfig)
+  }
+
   async function handleAddSet(teId: string) {
     if (addingSet[teId]) return
     setAddingSet(prev => ({ ...prev, [teId]: true }))
@@ -722,7 +725,7 @@ export function WorkoutDetailScreen() {
         newEntry = { blockReps: Array(b).fill(''), blockWeights: [], failedAtBlock: null }
       } else if (sel.technique === 'MUSCLE_ROUND') {
         const b = Number(c?.['blocks'] ?? 6)
-        newEntry = { blockReps: Array(b).fill(''), blockWeights: Array(b).fill(''), failedAtBlock: null }
+        newEntry = { blockReps: Array(b).fill(''), blockWeights: [], failedAtBlock: null, dropWeight: '' }
       } else if (sel.technique === 'DROP_SET') {
         const d = Number(c?.['drops'] ?? 2)
         newEntry = { blockReps: Array(d).fill(''), blockWeights: Array(d).fill(''), failedAtBlock: null }
@@ -959,6 +962,7 @@ export function WorkoutDetailScreen() {
                           onBlockRepsChange={(idx, val) => handleBlockRepsChange(set.id, idx, val, set)}
                           onBlockWeightChange={(idx, val) => handleBlockWeightChange(set.id, idx, val, set)}
                           onFailedAtBlock={idx => handleFailedAtBlock(set.id, idx, set)}
+                          onDropWeightChange={val => handleMrDropWeightChange(set.id, val, set)}
                         />
                       )
                     })}
@@ -1236,12 +1240,13 @@ const sr = StyleSheet.create({
     borderRadius: 10, marginBottom: 6, overflow: 'hidden',
     paddingVertical: 8, paddingHorizontal: 10,
   },
-  main: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  main: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   badge: {
-    width: 28, height: 28, borderRadius: 7,
+    width: 34, height: 36, borderRadius: 8,
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    borderWidth: 1,
   },
-  badgeText: { fontSize: 11, fontWeight: '700' },
+  badgeText: { fontSize: 10, fontWeight: '700' },
   repsInput: {
     flex: 1, height: 40,
     backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
@@ -1254,7 +1259,7 @@ const sr = StyleSheet.create({
     borderRadius: 10, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
   },
   kgText: { width: 18, color: '#555560', fontSize: 11 },
-  volumeHint: { color: '#8A8A9A', fontSize: 10, marginTop: 3, marginLeft: 35 },
+  volumeHint: { color: '#8A8A9A', fontSize: 10, marginTop: 3, marginLeft: 42 },
   deleteBtn: { width: 22, height: 22, justifyContent: 'center', alignItems: 'center', marginLeft: 2 },
   // Used when reps are hidden (e.g. ClusterSet) — weight takes remaining space
   weightInputFull: {

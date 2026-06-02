@@ -54,24 +54,27 @@ const txEquip = (eq: string | null | undefined) => eq ? (EQUIP_PT[eq.toLowerCase
 function ReadonlySetRow({ set, index }: { set: PlannedSetRecord; index: number }) {
   const ts = getTechStyle(set.setType, set.technique)
   const badge = getBadge(set.setType, set.technique, index)
-  const hasLeftBorder = set.setType !== 'WORKING' || set.technique !== 'NONE'
+  const hasLeftBorder = set.setType === 'WARMUP' || set.setType === 'FEEDER' || set.technique === 'BACK_OFF'
   const c = set.techniqueConfig as Record<string, unknown> | null
 
   const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND' || set.technique === 'REST_PAUSE'
-  const hideWeight = set.technique === 'MUSCLE_ROUND'
+  // MUSCLE_ROUND now has a shared main weight shown in the main row
+  const hideWeight = false
 
-  // sub-row counts from config
+  // sub-row counts / config values
   const rpBlocks = set.technique === 'REST_PAUSE' ? Math.max(1, Number(c?.['failurePoints'] ?? 3)) : 0
   const rpRest = set.technique === 'REST_PAUSE' ? Number(c?.['restBetweenSeconds'] ?? 20) : 0
   const csBlocks = set.technique === 'CLUSTER_SET' ? Math.max(2, Number(c?.['blocks'] ?? 4)) : 0
   const mrBlocks = set.technique === 'MUSCLE_ROUND' ? Math.max(4, Number(c?.['blocks'] ?? 6)) : 0
+  const mrRest   = set.technique === 'MUSCLE_ROUND' ? Number(c?.['restBetweenSeconds'] ?? 35) : 0
+  const mrDropKg = set.technique === 'MUSCLE_ROUND' ? (c?.['dropWeightKg'] as number | null | undefined) ?? null : null
   const dsDrops  = set.technique === 'DROP_SET'     ? Math.max(1, Number(c?.['drops'] ?? 2)) : 0
 
   return (
-    <View style={[rv.wrap, { backgroundColor: ts.bgColor }, hasLeftBorder && { borderLeftWidth: 3, borderLeftColor: ts.borderColor }]}>
+    <View style={[rv.wrap, hasLeftBorder && { borderLeftWidth: 2, borderLeftColor: ts.borderColor }]}>
       {/* Main row */}
       <View style={rv.main}>
-        <View style={[rv.badge, { backgroundColor: ts.badgeBg }]}>
+        <View style={[rv.badge, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]}>
           <Text style={[rv.badgeText, { color: ts.badgeText }]}>{badge}</Text>
         </View>
         {!hideReps && <Text style={rv.dash}>—</Text>}
@@ -117,14 +120,29 @@ function ReadonlySetRow({ set, index }: { set: PlannedSetRecord; index: number }
         </View>
       )}
 
-      {/* MUSCLE_ROUND sub-rows */}
+      {/* MUSCLE_ROUND sub-rows: drop weight indicator + blocks */}
       {mrBlocks > 0 && (
         <View style={rv.subWrap}>
+          <View style={[rv.subRow, rv.mrDropRow]}>
+            <Text style={[rv.subLabel, rv.mrDropLabel]}>↓ Queda</Text>
+            <Text style={[rv.subDash, rv.mrDropDash]}>
+              {mrDropKg != null ? `${mrDropKg} kg` : '—'}
+            </Text>
+          </View>
           {Array.from({ length: mrBlocks }).map((_, i) => (
-            <View key={i} style={rv.subRow}>
-              <Text style={rv.subLabel}>Bloco {i + 1}</Text>
-              <Text style={rv.subDash}>— × —</Text>
-            </View>
+            <React.Fragment key={i}>
+              {i > 0 && (
+                <View style={rv.restSep}>
+                  <View style={rv.restSepLine} />
+                  <Text style={rv.restSepText}>{mrRest}s</Text>
+                  <View style={rv.restSepLine} />
+                </View>
+              )}
+              <View style={rv.subRow}>
+                <Text style={rv.subLabel}>Bloco {i + 1}</Text>
+                <Text style={rv.subDash}>—</Text>
+              </View>
+            </React.Fragment>
           ))}
         </View>
       )}
@@ -340,12 +358,13 @@ const rv = StyleSheet.create({
     borderRadius: 10, marginBottom: 6, overflow: 'hidden',
     paddingVertical: 8, paddingHorizontal: 10,
   },
-  main: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  main: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   badge: {
-    width: 28, height: 28, borderRadius: 7,
+    width: 34, height: 36, borderRadius: 8,
     justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+    borderWidth: 1,
   },
-  badgeText: { fontSize: 11, fontWeight: '700' },
+  badgeText: { fontSize: 10, fontWeight: '700' },
   dash: {
     flex: 1, height: 40,
     backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
@@ -354,9 +373,9 @@ const rv = StyleSheet.create({
   },
   timesText: { width: 14, textAlign: 'center', color: '#2A2A35', fontSize: 13 },
   kgText: { width: 18, color: '#555560', fontSize: 11 },
-  volumeHint: { color: '#8A8A9A', fontSize: 10, marginTop: 3, marginLeft: 35 },
+  volumeHint: { color: '#8A8A9A', fontSize: 10, marginTop: 3, marginLeft: 42 },
 
-  subWrap: { marginTop: 6, marginLeft: 35, gap: 4 },
+  subWrap: { marginTop: 6, marginLeft: 42, gap: 4 },
   subRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 6,
@@ -367,4 +386,7 @@ const rv = StyleSheet.create({
   restSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
   restSepLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
   restSepText: { color: '#4A4A5A', fontSize: 10, marginHorizontal: 8 },
+  mrDropRow: { backgroundColor: 'rgba(123,97,255,0.1)', marginBottom: 2 },
+  mrDropLabel: { color: '#A78BFA' },
+  mrDropDash: { color: '#A78BFA', fontWeight: '600' },
 })
