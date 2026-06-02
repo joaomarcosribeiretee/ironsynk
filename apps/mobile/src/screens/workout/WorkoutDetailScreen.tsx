@@ -179,11 +179,13 @@ function RestPauseExpansion({ config, blockReps, onBlockRepsChange }: {
   onBlockRepsChange: (idx: number, val: string) => void
 }) {
   const c = config as Record<string, unknown> | null
-  const failurePoints = Math.min(4, Math.max(2, Number(c?.['failurePoints'] ?? 3)))
+  const failurePoints = Math.min(5, Math.max(1, Number(c?.['failurePoints'] ?? 3)))
   const rest = Number(c?.['restBetweenSeconds'] ?? 20)
+  // index 0 = main set, 1..failurePoints = failure blocks
+  const totalBlocks = failurePoints + 1
   return (
     <View style={exp.wrap}>
-      {Array.from({ length: failurePoints }).map((_, i) => (
+      {Array.from({ length: totalBlocks }).map((_, i) => (
         <React.Fragment key={i}>
           {i > 0 && <RestSeparator seconds={rest} />}
           <View style={exp.block}>
@@ -195,7 +197,7 @@ function RestPauseExpansion({ config, blockReps, onBlockRepsChange }: {
               placeholderTextColor="#3A3A4A"
               keyboardType="number-pad"
             />
-            <Text style={exp.blockLabelRight}>Falha {i + 1}</Text>
+            <Text style={exp.blockLabelRight}>{i === 0 ? 'Série Principal' : `Falha ${i}`}</Text>
           </View>
         </React.Fragment>
       ))}
@@ -358,8 +360,8 @@ function SetRow({
   const badge = getBadge(set.setType, set.technique, index)
   const volumeHint = getVolumeHint(set.setType)
   const hasLeftBorder = set.setType !== 'WORKING' || set.technique !== 'NONE'
-  // Per-block techniques control reps/weight inside blocks
-  const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND'
+  // Per-block techniques control reps/weight inside blocks; REST_PAUSE reps live in expansion
+  const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND' || set.technique === 'REST_PAUSE'
   const hideWeight = set.technique === 'MUSCLE_ROUND'
 
   return (
@@ -553,7 +555,7 @@ export function WorkoutDetailScreen() {
         if (s.technique === 'REST_PAUSE') {
           const fp = Number(c?.['failurePoints'] ?? 3)
           newBlockData[s.id] = {
-            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(fp).fill(''),
+            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(fp + 1).fill(''),
             blockWeights: [],
             failedAtBlock: null,
           }
@@ -714,7 +716,7 @@ export function WorkoutDetailScreen() {
       let newEntry: BlockData | undefined
       if (sel.technique === 'REST_PAUSE') {
         const fp = Number(c?.['failurePoints'] ?? 3)
-        newEntry = { blockReps: Array(fp).fill(''), blockWeights: [], failedAtBlock: null }
+        newEntry = { blockReps: Array(fp + 1).fill(''), blockWeights: [], failedAtBlock: null }
       } else if (sel.technique === 'CLUSTER_SET') {
         const b = Number(c?.['blocks'] ?? 4)
         newEntry = { blockReps: Array(b).fill(''), blockWeights: [], failedAtBlock: null }
@@ -971,7 +973,7 @@ export function WorkoutDetailScreen() {
                         <ActivityIndicator size="small" color="#555560" />
                       ) : (
                         <>
-                          <Ionicons name="add-circle-outline" size={14} color="#555560" />
+                          <Ionicons name="add-circle-outline" size={14} color="#8A8A9A" />
                           <Text style={cardBodyStyles.addSetText}>Adicionar série</Text>
                         </>
                       )}

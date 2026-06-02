@@ -82,10 +82,12 @@ export const cardBodyStyles = StyleSheet.create({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     gap: 5,
-    height: 34,
-    marginTop: 4,
+    height: 36,
+    marginTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#252530',
   },
-  addSetText: { color: '#555560', fontSize: 12, fontWeight: '500' as const },
+  addSetText: { color: '#8A8A9A', fontSize: 12, fontWeight: '500' as const },
 })
 
 const cs = StyleSheet.create({

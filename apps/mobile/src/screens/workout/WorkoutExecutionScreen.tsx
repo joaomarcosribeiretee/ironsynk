@@ -31,16 +31,16 @@ type RouteProps = RouteProp<AppStackParamList, 'WorkoutExecution'>
 
 // ─── Tech style palette ───────────────────────────────────────────────────────
 
-const TECH_STYLE: Record<string, { borderColor: string; badgeBg: string; badgeText: string; badge: string }> = {
-  WARMUP:       { borderColor: '#FFB300', badgeBg: '#2A2200', badgeText: '#FFB300', badge: 'W' },
-  FEEDER:       { borderColor: '#4FC3F7', badgeBg: '#002233', badgeText: '#4FC3F7', badge: 'F' },
-  REST_PAUSE:   { borderColor: '#2979FF', badgeBg: '#001A3A', badgeText: '#4FC3F7', badge: 'RP' },
-  MUSCLE_ROUND: { borderColor: '#7B61FF', badgeBg: '#1A1030', badgeText: '#A78BFA', badge: 'MR' },
-  CLUSTER_SET:  { borderColor: '#00E676', badgeBg: '#002210', badgeText: '#00E676', badge: 'CS' },
-  BACK_OFF:     { borderColor: '#F97316', badgeBg: '#2A1400', badgeText: '#F97316', badge: 'BO' },
-  DROP_SET:     { borderColor: '#EF4444', badgeBg: '#2A0A0A', badgeText: '#EF4444', badge: 'DS' },
+const TECH_STYLE: Record<string, { borderColor: string; badgeBg: string; badgeText: string; badge: string; bgColor: string }> = {
+  WARMUP:       { borderColor: '#FFB300', badgeBg: '#2A2200', badgeText: '#FFB300', badge: 'W',  bgColor: '#1A1500' },
+  FEEDER:       { borderColor: '#4FC3F7', badgeBg: '#002233', badgeText: '#4FC3F7', badge: 'F',  bgColor: '#001A1A' },
+  REST_PAUSE:   { borderColor: '#2979FF', badgeBg: '#001A3A', badgeText: '#4FC3F7', badge: 'RP', bgColor: '#001428' },
+  MUSCLE_ROUND: { borderColor: '#7B61FF', badgeBg: '#1A1030', badgeText: '#A78BFA', badge: 'MR', bgColor: '#0D0A1E' },
+  CLUSTER_SET:  { borderColor: '#00E676', badgeBg: '#002210', badgeText: '#00E676', badge: 'CS', bgColor: '#001A0A' },
+  BACK_OFF:     { borderColor: '#F97316', badgeBg: '#2A1400', badgeText: '#F97316', badge: 'BO', bgColor: '#1A0C00' },
+  DROP_SET:     { borderColor: '#EF4444', badgeBg: '#2A0A0A', badgeText: '#EF4444', badge: 'DS', bgColor: '#1A0505' },
 }
-const DEFAULT_STYLE = { borderColor: '#252530', badgeBg: '#1E1E2C', badgeText: '#555560', badge: '' }
+const DEFAULT_STYLE = { borderColor: '#252530', badgeBg: '#1E1E2C', badgeText: '#555560', badge: '', bgColor: '#141418' }
 
 function getTechStyle(setType: SetType, technique: PlannedSetTechnique) {
   if (setType === 'WARMUP') return TECH_STYLE['WARMUP']!
@@ -154,7 +154,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
   const ts = getTechStyle(set.setType, set.technique)
   const badge = getBadge(set.setType, set.technique, index)
   const isNonVolume = set.setType === 'WARMUP' || set.setType === 'FEEDER'
-  const hasAccent = isNonVolume || set.technique === 'BACK_OFF'
+  const hasAccent = set.setType !== 'WORKING' || set.technique !== 'NONE'
   const flashAnim = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
@@ -173,6 +173,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
   return (
     <View style={[
       ex.setRowOuter,
+      { backgroundColor: ts.bgColor },
       hasAccent && { borderLeftWidth: 2, borderLeftColor: ts.borderColor, paddingLeft: 6, marginLeft: 2 },
     ]}>
       <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
@@ -271,7 +272,8 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
     if (!cfg) return [{ reps: '', weight: '' }]
     if (set.technique === 'REST_PAUSE') {
       const pts = cfg['execPoints'] as { reps: null | number; weightKg: null | number }[] | undefined
-      const count = (cfg['failurePoints'] as number) ?? 3
+      // +1 because index 0 is the main set; 1..failurePoints are failure blocks
+      const count = ((cfg['failurePoints'] as number) ?? 3) + 1
       // weight is shared via mainWeight — blocks only track reps
       return (pts ?? Array.from({ length: count }, () => ({ reps: null, weightKg: null }))).map(p => ({
         reps: p.reps != null ? String(p.reps) : '',
@@ -354,8 +356,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
         return
       }
       if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        const label = set.technique === 'REST_PAUSE' ? 'falhas' : 'blocos'
-        showToast(`Preencha as repetições de todos os ${label}`)
+        showToast('Preencha as repetições de todos os blocos')
         return
       }
     }
@@ -389,13 +390,13 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
   const showMainWeight = set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE'
 
   const blockLabel = (i: number) => {
-    if (set.technique === 'REST_PAUSE') return `Falha ${i + 1}`
+    if (set.technique === 'REST_PAUSE') return i === 0 ? 'Série Principal' : `Falha ${i}`
     if (set.technique === 'DROP_SET') return `Drop ${i + 1}`
     return `Bloco ${i + 1}`
   }
 
   return (
-    <View style={[ex.techSetWrap, { borderLeftColor: ts.borderColor }]}>
+    <View style={[ex.techSetWrap, { borderLeftColor: ts.borderColor, backgroundColor: ts.bgColor }]}>
       {/* Header row — badge, label, optional shared weight, remove, done */}
       <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
         <TouchableOpacity
@@ -594,7 +595,7 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
         })}
 
         <TouchableOpacity style={cardBodyStyles.addSetBtn} onPress={() => onAddSet(exercise.id)} activeOpacity={0.75}>
-          <Ionicons name="add-circle-outline" size={14} color="#555560" />
+          <Ionicons name="add-circle-outline" size={14} color="#8A8A9A" />
           <Text style={cardBodyStyles.addSetText}>Adicionar série</Text>
         </TouchableOpacity>
       </View>
@@ -1269,9 +1270,10 @@ const ex = StyleSheet.create({
     paddingBottom: 10,
   },
 
-  // Set row outer — wraps setRow; provides accent border for WARMUP/FEEDER/BACK_OFF
   setRowOuter: {
     marginBottom: 6,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
 
   // Set row
@@ -1341,10 +1343,10 @@ const ex = StyleSheet.create({
   // Wrapper that holds icon + TextInput (or icon + done Text)
   inputFieldWrap: {
     height: 48,
-    backgroundColor: '#1E1E24',
+    backgroundColor: 'rgba(0,0,0,0.25)',
     borderWidth: 1,
-    borderColor: '#2A2A35',
-    borderRadius: 12,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
@@ -1354,8 +1356,8 @@ const ex = StyleSheet.create({
     borderColor: '#2979FF',
   },
   inputFieldWrapDone: {
-    backgroundColor: '#141418',
-    borderColor: '#2A2A35',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderColor: 'rgba(255,255,255,0.04)',
   },
 
   // Inputs — live inside inputFieldWrap, no border/bg of their own
@@ -1406,9 +1408,9 @@ const ex = StyleSheet.create({
   rpWeightWrap: {
     width: 68,
     height: 48,
-    backgroundColor: '#1E1E24',
+    backgroundColor: 'rgba(0,0,0,0.25)',
     borderWidth: 1,
-    borderColor: '#2A2A35',
+    borderColor: 'rgba(255,255,255,0.07)',
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1448,6 +1450,8 @@ const ex = StyleSheet.create({
     marginLeft: 2,
     paddingLeft: 6,
     marginBottom: 4,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
   techSetNum: {
     color: '#555560',
