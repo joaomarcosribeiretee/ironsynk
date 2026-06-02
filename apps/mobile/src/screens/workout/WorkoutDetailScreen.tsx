@@ -968,10 +968,10 @@ export function WorkoutDetailScreen() {
                       activeOpacity={0.7}
                     >
                       {addingSet[te.id] ? (
-                        <ActivityIndicator size="small" color="#4FC3F7" />
+                        <ActivityIndicator size="small" color="#555560" />
                       ) : (
                         <>
-                          <Ionicons name="add-circle-outline" size={14} color="#4FC3F7" />
+                          <Ionicons name="add-circle-outline" size={14} color="#555560" />
                           <Text style={cardBodyStyles.addSetText}>Adicionar série</Text>
                         </>
                       )}

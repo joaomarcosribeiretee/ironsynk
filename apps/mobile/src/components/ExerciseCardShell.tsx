@@ -81,24 +81,20 @@ export const cardBodyStyles = StyleSheet.create({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    gap: 6,
-    height: 40,
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(41,121,255,0.25)',
-    borderRadius: 12,
-    backgroundColor: 'rgba(41,121,255,0.08)',
+    gap: 5,
+    height: 34,
+    marginTop: 4,
   },
-  addSetText: { color: '#4FC3F7', fontSize: 13, fontWeight: '500' as const },
+  addSetText: { color: '#555560', fontSize: 12, fontWeight: '500' as const },
 })
 
 const cs = StyleSheet.create({
   shadow: {
-    shadowColor: '#2979FF',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    elevation: 3,
     borderRadius: 16,
   },
   card: {

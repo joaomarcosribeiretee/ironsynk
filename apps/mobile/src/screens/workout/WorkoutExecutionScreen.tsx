@@ -594,7 +594,7 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
         })}
 
         <TouchableOpacity style={cardBodyStyles.addSetBtn} onPress={() => onAddSet(exercise.id)} activeOpacity={0.75}>
-          <Ionicons name="add-circle-outline" size={15} color="#4FC3F7" />
+          <Ionicons name="add-circle-outline" size={14} color="#555560" />
           <Text style={cardBodyStyles.addSetText}>Adicionar série</Text>
         </TouchableOpacity>
       </View>
@@ -905,7 +905,7 @@ export function WorkoutExecutionScreen() {
         ))}
 
         <TouchableOpacity style={s.addExBtn} onPress={() => setPickerOpen(true)} activeOpacity={0.7}>
-          <Ionicons name="add" size={18} color="#4FC3F7" />
+          <Ionicons name="add" size={18} color="#8A8A9A" />
           <Text style={s.addExText}>Adicionar exercício</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -1180,9 +1180,9 @@ const s = StyleSheet.create({
   addExBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, marginTop: 2, paddingVertical: 14,
-    borderWidth: 1.5, borderColor: 'rgba(79,195,247,0.2)', borderStyle: 'dashed', borderRadius: 14,
+    borderWidth: 1, borderColor: '#252530', borderStyle: 'dashed', borderRadius: 14,
   },
-  addExText: { color: '#4FC3F7', fontSize: 14, fontWeight: '500' },
+  addExText: { color: '#8A8A9A', fontSize: 14, fontWeight: '500' },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   modal: { backgroundColor: '#1E1E24', borderRadius: 20, width: '100%', padding: 24, gap: 10 },
