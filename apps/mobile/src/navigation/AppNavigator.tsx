@@ -15,6 +15,7 @@ import { WorkoutDetailScreen } from '../screens/workout/WorkoutDetailScreen'
 import { WorkoutViewScreen } from '../screens/workout/WorkoutViewScreen'
 import { WorkoutExecutionScreen } from '../screens/workout/WorkoutExecutionScreen'
 import { WorkoutPostScreen } from '../screens/workout/WorkoutPostScreen'
+import { WorkoutSessionScreen } from '../screens/workout/WorkoutSessionScreen'
 import type { ExecutionExerciseRecord } from '../lib/api'
 
 export type AppStackParamList = {
@@ -35,6 +36,7 @@ export type AppStackParamList = {
     totalVolume: number
     exercises: ExecutionExerciseRecord[]
   }
+  WorkoutSession: { sessionId: string }
   ExerciseDebug: undefined // DEBUG — remove before launch
   ExerciseCuration: undefined // DEBUG — remove before launch
   ExerciseAdmin: undefined // DEBUG — remove before launch
@@ -59,6 +61,7 @@ export function AppNavigator() {
       <Stack.Screen name="WorkoutView" component={WorkoutViewScreen} />
       <Stack.Screen name="WorkoutExecution" component={WorkoutExecutionScreen} />
       <Stack.Screen name="WorkoutPost" component={WorkoutPostScreen} />
+      <Stack.Screen name="WorkoutSession" component={WorkoutSessionScreen} />
       <Stack.Screen name="ExerciseDebug" component={ExerciseDebugScreen} />{/* DEBUG — remove before launch */}
       <Stack.Screen name="ExerciseCuration" component={ExerciseCurationScreen} />{/* DEBUG — remove before launch */}
       <Stack.Screen name="ExerciseAdmin" component={ExerciseAdminScreen} />{/* DEBUG — remove before launch */}
