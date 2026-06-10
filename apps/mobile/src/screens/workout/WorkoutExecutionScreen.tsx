@@ -21,6 +21,7 @@ import type {
   PlannedSetTechnique, SetType, TechniqueConfig,
 } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
+import { SetBadge, getTechStyle } from '../../components/SetBadge'
 
 const REST_TIMER_TIP_KEY = 'rest_timer_tip_seen_v1'
 
@@ -28,33 +29,6 @@ const REST_TIMER_TIP_KEY = 'rest_timer_tip_seen_v1'
 
 type NavProp = NativeStackNavigationProp<AppStackParamList>
 type RouteProps = RouteProp<AppStackParamList, 'WorkoutExecution'>
-
-// ─── Tech style palette ───────────────────────────────────────────────────────
-
-const TECH_STYLE: Record<string, { borderColor: string; badgeBg: string; badgeText: string; badge: string }> = {
-  WARMUP:       { borderColor: '#FFB300', badgeBg: '#2A2200', badgeText: '#FFB300', badge: 'W' },
-  FEEDER:       { borderColor: '#4FC3F7', badgeBg: '#002233', badgeText: '#4FC3F7', badge: 'F' },
-  REST_PAUSE:   { borderColor: '#2979FF', badgeBg: '#001A3A', badgeText: '#4FC3F7', badge: 'RP' },
-  MUSCLE_ROUND: { borderColor: '#7B61FF', badgeBg: '#1A1030', badgeText: '#A78BFA', badge: 'MR' },
-  CLUSTER_SET:  { borderColor: '#00E676', badgeBg: '#002210', badgeText: '#00E676', badge: 'CS' },
-  BACK_OFF:     { borderColor: '#F97316', badgeBg: '#2A1400', badgeText: '#F97316', badge: 'BO' },
-  DROP_SET:     { borderColor: '#EF4444', badgeBg: '#2A0A0A', badgeText: '#EF4444', badge: 'DS' },
-}
-const DEFAULT_STYLE = { borderColor: '#252530', badgeBg: '#1E1E2C', badgeText: '#555560', badge: '' }
-
-function getTechStyle(setType: SetType, technique: PlannedSetTechnique) {
-  if (setType === 'WARMUP') return TECH_STYLE['WARMUP']!
-  if (setType === 'FEEDER') return TECH_STYLE['FEEDER']!
-  if (technique !== 'NONE') return TECH_STYLE[technique] ?? DEFAULT_STYLE
-  return DEFAULT_STYLE
-}
-
-function getBadge(setType: SetType, technique: PlannedSetTechnique, idx: number) {
-  if (setType === 'WARMUP') return 'W'
-  if (setType === 'FEEDER') return 'F'
-  if (technique !== 'NONE') return TECH_STYLE[technique]?.badge ?? String(idx + 1)
-  return String(idx + 1)
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -134,6 +108,45 @@ function DoneButton({ checked, onPress, size = 38 }: { checked: boolean; onPress
   )
 }
 
+// ─── Technique summary helper ─────────────────────────────────────────────────
+
+function buildTechSummary(technique: PlannedSetTechnique, cfg: Record<string, unknown> | null): string | null {
+  if (!cfg) return null
+  switch (technique) {
+    case 'REST_PAUSE': {
+      const pts = (cfg['failurePoints'] as number) ?? 3
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 20
+      return `${pts} pontos de falha · ${rest}s descanso`
+    }
+    case 'CLUSTER_SET': {
+      const blks = (cfg['blocks'] as number) ?? 4
+      const rpp = cfg['repsPerBlock'] as number | undefined
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 15
+      return `${blks} blocos${rpp ? ` × ${rpp} reps` : ''} · ${rest}s`
+    }
+    case 'MUSCLE_ROUND': {
+      const blks = (cfg['blocks'] as number) ?? 6
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 35
+      return `${blks} blocos · ${rest}s descanso`
+    }
+    case 'DROP_SET': {
+      const dw = cfg['dropWeights'] as (number | null)[] | undefined
+      const drops = (cfg['drops'] as number) ?? 2
+      if (dw && dw.some(w => w != null)) {
+        return dw.map(w => (w != null ? `${w} kg` : '—')).join(' → ')
+      }
+      return `${drops + 1} drops`
+    }
+    case 'MYOREP': {
+      const aReps = (cfg['activationReps'] as number) ?? 15
+      const aRest = (cfg['activationRestSeconds'] as number) ?? 20
+      const rpp = (cfg['repsPerBlock'] as number) ?? 5
+      return `Ativ. ${aReps} reps · ${aRest}s · ${rpp}/bloco`
+    }
+    default: return null
+  }
+}
+
 // ─── Simple set row ───────────────────────────────────────────────────────────
 
 type SetRowProps = {
@@ -152,9 +165,9 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
   const [repsFocused, setRepsFocused] = useState(false)
   const [weightFocused, setWeightFocused] = useState(false)
   const ts = getTechStyle(set.setType, set.technique)
-  const badge = getBadge(set.setType, set.technique, index)
   const isNonVolume = set.setType === 'WARMUP' || set.setType === 'FEEDER'
   const hasAccent = isNonVolume || set.technique === 'BACK_OFF'
+  const hasProgress = !set.isChecked && (reps.length > 0 || weight.length > 0)
   const flashAnim = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
@@ -173,7 +186,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
   return (
     <View style={[
       ex.setRowOuter,
-      set.isChecked && ex.setRowDone,
+      set.isChecked ? ex.setRowDone : hasProgress ? ex.setRowInProgress : null,
       hasAccent && { borderLeftWidth: 2, borderLeftColor: ts.borderColor, paddingLeft: 6, marginLeft: 2 },
     ]}>
       {/* Labels row — mirrors setRow column layout so labels sit exactly above their inputs */}
@@ -189,13 +202,7 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
 
       {/* Input row — all items same height, alignItems center works correctly */}
       <View style={ex.setRow}>
-        <TouchableOpacity
-          onPress={onTechniqueTap}
-          activeOpacity={0.7}
-          style={[ex.badge, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]}
-        >
-          <Text style={[ex.badgeText, { color: ts.badgeText }]}>{badge}</Text>
-        </TouchableOpacity>
+        <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
 
         <View style={ex.inputsGroup}>
           <View style={ex.inputFlat}>
@@ -275,7 +282,6 @@ type BlockData = { reps: string; weight: string; failed?: boolean }
 
 function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSetRowProps) {
   const ts = getTechStyle(set.setType, set.technique)
-  const badge = getBadge(set.setType, set.technique, index)
   const cfg = set.techniqueConfig as Record<string, unknown> | null
 
   const initBlocks = useCallback((): BlockData[] => {
@@ -310,12 +316,33 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
       }))
     }
     if (set.technique === 'DROP_SET') {
-      const drops = cfg['execDrops'] as { weightKg: null | number; reps: null | number }[] | undefined
-      const count = (cfg['drops'] as number) ?? 2
-      return (drops ?? Array.from({ length: count }, () => ({ weightKg: null, reps: null }))).map(d => ({
-        reps: d.reps != null ? String(d.reps) : '',
-        weight: d.weightKg != null ? String(d.weightKg) : '',
-      }))
+      const drops = (cfg['drops'] as number) ?? 2
+      const hasStructured = 'dropWeights' in cfg
+      const totalBlocks = hasStructured ? drops + 1 : drops
+      const execDrops = cfg['execDrops'] as { weightKg: null | number; reps: null | number }[] | undefined
+      const dropWeights = cfg['dropWeights'] as (number | null)[] | undefined
+      return Array.from({ length: totalBlocks }, (_, i) => {
+        const execDrop = execDrops?.[i]
+        const plannedWeight = dropWeights?.[i] ?? execDrop?.weightKg
+        return {
+          reps: execDrop?.reps != null ? String(execDrop.reps) : '',
+          weight: plannedWeight != null ? String(plannedWeight) : '',
+        }
+      })
+    }
+    if (set.technique === 'MYOREP') {
+      const execActivation = cfg['execActivationReps'] as number | null | undefined
+      const execMinis = cfg['execMiniBlocks'] as { reps: null | number; failed?: boolean }[] | undefined
+      return [
+        // index 0 = activation set
+        { reps: execActivation != null ? String(execActivation) : '', weight: '' },
+        // index 1..N = completed mini-blocks (only existing ones — user adds more via button)
+        ...(execMinis ?? []).map(m => ({
+          reps: m.reps != null ? String(m.reps) : '',
+          weight: '',
+          failed: m.failed,
+        })),
+      ]
     }
     return [{ reps: '', weight: '' }]
   }, [])
@@ -345,6 +372,11 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
       if (w != null) return String(w)
       return set.weightKg != null && set.weightKg > 0 ? String(set.weightKg) : ''
     }
+    if (set.technique === 'MYOREP') {
+      const w = (cfg['mainWeightKg'] as number | null | undefined) ?? (cfg['weightKg'] as number | null | undefined)
+      if (w != null) return String(w)
+      return set.weightKg != null && set.weightKg > 0 ? String(set.weightKg) : ''
+    }
     return ''
   })
 
@@ -354,6 +386,14 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
     const w = cfg['dropWeightKg'] as number | null | undefined
     return w != null ? String(w) : ''
   })
+
+  const isMYO = set.technique === 'MYOREP'
+  const anyMYOFailed = isMYO && blocks.slice(1).some(b => !!b.failed)
+  const myoActivationRest = isMYO && cfg ? ((cfg['activationRestSeconds'] as number) ?? 20) : 0
+
+  function addMiniBlock() {
+    setBlocks(prev => [...prev, { reps: '', weight: '', failed: false }])
+  }
 
   function updateBlock(i: number, field: 'reps' | 'weight', val: string) {
     setBlocks(prev => prev.map((b, bi) => bi !== i ? b : { ...b, [field]: val }))
@@ -383,8 +423,27 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
         failedAtBlock: failedAt >= 0 ? failedAt : null,
       } as TechniqueConfig
     }
-    if (set.technique === 'DROP_SET')
-      return { ...cfg, execDrops: bks.map(b => ({ weightKg: parseFloat(b.weight) || null, reps: parseInt(b.reps, 10) || null })) } as TechniqueConfig
+    if (set.technique === 'DROP_SET') {
+      const dropWeights = cfg?.['dropWeights'] as (number | null)[] | undefined
+      return {
+        ...cfg,
+        execDrops: bks.map((b, i) => ({
+          weightKg: dropWeights?.[i] ?? (parseFloat(b.weight) || null),
+          reps: parseInt(b.reps, 10) || null,
+        })),
+      } as TechniqueConfig
+    }
+    if (set.technique === 'MYOREP') {
+      return {
+        ...cfg,
+        execActivationReps: parseInt(bks[0]?.reps ?? '', 10) || null,
+        execMiniBlocks: bks.slice(1).map(b => ({
+          reps: parseInt(b.reps, 10) || null,
+          failed: !!b.failed,
+        })),
+        mainWeightKg: parseFloat(mainWeight) || null,
+      } as TechniqueConfig
+    }
     return null
   }
 
@@ -419,39 +478,58 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
         showToast('Preencha as repetições de todos os drops')
         return
       }
-      if (blocks.some(b => !b.weight || parseFloat(b.weight) <= 0)) {
-        showToast('Informe o peso de todos os drops')
+    }
+    if (isMYO) {
+      if (!mainWeight || parseFloat(mainWeight) <= 0) {
+        showToast('Informe o peso antes de confirmar')
+        return
+      }
+      if (!blocks[0]?.reps || parseInt(blocks[0].reps, 10) <= 0) {
+        showToast('Preencha as reps da série de ativação')
+        return
+      }
+      if (blocks.slice(1).some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
+        showToast('Preencha as repetições de todos os mini-blocos')
         return
       }
     }
     const totalReps = blocks.reduce((sum, b) => sum + (parseInt(b.reps, 10) || 0), 0)
-    const maxWeight = (set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE' || set.technique === 'MUSCLE_ROUND')
-      ? (parseFloat(mainWeight) || 0)
-      : blocks.reduce((mx, b) => Math.max(mx, parseFloat(b.weight) || 0), 0)
+    let maxWeight: number
+    if (set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE' || set.technique === 'MUSCLE_ROUND' || isMYO) {
+      maxWeight = parseFloat(mainWeight) || 0
+    } else if (set.technique === 'DROP_SET') {
+      const dropWeights = cfg?.['dropWeights'] as (number | null)[] | undefined
+      maxWeight = dropWeights
+        ? Math.max(0, ...dropWeights.map(w => w ?? 0))
+        : blocks.reduce((mx, b) => Math.max(mx, parseFloat(b.weight) || 0), 0)
+    } else {
+      maxWeight = blocks.reduce((mx, b) => Math.max(mx, parseFloat(b.weight) || 0), 0)
+    }
     onChecked(set.id, totalReps || null, maxWeight || null, buildCfg(blocks))
   }
 
-  const showMainWeight = set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE'
+  const showMainWeight = set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE' || isMYO
   const isMuscleRound = set.technique === 'MUSCLE_ROUND'
   const failedAtBlock = isMuscleRound ? blocks.findIndex(b => !!b.failed) : -1
+  const hasAnyData = mainWeight.length > 0 || dropWeight.length > 0 || blocks.some(b => b.reps.length > 0)
+  const summaryText = buildTechSummary(set.technique, cfg)
 
   const blockLabel = (i: number) => {
     if (set.technique === 'REST_PAUSE') return i === 0 ? 'Série Principal' : `Falha ${i}`
-    if (set.technique === 'DROP_SET') return `Drop ${i + 1}`
+    if (set.technique === 'DROP_SET') return i === 0 ? 'Série Principal' : `Drop ${i}`
+    if (set.technique === 'MYOREP') return i === 0 ? 'Ativação' : `Mini ${i}`
     return `Bloco ${i + 1}`
   }
 
   return (
-    <View style={[ex.techSetWrap, { borderLeftColor: ts.borderColor }]}>
-      {/* Header row — badge, label, optional shared weight (RP/CS), done, remove */}
-      <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
-        <TouchableOpacity
-          onPress={onTechniqueTap}
-          activeOpacity={0.7}
-          style={[ex.badge, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]}
-        >
-          <Text style={[ex.badgeText, { color: ts.badgeText }]}>{badge}</Text>
-        </TouchableOpacity>
+    <View style={[
+      ex.techSetWrap,
+      { borderLeftColor: ts.borderColor },
+      set.isChecked ? ex.setRowDone : hasAnyData ? ex.setRowInProgress : null,
+    ]}>
+      {/* Header row — badge, set number, weight (RP/CS/MYO), done, remove */}
+      <View style={ex.setRow}>
+        <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
         <Text style={ex.techSetNum}>Série {index + 1}</Text>
         <View style={{ flex: 1 }} />
         {showMainWeight && (
@@ -482,6 +560,14 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
           <Ionicons name="close" size={13} color="#3A3A4A" />
         </TouchableOpacity>
       </View>
+
+      {/* Technique summary */}
+      {summaryText != null && (
+        <View style={ex.techSummaryRow}>
+          <View style={[ex.techSummaryAccent, { backgroundColor: ts.borderColor }]} />
+          <Text style={[ex.techSummaryText, { color: ts.badgeText }]} numberOfLines={1}>{summaryText}</Text>
+        </View>
+      )}
 
       {/* MUSCLE_ROUND: two-weight row — principal + queda */}
       {isMuscleRound && (
@@ -541,10 +627,11 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
         {blocks.map((block, bi) => {
           const isFailureBlock = isMuscleRound && block.failed
           const isDropBlock = isMuscleRound && failedAtBlock >= 0 && bi > failedAtBlock
+          const isDS = set.technique === 'DROP_SET'
           return (
             <View key={bi}>
-              {/* Drop set: arrow connector between drops */}
-              {bi > 0 && set.technique === 'DROP_SET' && (
+              {/* Drop set: connector between drops */}
+              {bi > 0 && isDS && (
                 <View style={ex.dropConnector}>
                   <View style={ex.dropConnectorLine} />
                   <Text style={ex.dropConnectorLabel}>↓ drop</Text>
@@ -552,43 +639,64 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
                 </View>
               )}
               {/* Other techniques: rest separator */}
-              {bi > 0 && set.technique !== 'DROP_SET' && restSec > 0 && (
+              {bi > 0 && !isDS && !isMYO && restSec > 0 && (
                 <View style={ex.blockSep}>
                   <View style={ex.blockSepLine} />
                   <Text style={ex.blockSepLabel}>{restSec}s</Text>
                   <View style={ex.blockSepLine} />
                 </View>
               )}
-              {bi > 0 && set.technique !== 'DROP_SET' && restSec === 0 && (
+              {bi > 0 && !isDS && !isMYO && restSec === 0 && (
                 <View style={ex.blockSepThin} />
               )}
-              <View style={[ex.blockRow, isFailureBlock && ex.blockRowFailed, isDropBlock && ex.blockRowDrop]}>
+              {/* MYOREP: activation rest before mini 1, block rest between minis */}
+              {bi > 0 && isMYO && (
+                <View style={ex.blockSep}>
+                  <View style={[ex.blockSepLine, { backgroundColor: 'rgba(244,114,182,0.25)' }]} />
+                  <Text style={[ex.blockSepLabel, { color: '#F472B6' }]}>
+                    {bi === 1 ? `${myoActivationRest}s` : `${restSec}s`}
+                  </Text>
+                  <View style={[ex.blockSepLine, { backgroundColor: 'rgba(244,114,182,0.25)' }]} />
+                </View>
+              )}
+              {/* Drop Set: weight header above the reps block */}
+              {isDS && (
+                <View style={ex.dsDropHeader}>
+                  <Text style={ex.dsDropHeaderWeight}>
+                    {block.weight ? `${block.weight} kg` : '—'}
+                  </Text>
+                </View>
+              )}
+              <View style={[
+                ex.blockRow,
+                isFailureBlock && ex.blockRowFailed,
+                isDropBlock && ex.blockRowDrop,
+                isDS && ex.blockRowDS,
+                isMYO && bi === 0 && ex.blockRowMYOActivation,
+                isMYO && bi > 0 && ex.blockRowMYOMini,
+                isMYO && bi > 0 && block.failed && ex.blockRowFailed,
+              ]}>
                 {isDropBlock && <Text style={ex.mrDropIndicator}>↓</Text>}
-                <Text style={[ex.blockLabel, isDropBlock && ex.blockLabelDrop]}>{blockLabel(bi)}</Text>
+                {isDS && <Text style={ex.dsBlockArrow}>→</Text>}
+                <Text style={[
+                  ex.blockLabel,
+                  isDropBlock && ex.blockLabelDrop,
+                  isMYO && bi === 0 && ex.blockLabelMYO,
+                ]}>{blockLabel(bi)}</Text>
                 <TextInput
                   style={ex.blockInput}
                   value={block.reps}
                   onChangeText={v => updateBlock(bi, 'reps', v)}
-                  placeholder={set.technique === 'CLUSTER_SET' && cfg?.['repsPerBlock'] ? String(cfg['repsPerBlock']) : 'reps'}
+                  placeholder={
+                    (set.technique === 'CLUSTER_SET' && cfg?.['repsPerBlock']) ? String(cfg['repsPerBlock']) :
+                    (isMYO && bi === 0 && cfg?.['activationReps']) ? String(cfg['activationReps']) :
+                    (isMYO && bi > 0 && cfg?.['repsPerBlock']) ? String(cfg['repsPerBlock']) :
+                    'reps'
+                  }
                   placeholderTextColor="#3A3A4A"
                   selectionColor="#4FC3F7"
                   keyboardType="number-pad"
                 />
-                {/* DROP_SET has per-block weights; MUSCLE_ROUND uses shared main/drop weight */}
-                {set.technique === 'DROP_SET' && (
-                  <>
-                    <Text style={ex.blockX}>×</Text>
-                    <TextInput
-                      style={ex.blockInput}
-                      value={block.weight}
-                      onChangeText={v => updateBlock(bi, 'weight', v)}
-                      placeholder="kg"
-                      placeholderTextColor="#3A3A4A"
-                      selectionColor="#4FC3F7"
-                      keyboardType="decimal-pad"
-                    />
-                  </>
-                )}
                 {isMuscleRound && (
                   <TouchableOpacity
                     style={[ex.failDot, isFailureBlock && ex.failDotActive]}
@@ -596,6 +704,16 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
                     {isFailureBlock && <Ionicons name="close" size={10} color="#fff" />}
+                  </TouchableOpacity>
+                )}
+                {/* MYOREP mini-block failure marker */}
+                {isMYO && bi > 0 && (
+                  <TouchableOpacity
+                    style={[ex.failDot, ex.failDotMYO, block.failed && ex.failDotMYOActive]}
+                    onPress={() => toggleFailed(bi)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    {block.failed && <Ionicons name="close" size={10} color="#fff" />}
                   </TouchableOpacity>
                 )}
               </View>
@@ -608,6 +726,15 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
               ? `Falha no bloco ${failedAtBlock + 1} — blocos restantes com peso de queda`
               : 'Marque o bloco onde ocorreu a falha'}
           </Text>
+        )}
+        {isMYO && !set.isChecked && !anyMYOFailed && (
+          <TouchableOpacity style={ex.myoAddBtn} onPress={addMiniBlock} activeOpacity={0.7}>
+            <Ionicons name="add-circle-outline" size={14} color="#F472B6" />
+            <Text style={ex.myoAddText}>Mini-bloco</Text>
+          </TouchableOpacity>
+        )}
+        {isMYO && anyMYOFailed && (
+          <Text style={ex.myoFailHint}>Falha marcada — confirme a série</Text>
         )}
       </View>
     </View>
@@ -628,7 +755,7 @@ type ExerciseCardProps = {
 
 // Techniques that need block-level expansion (mirrors WorkoutDetailScreen)
 function needsBlockExpansion(t: PlannedSetTechnique) {
-  return t === 'REST_PAUSE' || t === 'CLUSTER_SET' || t === 'MUSCLE_ROUND' || t === 'DROP_SET'
+  return t === 'REST_PAUSE' || t === 'CLUSTER_SET' || t === 'MUSCLE_ROUND' || t === 'DROP_SET' || t === 'MYOREP'
 }
 
 function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveExercise, onUpdateNotes, onTechniqueTap }: ExerciseCardProps) {
@@ -675,32 +802,30 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
       </View>
 
       <View style={ex.setsWrap}>
-        {exercise.sets.map((set, idx) => {
-          if (needsBlockExpansion(set.technique)) {
-            return (
+        {exercise.sets.map((set, idx) => (
+          <React.Fragment key={set.id}>
+            {idx > 0 && <View style={ex.setSeparator} />}
+            {needsBlockExpansion(set.technique) ? (
               <TechSetRow
-                key={set.id}
                 set={set}
                 index={idx}
                 onChecked={(id, reps, weight, cfg) => onSetChecked(exercise.id, id, reps, weight, cfg)}
                 onRemove={() => onRemoveSet(exercise.id, set.id)}
                 onTechniqueTap={() => onTechniqueTap(exercise.id, set.id)}
               />
-            )
-          }
-          return (
-            <SimpleSetRow
-              key={set.id}
-              set={set}
-              index={idx}
-              restSeconds={null}
-              onChecked={(id, reps, weight, cfg) => onSetChecked(exercise.id, id, reps, weight, cfg)}
-              onRestEnd={() => {}}
-              onRemove={() => onRemoveSet(exercise.id, set.id)}
-              onTechniqueTap={() => onTechniqueTap(exercise.id, set.id)}
-            />
-          )
-        })}
+            ) : (
+              <SimpleSetRow
+                set={set}
+                index={idx}
+                restSeconds={null}
+                onChecked={(id, reps, weight, cfg) => onSetChecked(exercise.id, id, reps, weight, cfg)}
+                onRestEnd={() => {}}
+                onRemove={() => onRemoveSet(exercise.id, set.id)}
+                onTechniqueTap={() => onTechniqueTap(exercise.id, set.id)}
+              />
+            )}
+          </React.Fragment>
+        ))}
 
         <TouchableOpacity style={cardBodyStyles.addSetBtn} onPress={() => onAddSet(exercise.id)} activeOpacity={0.75}>
           <Ionicons name="add-circle-outline" size={14} color="#8A8A9A" />
@@ -1374,24 +1499,32 @@ const ex = StyleSheet.create({
 
   setsWrap: {
     paddingHorizontal: 10,
-    paddingTop: 4,
-    paddingBottom: 10,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
 
   setRowOuter: {
-    marginBottom: 6,
     borderRadius: 10,
     overflow: 'hidden',
+    paddingBottom: 4,
   },
 
-  // Labels row — sits above the input row, mirrors setRow structure for perfect alignment
+  // Thin separator rendered between consecutive set rows
+  setSeparator: {
+    height: 1,
+    backgroundColor: '#1E1E2C',
+    marginHorizontal: 4,
+    marginVertical: 3,
+  },
+
+  // Labels row — sits above the input row, mirrors setRow column layout for alignment
   setLabelsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 4,
-    paddingTop: 6,
-    paddingBottom: 3,
+    paddingHorizontal: 6,
+    paddingTop: 10,
+    paddingBottom: 5,
   },
   colLabel: {
     flex: 1,
@@ -1406,33 +1539,23 @@ const ex = StyleSheet.create({
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 6,
+    paddingBottom: 8,
     gap: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
   },
   setRowDone: {
     backgroundColor: 'rgba(0,230,118,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(0,230,118,0.18)',
   },
+  setRowInProgress: {
+    backgroundColor: 'rgba(79,195,247,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(79,195,247,0.15)',
+  },
   completionFlash: {
     backgroundColor: '#00E676',
     borderRadius: 10,
-  },
-
-  // Badge
-  badge: {
-    width: 34,
-    height: 36,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    flexShrink: 0,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '700',
   },
 
   // Inputs group — fills space between badge and action buttons
@@ -1549,12 +1672,40 @@ const ex = StyleSheet.create({
   dropConnectorLine: { flex: 1, height: 1, backgroundColor: 'rgba(239,68,68,0.3)' },
   dropConnectorLabel: { color: '#EF4444', fontSize: 10, marginHorizontal: 6 },
 
+  // MYOREP — activation + mini-block styles
+  blockRowMYOActivation: { backgroundColor: 'rgba(244,114,182,0.18)' },
+  blockRowMYOMini: { backgroundColor: 'rgba(244,114,182,0.06)' },
+  blockLabelMYO: { color: '#F472B6' },
+  failDotMYO: {
+    borderColor: 'rgba(244,114,182,0.4)',
+  },
+  failDotMYOActive: { backgroundColor: '#F472B6', borderColor: '#F472B6' },
+  myoAddBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, marginTop: 6, paddingVertical: 7,
+    borderWidth: 1, borderColor: 'rgba(244,114,182,0.3)', borderStyle: 'dashed', borderRadius: 8,
+  },
+  myoAddText: { color: '#F472B6', fontSize: 12, fontWeight: '500' },
+  myoFailHint: { color: '#F472B6', fontSize: 10, marginTop: 6, textAlign: 'center', opacity: 0.7 },
+
+  // DROP_SET — weight header sits above its reps block
+  dsDropHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 8, paddingTop: 4, paddingBottom: 1,
+  },
+  dsDropHeaderWeight: {
+    color: '#EF4444', fontSize: 13, fontWeight: '600',
+  },
+  blockRowDS: { backgroundColor: 'rgba(239,68,68,0.08)' },
+  dsBlockArrow: { color: 'rgba(239,68,68,0.45)', fontSize: 10, marginRight: 2 },
+
   // Technique set
   techSetWrap: {
     borderLeftWidth: 2,
     marginLeft: 2,
     paddingLeft: 6,
-    marginBottom: 4,
+    paddingTop: 10,
+    paddingBottom: 6,
     borderRadius: 10,
     overflow: 'hidden',
   },
@@ -1563,11 +1714,11 @@ const ex = StyleSheet.create({
     fontSize: 12,
   },
 
-  // Block expansion — matches WorkoutDetailScreen exp.* style
+  // Block expansion — indented to align with content after badge (paddingLeft:6 + paddingHorizontal:6 + badge:34 + gap:8 = 54; marginLeft from techSetWrap content = 44 aligns just past badge edge)
   techBlocks: {
-    marginTop: 4,
-    marginLeft: 38,
-    marginBottom: 4,
+    marginTop: 6,
+    marginLeft: 44,
+    marginBottom: 6,
   },
   blockSep: {
     flexDirection: 'row',
@@ -1581,7 +1732,7 @@ const ex = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.2)',
     borderRadius: 6,
     paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingVertical: 7,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1621,13 +1772,13 @@ const ex = StyleSheet.create({
   failDotActive: { backgroundColor: '#FF5252', borderColor: '#FF5252' },
   mrHint: { color: '#555560', fontSize: 10, marginTop: 6, textAlign: 'center' },
 
-  // MUSCLE_ROUND two-weight row (principal + queda)
+  // MUSCLE_ROUND two-weight row (principal + queda) — same indent as techBlocks
   mrWeightsRow: {
     flexDirection: 'row',
-    marginLeft: 38,
+    marginLeft: 44,
     gap: 8,
-    marginTop: 4,
-    marginBottom: 4,
+    marginTop: 6,
+    marginBottom: 6,
   },
   mrWeightBox: {
     flex: 1,
@@ -1665,5 +1816,27 @@ const ex = StyleSheet.create({
   mrWeightUnit: {
     color: '#555560',
     fontSize: 11,
+  },
+
+  // Technique summary row — below header, above blocks
+  techSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingBottom: 6,
+  },
+  techSummaryAccent: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    opacity: 0.8,
+    flexShrink: 0,
+  },
+  techSummaryText: {
+    fontSize: 11,
+    letterSpacing: 0.2,
+    flex: 1,
+    opacity: 0.8,
   },
 })

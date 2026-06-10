@@ -12,35 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { api } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import type { PlannedSetRecord, SetType, PlannedSetTechnique } from '../../lib/api'
-
-// ─── Tech style (same palette as editor) ─────────────────────────────────────
-
-type TechStyle = { borderColor: string; bgColor: string; badge: string; badgeBg: string; badgeText: string }
-
-const TECH_STYLE: Record<string, TechStyle> = {
-  WARMUP:       { borderColor: '#FFB300', bgColor: '#1A1500', badge: 'W',  badgeBg: '#2A2200', badgeText: '#FFB300' },
-  FEEDER:       { borderColor: '#4FC3F7', bgColor: '#001A1A', badge: 'F',  badgeBg: '#002233', badgeText: '#4FC3F7' },
-  REST_PAUSE:   { borderColor: '#2979FF', bgColor: '#001428', badge: 'RP', badgeBg: '#001A3A', badgeText: '#4FC3F7' },
-  MUSCLE_ROUND: { borderColor: '#7B61FF', bgColor: '#0D0A1E', badge: 'MR', badgeBg: '#1A1030', badgeText: '#A78BFA' },
-  CLUSTER_SET:  { borderColor: '#00E676', bgColor: '#001A0A', badge: 'CS', badgeBg: '#002210', badgeText: '#00E676' },
-  BACK_OFF:     { borderColor: '#F97316', bgColor: '#1A0C00', badge: 'BO', badgeBg: '#2A1400', badgeText: '#F97316' },
-  DROP_SET:     { borderColor: '#EF4444', bgColor: '#1A0505', badge: 'DS', badgeBg: '#2A0A0A', badgeText: '#EF4444' },
-}
-const DEFAULT_STYLE: TechStyle = { borderColor: '#2A2A35', bgColor: '#141418', badge: '', badgeBg: '#2A2A35', badgeText: '#8A8A9A' }
-
-function getTechStyle(setType: SetType, technique: PlannedSetTechnique): TechStyle {
-  if (setType === 'WARMUP') return TECH_STYLE['WARMUP']!
-  if (setType === 'FEEDER') return TECH_STYLE['FEEDER']!
-  if (technique !== 'NONE') return TECH_STYLE[technique] ?? DEFAULT_STYLE
-  return DEFAULT_STYLE
-}
-
-function getBadge(setType: SetType, technique: PlannedSetTechnique, index: number): string {
-  if (setType === 'WARMUP') return 'W'
-  if (setType === 'FEEDER') return 'F'
-  if (technique !== 'NONE') return TECH_STYLE[technique]?.badge ?? String(index + 1)
-  return String(index + 1)
-}
+import { SetBadge, getTechStyle } from '../../components/SetBadge'
 
 const EQUIP_PT: Record<string, string> = {
   barbell: 'Barra', dumbbell: 'Haltere', cable: 'Cabo', machine: 'Máquina',
@@ -49,42 +21,97 @@ const EQUIP_PT: Record<string, string> = {
 }
 const txEquip = (eq: string | null | undefined) => eq ? (EQUIP_PT[eq.toLowerCase()] ?? eq) : '—'
 
+// ─── Technique summary helper ─────────────────────────────────────────────────
+
+function buildViewTechSummary(technique: PlannedSetTechnique, c: Record<string, unknown> | null): string | null {
+  if (!c) return null
+  switch (technique) {
+    case 'REST_PAUSE': {
+      const pts = (c['failurePoints'] as number) ?? 3
+      const rest = (c['restBetweenSeconds'] as number) ?? 20
+      return `${pts} pontos de falha · ${rest}s descanso`
+    }
+    case 'CLUSTER_SET': {
+      const blks = (c['blocks'] as number) ?? 4
+      const rpp = c['repsPerBlock'] as number | undefined
+      const rest = (c['restBetweenSeconds'] as number) ?? 15
+      return `${blks} blocos${rpp ? ` × ${rpp} reps` : ''} · ${rest}s`
+    }
+    case 'MUSCLE_ROUND': {
+      const blks = (c['blocks'] as number) ?? 6
+      const rest = (c['restBetweenSeconds'] as number) ?? 35
+      const dropKg = c['dropWeightKg'] as number | null | undefined
+      return `${blks} blocos · ${rest}s${dropKg != null ? ` · ↓ ${dropKg} kg` : ''}`
+    }
+    case 'DROP_SET': {
+      const dw = c['dropWeights'] as (number | null)[] | undefined
+      const drops = (c['drops'] as number) ?? 2
+      if (dw && dw.some(w => w != null)) {
+        return dw.map(w => (w != null ? `${w} kg` : '—')).join(' → ')
+      }
+      return `${drops + 1} drops`
+    }
+    case 'MYOREP': {
+      const aReps = (c['activationReps'] as number) ?? 5
+      const aRest = (c['activationRestSeconds'] as number) ?? 40
+      const rpp = (c['repsPerBlock'] as number) ?? 2
+      return `Ativ. ${aReps} reps · ${aRest}s · ${rpp}/bloco`
+    }
+    default: return null
+  }
+}
+
 // ─── Read-only set row ────────────────────────────────────────────────────────
 
 function ReadonlySetRow({ set, index }: { set: PlannedSetRecord; index: number }) {
   const ts = getTechStyle(set.setType, set.technique)
-  const badge = getBadge(set.setType, set.technique, index)
-  const hasLeftBorder = set.setType === 'WARMUP' || set.setType === 'FEEDER' || set.technique === 'BACK_OFF'
+  const hasLeftBorder = set.setType === 'WARMUP' || set.setType === 'FEEDER' || set.technique !== 'NONE'
   const c = set.techniqueConfig as Record<string, unknown> | null
+  const isAdvanced = set.technique === 'REST_PAUSE' || set.technique === 'CLUSTER_SET' ||
+    set.technique === 'MUSCLE_ROUND' || set.technique === 'DROP_SET' || set.technique === 'MYOREP'
+  const summaryText = isAdvanced ? buildViewTechSummary(set.technique, c) : null
 
-  const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND' || set.technique === 'REST_PAUSE'
-  // MUSCLE_ROUND now has a shared main weight shown in the main row
-  const hideWeight = false
+  const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND' || set.technique === 'REST_PAUSE' || set.technique === 'DROP_SET' || set.technique === 'MYOREP'
+  // DROP_SET weights live in the per-drop headers; MYOREP weight shown in main row like CLUSTER_SET
+  const hideWeight = set.technique === 'DROP_SET'
 
   // sub-row counts / config values
   const rpBlocks = set.technique === 'REST_PAUSE' ? Math.max(1, Number(c?.['failurePoints'] ?? 3)) : 0
   const rpRest = set.technique === 'REST_PAUSE' ? Number(c?.['restBetweenSeconds'] ?? 20) : 0
   const csBlocks = set.technique === 'CLUSTER_SET' ? Math.max(2, Number(c?.['blocks'] ?? 4)) : 0
+  const csRest   = set.technique === 'CLUSTER_SET' ? Number(c?.['restBetweenSeconds'] ?? 15) : 0
   const mrBlocks = set.technique === 'MUSCLE_ROUND' ? Math.max(4, Number(c?.['blocks'] ?? 6)) : 0
   const mrRest   = set.technique === 'MUSCLE_ROUND' ? Number(c?.['restBetweenSeconds'] ?? 35) : 0
   const mrDropKg = set.technique === 'MUSCLE_ROUND' ? (c?.['dropWeightKg'] as number | null | undefined) ?? null : null
   const dsDrops  = set.technique === 'DROP_SET'     ? Math.max(1, Number(c?.['drops'] ?? 2)) : 0
+  const dsWeights = dsDrops > 0 ? (c?.['dropWeights'] as (number | null)[] | undefined) ?? null : null
+  const isMYO = set.technique === 'MYOREP'
+  const myoActivationReps = isMYO ? Number(c?.['activationReps'] ?? 5) : 0
+  const myoActivationRest = isMYO ? Number(c?.['activationRestSeconds'] ?? 40) : 0
+  const myoRepsPerBlock   = isMYO ? Number(c?.['repsPerBlock'] ?? 2) : 0
+  const myoRestBetween    = isMYO ? Number(c?.['restBetweenSeconds'] ?? 20) : 0
 
   return (
     <View style={[rv.wrap, hasLeftBorder && { borderLeftWidth: 2, borderLeftColor: ts.borderColor }]}>
       {/* Main row */}
       <View style={rv.main}>
-        <View style={[rv.badge, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]}>
-          <Text style={[rv.badgeText, { color: ts.badgeText }]}>{badge}</Text>
-        </View>
+        <SetBadge setType={set.setType} technique={set.technique} index={index} />
         {!hideReps && <Text style={rv.dash}>—</Text>}
         {!hideReps && !hideWeight && <Text style={rv.timesText}>×</Text>}
         {!hideWeight && <Text style={rv.dash}>—</Text>}
         {!hideWeight && <Text style={rv.kgText}>kg</Text>}
+        {hideReps && hideWeight && <View style={{ flex: 1 }} />}
       </View>
 
       {(set.setType === 'WARMUP' || set.setType === 'FEEDER') && (
         <Text style={rv.volumeHint}>Não conta no volume</Text>
+      )}
+
+      {summaryText != null && (
+        <View style={rv.techSummaryRow}>
+          <View style={[rv.techSummaryAccent, { backgroundColor: ts.borderColor }]} />
+          <Text style={[rv.techSummaryText, { color: ts.badgeText }]} numberOfLines={1}>{summaryText}</Text>
+        </View>
       )}
 
       {/* REST_PAUSE sub-rows: Série Principal + failure blocks */}
@@ -108,14 +135,23 @@ function ReadonlySetRow({ set, index }: { set: PlannedSetRecord; index: number }
         </View>
       )}
 
-      {/* CLUSTER_SET sub-rows */}
+      {/* CLUSTER_SET sub-rows: blocks with rest separators */}
       {csBlocks > 0 && (
         <View style={rv.subWrap}>
           {Array.from({ length: csBlocks }).map((_, i) => (
-            <View key={i} style={rv.subRow}>
-              <Text style={rv.subLabel}>Bloco {i + 1}</Text>
-              <Text style={rv.subDash}>—</Text>
-            </View>
+            <React.Fragment key={i}>
+              {i > 0 && (
+                <View style={rv.restSep}>
+                  <View style={rv.restSepLine} />
+                  <Text style={rv.restSepText}>{csRest}s</Text>
+                  <View style={rv.restSepLine} />
+                </View>
+              )}
+              <View style={rv.subRow}>
+                <Text style={rv.subLabel}>Bloco {i + 1}</Text>
+                <Text style={rv.subDash}>—</Text>
+              </View>
+            </React.Fragment>
           ))}
         </View>
       )}
@@ -147,14 +183,57 @@ function ReadonlySetRow({ set, index }: { set: PlannedSetRecord; index: number }
         </View>
       )}
 
-      {/* DROP_SET sub-rows */}
+      {/* MYOREP sub-rows — activation + mini-block summary */}
+      {isMYO && (
+        <View style={rv.subWrap}>
+          <View style={[rv.subRow, rv.myoActivationRow]}>
+            <Text style={[rv.subLabel, rv.myoLabel]}>→ Ativação</Text>
+            <Text style={[rv.subDash, rv.myoValue]}>{myoActivationReps} reps</Text>
+          </View>
+          <View style={rv.restSep}>
+            <View style={[rv.restSepLine, { backgroundColor: 'rgba(244,114,182,0.2)' }]} />
+            <Text style={[rv.restSepText, { color: '#F472B6' }]}>{myoActivationRest}s</Text>
+            <View style={[rv.restSepLine, { backgroundColor: 'rgba(244,114,182,0.2)' }]} />
+          </View>
+          <View style={[rv.subRow, rv.myoMiniRow]}>
+            <Text style={[rv.subLabel, rv.myoLabel]}>→ Mini-blocos</Text>
+            <Text style={[rv.subDash, rv.myoValue]}>{myoRepsPerBlock} reps cada</Text>
+          </View>
+          <View style={rv.restSep}>
+            <View style={[rv.restSepLine, { backgroundColor: 'rgba(244,114,182,0.2)' }]} />
+            <Text style={[rv.restSepText, { color: '#F472B6' }]}>{myoRestBetween}s</Text>
+            <View style={[rv.restSepLine, { backgroundColor: 'rgba(244,114,182,0.2)' }]} />
+          </View>
+          <View style={rv.subRow}>
+            <Text style={[rv.subLabel, { fontStyle: 'italic', color: '#4A4A5A' }]}>Qtd. definida na execução</Text>
+          </View>
+        </View>
+      )}
+
+      {/* DROP_SET sub-rows — structured: weight header → reps block per drop */}
       {dsDrops > 0 && (
         <View style={rv.subWrap}>
-          {Array.from({ length: dsDrops }).map((_, i) => (
-            <View key={i} style={rv.subRow}>
-              <Text style={rv.subLabel}>Drop {i + 1}</Text>
-              <Text style={rv.subDash}>— × —</Text>
-            </View>
+          {Array.from({ length: dsDrops + 1 }).map((_, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && (
+                <View style={rv.dropSep}>
+                  <View style={[rv.restSepLine, { backgroundColor: 'rgba(239,68,68,0.2)' }]} />
+                  <Text style={rv.dropSepText}>↓ drop</Text>
+                  <View style={[rv.restSepLine, { backgroundColor: 'rgba(239,68,68,0.2)' }]} />
+                </View>
+              )}
+              <View style={rv.dropHeader}>
+                <Text style={rv.dropHeaderLabel}>{i === 0 ? 'Peso Principal' : `Peso Drop ${i}`}</Text>
+                <Text style={rv.dropHeaderWeight}>
+                  {dsWeights?.[i] != null ? `${dsWeights[i]} kg` : '— kg'}
+                </Text>
+              </View>
+              <View style={[rv.subRow, rv.dropBlock]}>
+                <Text style={rv.dropArrow}>→</Text>
+                <Text style={rv.subLabel}>{i === 0 ? 'Série Principal' : `Drop ${i}`}</Text>
+                <Text style={rv.subDash}>—</Text>
+              </View>
+            </React.Fragment>
           ))}
         </View>
       )}
@@ -267,9 +346,7 @@ export function WorkoutViewScreen() {
                         Array.from({ length: te.targetSets }).map((_, i) => (
                           <View key={i} style={rv.wrap}>
                             <View style={rv.main}>
-                              <View style={[rv.badge, { backgroundColor: '#2A2A35' }]}>
-                                <Text style={[rv.badgeText, { color: '#8A8A9A' }]}>{i + 1}</Text>
-                              </View>
+                              <SetBadge setType="WORKING" technique="NONE" index={i} />
                               <Text style={rv.dash}>—</Text>
                               <Text style={rv.timesText}>×</Text>
                               <Text style={rv.dash}>—</Text>
@@ -359,12 +436,6 @@ const rv = StyleSheet.create({
     paddingVertical: 8, paddingHorizontal: 10,
   },
   main: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  badge: {
-    width: 34, height: 36, borderRadius: 8,
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-    borderWidth: 1,
-  },
-  badgeText: { fontSize: 10, fontWeight: '700' },
   dash: {
     flex: 1, height: 40,
     backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
@@ -374,6 +445,28 @@ const rv = StyleSheet.create({
   timesText: { width: 14, textAlign: 'center', color: '#2A2A35', fontSize: 13 },
   kgText: { width: 18, color: '#555560', fontSize: 11 },
   volumeHint: { color: '#8A8A9A', fontSize: 10, marginTop: 3, marginLeft: 42 },
+
+  techSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 4,
+    paddingTop: 3,
+    paddingBottom: 4,
+  },
+  techSummaryAccent: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    opacity: 0.8,
+    flexShrink: 0,
+  },
+  techSummaryText: {
+    fontSize: 11,
+    letterSpacing: 0.2,
+    flex: 1,
+    opacity: 0.75,
+  },
 
   subWrap: { marginTop: 6, marginLeft: 42, gap: 4 },
   subRow: {
@@ -389,4 +482,22 @@ const rv = StyleSheet.create({
   mrDropRow: { backgroundColor: 'rgba(123,97,255,0.1)', marginBottom: 2 },
   mrDropLabel: { color: '#A78BFA' },
   mrDropDash: { color: '#A78BFA', fontWeight: '600' },
+
+  // MYOREP
+  myoActivationRow: { backgroundColor: 'rgba(244,114,182,0.12)' },
+  myoMiniRow: { backgroundColor: 'rgba(244,114,182,0.06)' },
+  myoLabel: { color: '#F472B6' },
+  myoValue: { color: '#F472B6', fontWeight: '500' },
+
+  // DROP_SET structured layout
+  dropSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
+  dropSepText: { color: '#EF4444', fontSize: 10, marginHorizontal: 8, opacity: 0.7 },
+  dropHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 10, paddingVertical: 3, gap: 6,
+  },
+  dropHeaderLabel: { color: '#EF4444', fontSize: 11, flex: 1 },
+  dropHeaderWeight: { color: '#EF4444', fontSize: 12, fontWeight: '500' },
+  dropBlock: { backgroundColor: 'rgba(239,68,68,0.08)' },
+  dropArrow: { color: 'rgba(239,68,68,0.45)', fontSize: 10, marginRight: 2 },
 })

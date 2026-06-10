@@ -20,44 +20,7 @@ import {
   PlannedSetRecord, SetType, PlannedSetTechnique, TechniqueConfig,
 } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
-
-// ─── Technique visual config ──────────────────────────────────────────────────
-
-type TechStyle = {
-  borderColor: string
-  bgColor: string
-  badge: string
-  badgeBg: string
-  badgeText: string
-}
-
-const TECH_STYLE: Record<string, TechStyle> = {
-  WARMUP:       { borderColor: '#FFB300', bgColor: '#1A1500', badge: 'W',  badgeBg: '#2A2200', badgeText: '#FFB300' },
-  FEEDER:       { borderColor: '#4FC3F7', bgColor: '#001A1A', badge: 'F',  badgeBg: '#002233', badgeText: '#4FC3F7' },
-  REST_PAUSE:   { borderColor: '#2979FF', bgColor: '#001428', badge: 'RP', badgeBg: '#001A3A', badgeText: '#4FC3F7' },
-  MUSCLE_ROUND: { borderColor: '#7B61FF', bgColor: '#0D0A1E', badge: 'MR', badgeBg: '#1A1030', badgeText: '#A78BFA' },
-  CLUSTER_SET:  { borderColor: '#00E676', bgColor: '#001A0A', badge: 'CS', badgeBg: '#002210', badgeText: '#00E676' },
-  BACK_OFF:     { borderColor: '#F97316', bgColor: '#1A0C00', badge: 'BO', badgeBg: '#2A1400', badgeText: '#F97316' },
-  DROP_SET:     { borderColor: '#EF4444', bgColor: '#1A0505', badge: 'DS', badgeBg: '#2A0A0A', badgeText: '#EF4444' },
-}
-
-const DEFAULT_TECH_STYLE: TechStyle = {
-  borderColor: '#2A2A35', bgColor: '#141418', badge: '', badgeBg: '#2A2A35', badgeText: '#8A8A9A',
-}
-
-function getTechStyle(setType: SetType, technique: PlannedSetTechnique): TechStyle {
-  if (setType === 'WARMUP') return TECH_STYLE['WARMUP']!
-  if (setType === 'FEEDER') return TECH_STYLE['FEEDER']!
-  if (technique !== 'NONE') return TECH_STYLE[technique] ?? DEFAULT_TECH_STYLE
-  return DEFAULT_TECH_STYLE
-}
-
-function getBadge(setType: SetType, technique: PlannedSetTechnique, index: number): string {
-  if (setType === 'WARMUP') return 'W'
-  if (setType === 'FEEDER') return 'F'
-  if (technique !== 'NONE') return TECH_STYLE[technique]?.badge ?? String(index + 1)
-  return String(index + 1)
-}
+import { SetBadge, getTechStyle } from '../../components/SetBadge'
 
 function getVolumeHint(setType: SetType): string | null {
   if (setType === 'WARMUP') return 'Não conta no volume'
@@ -211,23 +174,24 @@ function ClusterSetExpansion({ config, blockReps, onBlockRepsChange }: {
   onBlockRepsChange: (idx: number, val: string) => void
 }) {
   const c = config as Record<string, unknown> | null
-  const blocks = Math.min(6, Math.max(2, Number(c?.['blocks'] ?? 4)))
+  const blocks = Math.min(10, Math.max(2, Number(c?.['blocks'] ?? 4)))
   const rest = Number(c?.['restBetweenSeconds'] ?? 15)
+  const repsPerBlock = c?.['repsPerBlock'] != null ? String(c['repsPerBlock']) : ''
   return (
     <View style={exp.wrap}>
       {Array.from({ length: blocks }).map((_, i) => (
         <React.Fragment key={i}>
           {i > 0 && <RestSeparator seconds={rest} />}
           <View style={exp.block}>
-            <Text style={exp.blockLabel}>Bloco {i + 1}</Text>
             <TextInput
               style={exp.blockInput}
               value={blockReps[i] ?? ''}
               onChangeText={val => onBlockRepsChange(i, val)}
-              placeholder="reps"
+              placeholder={repsPerBlock || 'reps'}
               placeholderTextColor="#3A3A4A"
               keyboardType="number-pad"
             />
+            <Text style={exp.blockLabelRight}>Bloco {i + 1}</Text>
           </View>
         </React.Fragment>
       ))}
@@ -291,28 +255,35 @@ function DropSetExpansion({ config, blockReps, blockWeights, onBlockRepsChange, 
 }) {
   const c = config as Record<string, unknown> | null
   const drops = Math.min(10, Math.max(1, Number(c?.['drops'] ?? 2)))
+  const totalBlocks = drops + 1
   return (
     <View style={exp.wrap}>
-      {Array.from({ length: drops }).map((_, i) => (
+      {Array.from({ length: totalBlocks }).map((_, i) => (
         <React.Fragment key={i}>
           {i > 0 && (
             <View style={exp.sep}>
-              <View style={exp.sepLine} />
+              <View style={[exp.sepLine, { backgroundColor: 'rgba(239,68,68,0.15)' }]} />
               <Text style={[exp.sepText, exp.dropSepText]}>↓ drop</Text>
-              <View style={exp.sepLine} />
+              <View style={[exp.sepLine, { backgroundColor: 'rgba(239,68,68,0.15)' }]} />
             </View>
           )}
-          <View style={[exp.block, exp.blockDrop]}>
-            <Text style={exp.blockLabel}>Drop {i + 1}</Text>
+          {/* Weight header row */}
+          <View style={exp.dsWeightRow}>
+            <Text style={exp.dsWeightLabel}>{i === 0 ? 'Peso Principal' : `Peso Drop ${i}`}</Text>
             <TextInput
-              style={exp.blockInputSmall}
+              style={exp.dsWeightInput}
               value={blockWeights[i] ?? ''}
               onChangeText={val => onBlockWeightChange(i, val)}
-              placeholder="kg"
+              placeholder="—"
               placeholderTextColor="#3A3A4A"
               keyboardType="decimal-pad"
             />
-            <Text style={exp.blockSep}>×</Text>
+            <Text style={exp.dsWeightUnit}>kg</Text>
+          </View>
+          {/* Reps block */}
+          <View style={[exp.block, exp.blockDrop]}>
+            <Text style={exp.dsArrow}>→</Text>
+            <Text style={exp.blockLabel}>{i === 0 ? 'Série Principal' : `Drop ${i}`}</Text>
             <TextInput
               style={exp.blockInputSmall}
               value={blockReps[i] ?? ''}
@@ -321,11 +292,77 @@ function DropSetExpansion({ config, blockReps, blockWeights, onBlockRepsChange, 
               placeholderTextColor="#3A3A4A"
               keyboardType="number-pad"
             />
+            <Text style={[exp.blockSep, { color: '#555560', fontSize: 11 }]}>reps</Text>
           </View>
         </React.Fragment>
       ))}
+      <Text style={exp.dsHint}>Conta como UMA série no volume total</Text>
     </View>
   )
+}
+
+function MyoRepExpansion({ config }: { config: TechniqueConfig | null }) {
+  const c = config as Record<string, unknown> | null
+  const activationReps = Number(c?.['activationReps'] ?? 5)
+  const activationRest = Number(c?.['activationRestSeconds'] ?? 40)
+  const repsPerBlock = Number(c?.['repsPerBlock'] ?? 2)
+  const restBetween = Number(c?.['restBetweenSeconds'] ?? 20)
+  return (
+    <View style={exp.wrap}>
+      <View style={exp.myoRow}>
+        <Text style={exp.myoRowLabel}>→ Ativação</Text>
+        <Text style={exp.myoRowValue}>{activationReps} reps</Text>
+      </View>
+      <RestSeparator seconds={activationRest} />
+      <View style={exp.myoRow}>
+        <Text style={exp.myoRowLabel}>→ Mini-blocos</Text>
+        <Text style={exp.myoRowValue}>{repsPerBlock} reps cada</Text>
+      </View>
+      <RestSeparator seconds={restBetween} />
+      <Text style={exp.myoHint}>Qtd. de mini-blocos definida durante a execução</Text>
+      <Text style={exp.dsHint}>Conta como UMA série no volume total</Text>
+    </View>
+  )
+}
+
+// ─── Technique summary helper ─────────────────────────────────────────────────
+
+function buildDetailTechSummary(technique: PlannedSetTechnique, cfg: Record<string, unknown> | null): string | null {
+  if (!cfg) return null
+  switch (technique) {
+    case 'REST_PAUSE': {
+      const pts = (cfg['failurePoints'] as number) ?? 3
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 20
+      return `${pts} pontos de falha · ${rest}s descanso`
+    }
+    case 'CLUSTER_SET': {
+      const blks = (cfg['blocks'] as number) ?? 4
+      const rpp = cfg['repsPerBlock'] as number | undefined
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 15
+      return `${blks} blocos${rpp ? ` × ${rpp} reps` : ''} · ${rest}s`
+    }
+    case 'MUSCLE_ROUND': {
+      const blks = (cfg['blocks'] as number) ?? 6
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 35
+      const dropKg = cfg['dropWeightKg'] as number | null | undefined
+      return `${blks} blocos · ${rest}s${dropKg != null ? ` · ↓ ${dropKg} kg` : ''}`
+    }
+    case 'DROP_SET': {
+      const dw = cfg['dropWeights'] as (number | null)[] | undefined
+      const drops = (cfg['drops'] as number) ?? 2
+      if (dw && dw.some(w => w != null)) {
+        return dw.map(w => (w != null ? `${w} kg` : '—')).join(' → ')
+      }
+      return `${drops + 1} drops`
+    }
+    case 'MYOREP': {
+      const aReps = (cfg['activationReps'] as number) ?? 15
+      const aRest = (cfg['activationRestSeconds'] as number) ?? 20
+      const rpp = (cfg['repsPerBlock'] as number) ?? 5
+      return `Ativ. ${aReps} reps · ${aRest}s · ${rpp}/bloco`
+    }
+    default: return null
+  }
 }
 
 // ─── Set row ──────────────────────────────────────────────────────────────────
@@ -351,19 +388,21 @@ function SetRow({
   onDropWeightChange?: (val: string) => void
 }) {
   const ts = getTechStyle(set.setType, set.technique)
-  const badge = getBadge(set.setType, set.technique, index)
   const volumeHint = getVolumeHint(set.setType)
-  const hasLeftBorder = set.setType === 'WARMUP' || set.setType === 'FEEDER' || set.technique === 'BACK_OFF'
-  // Per-block techniques control reps inside blocks; MUSCLE_ROUND main weight shown in main row
-  const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND' || set.technique === 'REST_PAUSE'
-  const hideWeight = false
+  const hasLeftBorder = set.setType === 'WARMUP' || set.setType === 'FEEDER' || set.technique !== 'NONE'
+  // Per-block techniques control reps inside blocks; MUSCLE_ROUND/MYOREP main weight shown in main row
+  const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND' || set.technique === 'REST_PAUSE' || set.technique === 'DROP_SET' || set.technique === 'MYOREP'
+  const hideWeight = set.technique === 'DROP_SET'
+  const isAdvanced = set.technique === 'REST_PAUSE' || set.technique === 'CLUSTER_SET' ||
+    set.technique === 'MUSCLE_ROUND' || set.technique === 'DROP_SET' || set.technique === 'MYOREP'
+  const summaryText = isAdvanced
+    ? buildDetailTechSummary(set.technique, set.techniqueConfig as Record<string, unknown> | null)
+    : null
 
   return (
     <View style={[sr.wrap, hasLeftBorder && { borderLeftWidth: 2, borderLeftColor: ts.borderColor }]}>
       <View style={sr.main}>
-        <TouchableOpacity style={[sr.badge, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]} onPress={onTechniqueTap} activeOpacity={0.7}>
-          <Text style={[sr.badgeText, { color: ts.badgeText }]}>{badge}</Text>
-        </TouchableOpacity>
+        <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
 
         {!hideReps && (
           <TextInput
@@ -388,6 +427,7 @@ function SetRow({
           />
         )}
         {!hideWeight && <Text style={sr.kgText}>kg</Text>}
+        {hideReps && hideWeight && <View style={{ flex: 1 }} />}
 
         {canDelete && (
           <TouchableOpacity
@@ -402,6 +442,13 @@ function SetRow({
 
       {volumeHint && (
         <Text style={sr.volumeHint}>{volumeHint}</Text>
+      )}
+
+      {summaryText != null && (
+        <View style={sr.techSummaryRow}>
+          <View style={[sr.techSummaryAccent, { backgroundColor: ts.borderColor }]} />
+          <Text style={[sr.techSummaryText, { color: ts.badgeText }]} numberOfLines={1}>{summaryText}</Text>
+        </View>
       )}
 
       {set.setType === 'WORKING' && set.technique === 'REST_PAUSE' && (
@@ -435,6 +482,9 @@ function SetRow({
           onBlockRepsChange={onBlockRepsChange}
           onBlockWeightChange={onBlockWeightChange}
         />
+      )}
+      {set.setType === 'WORKING' && set.technique === 'MYOREP' && (
+        <MyoRepExpansion config={set.techniqueConfig} />
       )}
     </View>
   )
@@ -553,8 +603,9 @@ export function WorkoutDetailScreen() {
           }
         } else if (s.technique === 'CLUSTER_SET') {
           const b = Number(c?.['blocks'] ?? 4)
+          const rpp = c?.['repsPerBlock'] != null ? String(c['repsPerBlock']) : ''
           newBlockData[s.id] = {
-            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(b).fill(''),
+            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(b).fill(rpp),
             blockWeights: [],
             failedAtBlock: null,
           }
@@ -568,9 +619,15 @@ export function WorkoutDetailScreen() {
           }
         } else if (s.technique === 'DROP_SET') {
           const d = Number(c?.['drops'] ?? 2)
+          const totalBlocks = d + 1
+          const storedWeights = c?.['dropWeights'] as (number | null)[] | undefined
+          const legacyWeights = c?.['blockWeights'] as string[] | undefined
           newBlockData[s.id] = {
-            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(d).fill(''),
-            blockWeights: (c?.['blockWeights'] as string[] | undefined) ?? Array(d).fill(''),
+            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(totalBlocks).fill(''),
+            blockWeights: Array(totalBlocks).fill('').map((_, i) =>
+              storedWeights?.[i] != null ? String(storedWeights[i]) :
+              (legacyWeights?.[i] ?? '')
+            ),
             failedAtBlock: null,
           }
         }
@@ -612,8 +669,14 @@ export function WorkoutDetailScreen() {
         break
       }
       case 'DROP_SET':
-        newConfig = { ...c, blockReps: data.blockReps, blockWeights: data.blockWeights }
+        newConfig = {
+          ...c,
+          blockReps: data.blockReps,
+          dropWeights: data.blockWeights.map(w => { const n = parseFloat(w); return isNaN(n) || n <= 0 ? null : n }),
+        }
         break
+      case 'MYOREP':
+        return // no block-level data to save for MYOREP
       default:
         return
     }
@@ -722,13 +785,22 @@ export function WorkoutDetailScreen() {
         newEntry = { blockReps: Array(fp + 1).fill(''), blockWeights: [], failedAtBlock: null }
       } else if (sel.technique === 'CLUSTER_SET') {
         const b = Number(c?.['blocks'] ?? 4)
-        newEntry = { blockReps: Array(b).fill(''), blockWeights: [], failedAtBlock: null }
+        const rpp = c?.['repsPerBlock'] != null ? String(c['repsPerBlock']) : ''
+        newEntry = { blockReps: Array(b).fill(rpp), blockWeights: [], failedAtBlock: null }
       } else if (sel.technique === 'MUSCLE_ROUND') {
         const b = Number(c?.['blocks'] ?? 6)
         newEntry = { blockReps: Array(b).fill(''), blockWeights: [], failedAtBlock: null, dropWeight: '' }
       } else if (sel.technique === 'DROP_SET') {
         const d = Number(c?.['drops'] ?? 2)
-        newEntry = { blockReps: Array(d).fill(''), blockWeights: Array(d).fill(''), failedAtBlock: null }
+        const totalBlocks = d + 1
+        const storedWeights = c?.['dropWeights'] as (number | null)[] | undefined
+        newEntry = {
+          blockReps: Array(totalBlocks).fill(''),
+          blockWeights: Array(totalBlocks).fill('').map((_, i) =>
+            storedWeights?.[i] != null ? String(storedWeights[i]) : ''
+          ),
+          failedAtBlock: null,
+        }
       }
 
       if (newEntry) {
@@ -793,6 +865,7 @@ export function WorkoutDetailScreen() {
       clearTimeout(setTimers.current[id])
       delete setTimers.current[id]
     }
+    await qc.invalidateQueries({ queryKey: ['workout', workoutId] })
     showToast('Treino salvo')
     navigation.goBack()
   }
@@ -1241,12 +1314,6 @@ const sr = StyleSheet.create({
     paddingVertical: 8, paddingHorizontal: 10,
   },
   main: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  badge: {
-    width: 34, height: 36, borderRadius: 8,
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-    borderWidth: 1,
-  },
-  badgeText: { fontSize: 10, fontWeight: '700' },
   repsInput: {
     flex: 1, height: 40,
     backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
@@ -1261,6 +1328,27 @@ const sr = StyleSheet.create({
   kgText: { width: 18, color: '#555560', fontSize: 11 },
   volumeHint: { color: '#8A8A9A', fontSize: 10, marginTop: 3, marginLeft: 42 },
   deleteBtn: { width: 22, height: 22, justifyContent: 'center', alignItems: 'center', marginLeft: 2 },
+  techSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 4,
+    paddingTop: 3,
+    paddingBottom: 4,
+  },
+  techSummaryAccent: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    opacity: 0.8,
+    flexShrink: 0,
+  },
+  techSummaryText: {
+    fontSize: 11,
+    letterSpacing: 0.2,
+    flex: 1,
+    opacity: 0.75,
+  },
   // Used when reps are hidden (e.g. ClusterSet) — weight takes remaining space
   weightInputFull: {
     flex: 1, height: 40,
@@ -1317,6 +1405,31 @@ const exp = StyleSheet.create({
   },
   failCircleActive: { backgroundColor: '#FF5252', borderColor: '#FF5252' },
   mrHint: { color: '#555560', fontSize: 11, marginTop: 8, textAlign: 'center' },
+
+  // DROP_SET structured layout
+  dsWeightRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  dsWeightLabel: { color: '#EF4444', fontSize: 11, flex: 1 },
+  dsWeightInput: {
+    height: 28, width: 52,
+    backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)',
+    borderRadius: 6, textAlign: 'center', color: '#EF4444', fontSize: 13,
+  },
+  dsWeightUnit: { color: 'rgba(239,68,68,0.5)', fontSize: 11 },
+  dsArrow: { color: 'rgba(239,68,68,0.45)', fontSize: 11, width: 14 },
+  dsHint: { color: '#555560', fontSize: 11, marginTop: 8, textAlign: 'center' },
+
+  // MYOREP informational expansion
+  myoRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: 'rgba(244,114,182,0.06)', borderRadius: 6,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  myoRowLabel: { color: '#F472B6', fontSize: 12 },
+  myoRowValue: { color: '#F0F0F5', fontSize: 12, fontWeight: '500' },
+  myoHint: { color: '#555560', fontSize: 11, marginTop: 4, textAlign: 'center', fontStyle: 'italic' },
 })
 
 const vc = StyleSheet.create({
