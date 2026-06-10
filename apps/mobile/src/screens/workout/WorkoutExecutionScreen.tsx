@@ -47,13 +47,19 @@ function formatVolume(v: number) {
 
 // ─── Done button (rounded-rect, replaces round circle) ───────────────────────
 
-function DoneButton({ checked, onPress, size = 38 }: { checked: boolean; onPress: () => void; size?: number }) {
+function DoneButton({ checked, onPress, size = 38 }: { checked: boolean; onPress: () => false | void; size?: number }) {
   const scale = useRef(new Animated.Value(1)).current
   // Start at 1 (opacity=0, scale=2) so the ring is invisible until first check press
   const ring = useRef(new Animated.Value(1)).current
 
   function handlePress() {
     if (!checked) {
+      // Validate BEFORE animating — if handler returns false, play error feedback only
+      const result = onPress()
+      if (result === false) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+        return
+      }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)
       Animated.sequence([
         Animated.timing(scale, { toValue: 0.75, duration: 55, useNativeDriver: true }),
@@ -67,8 +73,8 @@ function DoneButton({ checked, onPress, size = 38 }: { checked: boolean; onPress
         Animated.timing(scale, { toValue: 0.88, duration: 70, useNativeDriver: true }),
         Animated.spring(scale, { toValue: 1, friction: 6, tension: 200, useNativeDriver: true }),
       ]).start()
+      onPress()
     }
-    onPress()
   }
 
   const ringScale = ring.interpolate({ inputRange: [0, 1], outputRange: [0.8, 2.0] })
@@ -185,9 +191,9 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
     }
   }, [set.isChecked])
 
-  function handleCheck() {
+  function handleCheck(): false | void {
     const err = requireRepsAndWeight(reps, weight)
-    if (err) { showToast(err); return }
+    if (err) { showToast(err); return false }
     onChecked(set.id, parseInt(reps, 10), parseFloat(weight), null)
   }
 
@@ -455,54 +461,54 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
     return null
   }
 
-  function handleDone() {
+  function handleDone(): false | void {
     if (set.technique === 'REST_PAUSE' || set.technique === 'CLUSTER_SET') {
       if (!mainWeight || parseFloat(mainWeight) <= 0) {
-        showToast('Informe o peso antes de confirmar')
-        return
+        showToast('Informe a carga antes de concluir.')
+        return false
       }
       if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        showToast('Preencha as repetições de todos os blocos')
-        return
+        showToast('Preencha todos os blocos obrigatórios.')
+        return false
       }
     }
     if (set.technique === 'MUSCLE_ROUND') {
       if (!mainWeight || parseFloat(mainWeight) <= 0) {
-        showToast('Informe o peso principal')
-        return
+        showToast('Informe a carga principal antes de concluir.')
+        return false
       }
       const hasFailed = blocks.some(b => !!b.failed)
       if (hasFailed && (!dropWeight || parseFloat(dropWeight) <= 0)) {
-        showToast('Informe o peso de queda')
-        return
+        showToast('Informe o peso de queda para continuar.')
+        return false
       }
       if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        showToast('Preencha as repetições de todos os blocos')
-        return
+        showToast('Preencha todos os blocos obrigatórios.')
+        return false
       }
     }
     if (set.technique === 'DROP_SET') {
       if (blocks.some(b => !b.weight || parseFloat(b.weight) <= 0)) {
         showToast('Configure os pesos do drop set no treino antes de executar.')
-        return
+        return false
       }
       if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        showToast('Complete todos os blocos obrigatórios antes de concluir.')
-        return
+        showToast('Preencha todos os blocos obrigatórios.')
+        return false
       }
     }
     if (isMYO) {
       if (!mainWeight || parseFloat(mainWeight) <= 0) {
-        showToast('Informe o peso antes de confirmar')
-        return
+        showToast('Informe a carga antes de concluir.')
+        return false
       }
       if (!blocks[0]?.reps || parseInt(blocks[0].reps, 10) <= 0) {
-        showToast('Preencha as reps da série de ativação')
-        return
+        showToast('Preencha as reps da série de ativação.')
+        return false
       }
       if (blocks.slice(1).some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        showToast('Preencha as repetições de todos os mini-blocos')
-        return
+        showToast('Preencha todos os blocos obrigatórios.')
+        return false
       }
     }
     const totalReps = blocks.reduce((sum, b) => sum + (parseInt(b.reps, 10) || 0), 0)
