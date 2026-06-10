@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   View, Text, TouchableOpacity, ScrollView, Alert, Image,
-  StyleSheet, Animated as RNAnimated, Easing,
+  StyleSheet, Animated as RNAnimated, Easing, ActivityIndicator,
 } from 'react-native'
+import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -13,6 +14,7 @@ import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store/authStore'
 import { api } from '../../lib/api'
 import type { TrainerProfileRecord, ProfileRecord } from '../../lib/api'
+import { WorkoutPostCard } from '../../components/WorkoutPostCard'
 
 type AthleteTab = 'historico' | 'desempenho' | 'programa' | 'sobre'
 type TrainerTab = 'alunos' | 'consultas' | 'sobre'
@@ -69,13 +71,42 @@ function InfoCard({ rows }: {
 // ─── Athlete tab: Histórico ─────────────────────────────────────────────
 
 function HistoricoTab() {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['my-workout-posts'],
+    queryFn: () => api.posts.listMine(),
+  })
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch()
+    }, [refetch])
+  )
+
+  const posts = data?.data.posts ?? []
+
+  if (isLoading) {
+    return (
+      <View style={[s.tabContent, { paddingVertical: 36, alignItems: 'center' }]}>
+        <ActivityIndicator color="#4FC3F7" />
+      </View>
+    )
+  }
+
+  if (posts.length === 0) {
+    return (
+      <View style={s.tabContent}>
+        <EmptyState
+          icon="calendar-outline"
+          title="Nenhum treino registrado"
+          sub="Complete seu primeiro treino para ver o histórico aqui"
+        />
+      </View>
+    )
+  }
+
   return (
     <View style={s.tabContent}>
-      <EmptyState
-        icon="calendar-outline"
-        title="Nenhum treino registrado"
-        sub="Complete seu primeiro treino para ver o histórico aqui"
-      />
+      {posts.map((post) => <WorkoutPostCard key={post.id} post={post} />)}
     </View>
   )
 }

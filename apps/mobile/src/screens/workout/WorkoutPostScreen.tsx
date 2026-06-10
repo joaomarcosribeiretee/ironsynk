@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
+import { useQueryClient } from '@tanstack/react-query'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { api } from '../../lib/api'
 import type { ExecutionExerciseRecord } from '../../lib/api'
@@ -62,6 +63,7 @@ export function WorkoutPostScreen() {
   const route = useRoute<RouteProps>()
   const { sessionId, workoutName, durationMin, totalValidSets, totalVolume, exercises } = route.params
 
+  const qc = useQueryClient()
   const [description, setDescription] = useState('')
   const [discardModal, setDiscardModal] = useState(false)
   const [publishing, setPublishing] = useState(false)
@@ -74,6 +76,8 @@ export function WorkoutPostScreen() {
     setPublishing(true)
     try {
       await api.posts.create({ trainingLogId: sessionId, content: description.trim() || undefined })
+      qc.invalidateQueries({ queryKey: ['my-workout-posts'] })
+      qc.invalidateQueries({ queryKey: ['feed'] })
       showToast('Treino publicado!')
       navigation.navigate('AthleteTabs', { screen: 'Workout' })
     } catch {
@@ -185,13 +189,13 @@ export function WorkoutPostScreen() {
         </View>
       </ScrollView>
 
-      {/* Discard modal */}
+      {/* Back modal */}
       <Modal visible={discardModal} transparent animationType="fade" onRequestClose={() => setDiscardModal(false)}>
         <View style={ps.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setDiscardModal(false)} />
           <View style={ps.modal}>
-            <Text style={ps.modalTitle}>Descartar publicação?</Text>
-            <Text style={ps.modalBody}>O treino ficará salvo, mas não será publicado no feed.</Text>
+            <Text style={ps.modalTitle}>Sair da publicação?</Text>
+            <Text style={ps.modalBody}>O treino já está salvo. Você pode publicar a qualquer momento.</Text>
             <TouchableOpacity style={ps.modalBtnPrimary} onPress={() => setDiscardModal(false)}>
               <Text style={ps.modalBtnPrimaryText}>Continuar editando</Text>
             </TouchableOpacity>
@@ -199,11 +203,10 @@ export function WorkoutPostScreen() {
               style={[ps.modalBtnPrimary, { backgroundColor: '#2A2A35' }]}
               onPress={() => {
                 setDiscardModal(false)
-                showToast('Treino salvo!')
-                navigation.navigate('AthleteTabs', { screen: 'Workout' })
+                navigation.goBack()
               }}
             >
-              <Text style={[ps.modalBtnPrimaryText, { color: '#8A8A9A' }]}>Descartar</Text>
+              <Text style={[ps.modalBtnPrimaryText, { color: '#8A8A9A' }]}>Voltar ao treino</Text>
             </TouchableOpacity>
           </View>
         </View>
