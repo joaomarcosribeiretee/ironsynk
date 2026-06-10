@@ -22,6 +22,7 @@ import type {
 } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { SetBadge, getTechStyle } from '../../components/SetBadge'
+import { CompleteSetButton } from '../../components/CompleteSetButton'
 
 const REST_TIMER_TIP_KEY = 'rest_timer_tip_seen_v1'
 
@@ -43,75 +44,6 @@ function formatElapsed(s: number) {
 function formatVolume(v: number) {
   if (v >= 1000) return `${(v / 1000).toFixed(1)}k`
   return v % 1 === 0 ? String(v) : v.toFixed(1)
-}
-
-// ─── Done button (rounded-rect, replaces round circle) ───────────────────────
-
-function DoneButton({ checked, onPress, size = 38 }: { checked: boolean; onPress: () => false | void; size?: number }) {
-  const scale = useRef(new Animated.Value(1)).current
-  // Start at 1 (opacity=0, scale=2) so the ring is invisible until first check press
-  const ring = useRef(new Animated.Value(1)).current
-
-  function handlePress() {
-    if (!checked) {
-      // Validate BEFORE animating — if handler returns false, play error feedback only
-      const result = onPress()
-      if (result === false) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-        return
-      }
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)
-      Animated.sequence([
-        Animated.timing(scale, { toValue: 0.75, duration: 55, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1.0, friction: 3, tension: 280, useNativeDriver: true }),
-      ]).start()
-      ring.setValue(0)
-      Animated.timing(ring, { toValue: 1, duration: 450, useNativeDriver: true }).start()
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-      Animated.sequence([
-        Animated.timing(scale, { toValue: 0.88, duration: 70, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1, friction: 6, tension: 200, useNativeDriver: true }),
-      ]).start()
-      onPress()
-    }
-  }
-
-  const ringScale = ring.interpolate({ inputRange: [0, 1], outputRange: [0.8, 2.0] })
-  const ringOpacity = ring.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0.55, 0.2, 0] })
-
-  return (
-    <TouchableOpacity onPress={handlePress} activeOpacity={1} hitSlop={{ top: 8, bottom: 8, left: 6, right: 8 }}>
-      <View style={{ width: size, height: size }}>
-        <Animated.View
-          style={{
-            position: 'absolute',
-            width: size, height: size, borderRadius: 9,
-            backgroundColor: '#00E676',
-            transform: [{ scale: ringScale }],
-            opacity: ringOpacity,
-          }}
-        />
-        <Animated.View style={[
-          { width: size, height: size, borderRadius: 9, justifyContent: 'center', alignItems: 'center', transform: [{ scale }] },
-          checked ? {
-            backgroundColor: '#00E676',
-            shadowColor: '#00E676',
-            shadowOpacity: 0.45,
-            shadowRadius: 8,
-            shadowOffset: { width: 0, height: 0 },
-            elevation: 5,
-          } : {
-            borderWidth: 1.5,
-            borderColor: '#3A3A50',
-            backgroundColor: 'rgba(255,255,255,0.03)',
-          },
-        ]}>
-          {checked && <Ionicons name="checkmark" size={Math.round(size * 0.52)} color="#fff" />}
-        </Animated.View>
-      </View>
-    </TouchableOpacity>
-  )
 }
 
 // ─── Technique summary helper ─────────────────────────────────────────────────
@@ -156,8 +88,11 @@ function buildTechSummary(technique: PlannedSetTechnique, cfg: Record<string, un
 // ─── Completion validators ────────────────────────────────────────────────────
 
 function requireRepsAndWeight(reps: string, weight: string): string | null {
-  if (!reps || parseInt(reps, 10) <= 0 || !weight || parseFloat(weight) <= 0)
-    return 'Preencha reps e kg para concluir a série.'
+  const missingReps = !reps || parseInt(reps, 10) <= 0
+  const missingWeight = !weight || parseFloat(weight) <= 0
+  if (missingReps && missingWeight) return 'Informe as repetições e a carga (kg) para concluir a série.'
+  if (missingReps) return 'Informe as repetições para concluir a série.'
+  if (missingWeight) return 'Informe a carga (kg) para concluir a série.'
   return null
 }
 
@@ -181,40 +116,25 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
   const ts = getTechStyle(set.setType, set.technique)
   const isNonVolume = set.setType === 'WARMUP' || set.setType === 'FEEDER'
   const hasAccent = isNonVolume || set.technique === 'BACK_OFF'
-  const hasProgress = !set.isChecked && (reps.length > 0 || weight.length > 0)
-  const flashAnim = useRef(new Animated.Value(0)).current
+  // Completed rows settle into a slightly dimmed, resolved state
+  const rowFade = useRef(new Animated.Value(set.isChecked ? 0.8 : 1)).current
 
   useEffect(() => {
-    if (set.isChecked) {
-      flashAnim.setValue(0.35)
-      Animated.timing(flashAnim, { toValue: 0, duration: 600, useNativeDriver: true }).start()
-    }
+    Animated.timing(rowFade, { toValue: set.isChecked ? 0.8 : 1, duration: 250, useNativeDriver: true }).start()
   }, [set.isChecked])
 
   function handleCheck(): false | void {
     const err = requireRepsAndWeight(reps, weight)
-    if (err) { showToast(err); return false }
+    if (err) { showToast(err, 'warning'); return false }
     onChecked(set.id, parseInt(reps, 10), parseFloat(weight), null)
   }
 
   return (
-    <View style={[
+    <Animated.View style={[
       ex.setRowOuter,
-      set.isChecked ? ex.setRowDone : hasProgress ? ex.setRowInProgress : null,
+      { opacity: rowFade },
       hasAccent && { borderLeftWidth: 2, borderLeftColor: ts.borderColor, paddingLeft: 6, marginLeft: 2 },
     ]}>
-      {/* Labels row — mirrors setRow column layout so labels sit exactly above their inputs */}
-      <View style={ex.setLabelsRow}>
-        <View style={{ width: 34, flexShrink: 0 }} />
-        <View style={{ flex: 1, flexDirection: 'row', gap: 8 }}>
-          <Text style={ex.colLabel}>REPS</Text>
-          <Text style={ex.colLabel}>KG</Text>
-        </View>
-        <View style={{ width: 38, flexShrink: 0 }} />
-        <View style={{ width: 28, flexShrink: 0 }} />
-      </View>
-
-      {/* Input row — all items same height, alignItems center works correctly */}
       <View style={ex.setRow}>
         <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
 
@@ -268,15 +188,14 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
           </View>
         </View>
 
-        <DoneButton checked={set.isChecked} onPress={handleCheck} />
+        <CompleteSetButton checked={set.isChecked} onPress={handleCheck} />
 
         <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 4, right: 8 }} style={ex.removeSetBtn}>
           <Ionicons name="close" size={13} color="#2E2E3E" />
         </TouchableOpacity>
       </View>
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, ex.completionFlash, { opacity: flashAnim }]} />
       {isNonVolume && <Text style={ex.nonVolNote}>Não conta para o volume</Text>}
-    </View>
+    </Animated.View>
   )
 }
 
@@ -462,54 +381,33 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
   }
 
   function handleDone(): false | void {
-    if (set.technique === 'REST_PAUSE' || set.technique === 'CLUSTER_SET') {
+    if (set.technique === 'REST_PAUSE' || set.technique === 'CLUSTER_SET' || isMYO) {
       if (!mainWeight || parseFloat(mainWeight) <= 0) {
-        showToast('Informe a carga antes de concluir.')
-        return false
-      }
-      if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        showToast('Preencha todos os blocos obrigatórios.')
+        showToast('Informe a carga (kg) para concluir a série.', 'warning')
         return false
       }
     }
     if (set.technique === 'MUSCLE_ROUND') {
       if (!mainWeight || parseFloat(mainWeight) <= 0) {
-        showToast('Informe a carga principal antes de concluir.')
+        showToast('Informe a carga principal para concluir a série.', 'warning')
         return false
       }
       const hasFailed = blocks.some(b => !!b.failed)
       if (hasFailed && (!dropWeight || parseFloat(dropWeight) <= 0)) {
-        showToast('Informe o peso de queda para continuar.')
-        return false
-      }
-      if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        showToast('Preencha todos os blocos obrigatórios.')
+        showToast('Informe o peso de queda para concluir a série.', 'warning')
         return false
       }
     }
-    if (set.technique === 'DROP_SET') {
-      if (blocks.some(b => !b.weight || parseFloat(b.weight) <= 0)) {
-        showToast('Configure os pesos do drop set no treino antes de executar.')
-        return false
-      }
-      if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        showToast('Preencha todos os blocos obrigatórios.')
-        return false
-      }
+    if (set.technique === 'DROP_SET' && blocks.some(b => !b.weight || parseFloat(b.weight) <= 0)) {
+      showToast('Configure os pesos do drop set no treino antes de executar.', 'warning')
+      return false
     }
-    if (isMYO) {
-      if (!mainWeight || parseFloat(mainWeight) <= 0) {
-        showToast('Informe a carga antes de concluir.')
-        return false
-      }
-      if (!blocks[0]?.reps || parseInt(blocks[0].reps, 10) <= 0) {
-        showToast('Preencha as reps da série de ativação.')
-        return false
-      }
-      if (blocks.slice(1).some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        showToast('Preencha todos os blocos obrigatórios.')
-        return false
-      }
+    const missingBlocks = blocks
+      .map((b, i) => (!b.reps || parseInt(b.reps, 10) <= 0) ? blockLabel(i) : null)
+      .filter((l): l is string => l != null)
+    if (missingBlocks.length > 0) {
+      showToast(`Preencha as reps de: ${missingBlocks.join(', ')}.`, 'warning')
+      return false
     }
     const totalReps = blocks.reduce((sum, b) => sum + (parseInt(b.reps, 10) || 0), 0)
     let maxWeight: number
@@ -529,8 +427,13 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
   const showMainWeight = set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE' || isMYO
   const isMuscleRound = set.technique === 'MUSCLE_ROUND'
   const failedAtBlock = isMuscleRound ? blocks.findIndex(b => !!b.failed) : -1
-  const hasAnyData = mainWeight.length > 0 || dropWeight.length > 0 || blocks.some(b => b.reps.length > 0)
   const summaryText = buildTechSummary(set.technique, cfg)
+
+  // Completed technique sets settle into a slightly dimmed, resolved state
+  const rowFade = useRef(new Animated.Value(set.isChecked ? 0.8 : 1)).current
+  useEffect(() => {
+    Animated.timing(rowFade, { toValue: set.isChecked ? 0.8 : 1, duration: 250, useNativeDriver: true }).start()
+  }, [set.isChecked])
 
   const blockLabel = (i: number) => {
     if (set.technique === 'REST_PAUSE') return i === 0 ? 'Série Principal' : `Falha ${i}`
@@ -540,10 +443,9 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
   }
 
   return (
-    <View style={[
+    <Animated.View style={[
       ex.techSetWrap,
-      { borderLeftColor: ts.borderColor },
-      set.isChecked ? ex.setRowDone : hasAnyData ? ex.setRowInProgress : null,
+      { borderLeftColor: ts.borderColor, opacity: rowFade },
     ]}>
       {/* Header row — badge, set number, weight (RP/CS/MYO), done, remove */}
       <View style={ex.setRow}>
@@ -573,7 +475,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
             </View>
           )
         )}
-        <DoneButton checked={set.isChecked} onPress={handleDone} />
+        <CompleteSetButton checked={set.isChecked} onPress={handleDone} />
         <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 4, right: 6 }} style={ex.removeSetBtn}>
           <Ionicons name="close" size={13} color="#3A3A4A" />
         </TouchableOpacity>
@@ -755,7 +657,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
           <Text style={ex.myoFailHint}>Falha marcada — confirme a série</Text>
         )}
       </View>
-    </View>
+    </Animated.View>
   )
 }
 
@@ -1524,7 +1426,8 @@ const ex = StyleSheet.create({
   setRowOuter: {
     borderRadius: 10,
     overflow: 'hidden',
-    paddingBottom: 4,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
 
   // Thin separator rendered between consecutive set rows
@@ -1535,25 +1438,7 @@ const ex = StyleSheet.create({
     marginVertical: 3,
   },
 
-  // Labels row — sits above the input row, mirrors setRow column layout for alignment
-  setLabelsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 6,
-    paddingTop: 10,
-    paddingBottom: 5,
-  },
-  colLabel: {
-    flex: 1,
-    color: '#8A8A9A',
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    textAlign: 'center',
-  },
-
-  // Input row — only interactive elements, no labels inflating height
+  // Input row
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1561,21 +1446,6 @@ const ex = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 6,
   },
-  setRowDone: {
-    backgroundColor: 'rgba(0,230,118,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,230,118,0.18)',
-  },
-  setRowInProgress: {
-    backgroundColor: 'rgba(79,195,247,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(79,195,247,0.15)',
-  },
-  completionFlash: {
-    backgroundColor: '#00E676',
-    borderRadius: 10,
-  },
-
   // Inputs group — fills space between badge and action buttons
   inputsGroup: {
     flex: 1,
@@ -1603,7 +1473,7 @@ const ex = StyleSheet.create({
   },
   inputFieldWrapDone: {
     backgroundColor: '#141418',
-    borderColor: '#2A2A35',
+    borderColor: 'transparent',
   },
 
   // Inputs — live inside inputFieldWrap, no border/bg of their own
@@ -1626,7 +1496,7 @@ const ex = StyleSheet.create({
   kgLabel: { color: '#3A3A4A', fontSize: 11 },
   inputDone: {
     flex: 1,
-    color: 'rgba(0,230,118,0.8)',
+    color: '#F0F0F5',
     fontSize: 16,
     textAlign: 'center',
     textAlignVertical: 'center',
@@ -1681,7 +1551,7 @@ const ex = StyleSheet.create({
     paddingVertical: 0,
   },
   rpWeightDone: {
-    color: 'rgba(0,230,118,0.8)',
+    color: '#F0F0F5',
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
