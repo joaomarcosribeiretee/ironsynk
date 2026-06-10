@@ -147,6 +147,14 @@ function buildTechSummary(technique: PlannedSetTechnique, cfg: Record<string, un
   }
 }
 
+// ─── Completion validators ────────────────────────────────────────────────────
+
+function requireRepsAndWeight(reps: string, weight: string): string | null {
+  if (!reps || parseInt(reps, 10) <= 0 || !weight || parseFloat(weight) <= 0)
+    return 'Preencha reps e kg para concluir a série.'
+  return null
+}
+
 // ─── Simple set row ───────────────────────────────────────────────────────────
 
 type SetRowProps = {
@@ -178,9 +186,9 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
   }, [set.isChecked])
 
   function handleCheck() {
-    const r = reps ? parseInt(reps, 10) : 0
-    const w = weight ? parseFloat(weight) : 0
-    onChecked(set.id, r, w, null)
+    const err = requireRepsAndWeight(reps, weight)
+    if (err) { showToast(err); return }
+    onChecked(set.id, parseInt(reps, 10), parseFloat(weight), null)
   }
 
   return (
@@ -474,8 +482,12 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
       }
     }
     if (set.technique === 'DROP_SET') {
+      if (blocks.some(b => !b.weight || parseFloat(b.weight) <= 0)) {
+        showToast('Configure os pesos do drop set no treino antes de executar.')
+        return
+      }
       if (blocks.some(b => !b.reps || parseInt(b.reps, 10) <= 0)) {
-        showToast('Preencha as repetições de todos os drops')
+        showToast('Complete todos os blocos obrigatórios antes de concluir.')
         return
       }
     }
