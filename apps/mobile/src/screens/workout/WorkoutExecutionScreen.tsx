@@ -1,15 +1,18 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, Image, ActivityIndicator, Modal, Pressable, Animated,
+  TextInput, ActivityIndicator, Modal, Pressable, Animated,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { ExerciseCardShell, cardMetaStyles, cardBodyStyles, CARD_IMG_SIZE } from '../../components/ExerciseCardShell'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import * as SecureStore from 'expo-secure-store'
 import { useSessionStore } from '../../store/sessionStore'
 import { ExercisePickerModal } from './ExercisePickerModal'
+import { TechniquePickerSheet, TechniqueSelection } from './TechniquePickerSheet'
 import { showToast } from '../../components/Toast'
 import * as Haptics from 'expo-haptics'
 import { api } from '../../lib/api'
@@ -18,40 +21,20 @@ import type {
   PlannedSetTechnique, SetType, TechniqueConfig,
 } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
+import { SetBadge, getTechStyle } from '../../components/SetBadge'
+import { CompleteSetButton } from '../../components/CompleteSetButton'
+import { CompletedAccentOverlay, useCompletedFade } from '../../components/SetCompletion'
+import { WorkoutInput } from '../../components/WorkoutInput'
+import { validateSimpleSet, validateTechniqueSet } from '../../lib/setValidation'
+
+const REST_TIMER_TIP_KEY = 'rest_timer_tip_seen_v1'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type NavProp = NativeStackNavigationProp<AppStackParamList>
 type RouteProps = RouteProp<AppStackParamList, 'WorkoutExecution'>
 
-// ─── Tech style palette ───────────────────────────────────────────────────────
-
-const TECH_STYLE: Record<string, { borderColor: string; badgeBg: string; badgeText: string; badge: string }> = {
-  WARMUP:       { borderColor: '#FFB300', badgeBg: '#2A2200', badgeText: '#FFB300', badge: 'W' },
-  FEEDER:       { borderColor: '#4FC3F7', badgeBg: '#002233', badgeText: '#4FC3F7', badge: 'F' },
-  REST_PAUSE:   { borderColor: '#2979FF', badgeBg: '#001A3A', badgeText: '#4FC3F7', badge: 'RP' },
-  MUSCLE_ROUND: { borderColor: '#7B61FF', badgeBg: '#1A1030', badgeText: '#A78BFA', badge: 'MR' },
-  CLUSTER_SET:  { borderColor: '#00E676', badgeBg: '#002210', badgeText: '#00E676', badge: 'CS' },
-  BACK_OFF:     { borderColor: '#F97316', badgeBg: '#2A1400', badgeText: '#F97316', badge: 'BO' },
-  DROP_SET:     { borderColor: '#EF4444', badgeBg: '#2A0A0A', badgeText: '#EF4444', badge: 'DS' },
-}
-const DEFAULT_STYLE = { borderColor: '#333344', badgeBg: '#222230', badgeText: '#555560', badge: '' }
-
-function getTechStyle(setType: SetType, technique: PlannedSetTechnique) {
-  if (setType === 'WARMUP') return TECH_STYLE['WARMUP']!
-  if (setType === 'FEEDER') return TECH_STYLE['FEEDER']!
-  if (technique !== 'NONE') return TECH_STYLE[technique] ?? DEFAULT_STYLE
-  return DEFAULT_STYLE
-}
-
-function getBadge(setType: SetType, technique: PlannedSetTechnique, idx: number) {
-  if (setType === 'WARMUP') return 'W'
-  if (setType === 'FEEDER') return 'F'
-  if (technique !== 'NONE') return TECH_STYLE[technique]?.badge ?? String(idx + 1)
-  return String(idx + 1)
-}
-
-// ─── Elapsed time ─────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatElapsed(s: number) {
   const h = Math.floor(s / 3600)
@@ -61,57 +44,48 @@ function formatElapsed(s: number) {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
-// ─── Rest timer hook ──────────────────────────────────────────────────────────
-
-function useRestTimer(seconds: number, onEnd: () => void) {
-  const [remaining, setRemaining] = useState(seconds)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => {
-    setRemaining(seconds)
-    if (seconds <= 0) return
-    intervalRef.current = setInterval(() => {
-      setRemaining(prev => {
-        if (prev <= 1) {
-          clearInterval(intervalRef.current!)
-          intervalRef.current = null
-          onEnd()
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [seconds])
-
-  return remaining
+function formatVolume(v: number) {
+  if (v >= 1000) return `${(v / 1000).toFixed(1)}k`
+  return v % 1 === 0 ? String(v) : v.toFixed(1)
 }
 
-// ─── Check button ─────────────────────────────────────────────────────────────
+// ─── Technique summary helper ─────────────────────────────────────────────────
 
-function CheckButton({ checked, onPress, size = 40 }: { checked: boolean; onPress: () => void; size?: number }) {
-  const scale = useRef(new Animated.Value(1)).current
-
-  function handlePress() {
-    Animated.sequence([
-      Animated.timing(scale, { toValue: 0.78, duration: 80, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 1, friction: 3, tension: 200, useNativeDriver: true }),
-    ]).start()
-    onPress()
+function buildTechSummary(technique: PlannedSetTechnique, cfg: Record<string, unknown> | null): string | null {
+  if (!cfg) return null
+  switch (technique) {
+    case 'REST_PAUSE': {
+      const pts = (cfg['failurePoints'] as number) ?? 3
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 20
+      return `${pts} pontos de falha · ${rest}s descanso`
+    }
+    case 'CLUSTER_SET': {
+      const blks = (cfg['blocks'] as number) ?? 4
+      const rpp = cfg['repsPerBlock'] as number | undefined
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 15
+      return `${blks} blocos${rpp ? ` × ${rpp} reps` : ''} · ${rest}s`
+    }
+    case 'MUSCLE_ROUND': {
+      const blks = (cfg['blocks'] as number) ?? 6
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 35
+      return `${blks} blocos · ${rest}s descanso`
+    }
+    case 'DROP_SET': {
+      const dw = cfg['dropWeights'] as (number | null)[] | undefined
+      const drops = (cfg['drops'] as number) ?? 2
+      if (dw && dw.some(w => w != null)) {
+        return dw.map(w => (w != null ? `${w} kg` : '—')).join(' → ')
+      }
+      return `${drops + 1} drops`
+    }
+    case 'MYOREP': {
+      const aReps = (cfg['activationReps'] as number) ?? 15
+      const aRest = (cfg['activationRestSeconds'] as number) ?? 20
+      const rpp = (cfg['repsPerBlock'] as number) ?? 5
+      return `Ativ. ${aReps} reps · ${aRest}s · ${rpp}/bloco`
+    }
+    default: return null
   }
-
-  return (
-    <TouchableOpacity onPress={handlePress} activeOpacity={1} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}>
-      <Animated.View style={[
-        ex.check,
-        { width: size, height: size, borderRadius: size / 2 },
-        checked && ex.checkDone,
-        { transform: [{ scale }] },
-      ]}>
-        {checked && <Ionicons name="checkmark" size={size * 0.55} color="#fff" />}
-      </Animated.View>
-    </TouchableOpacity>
-  )
 }
 
 // ─── Simple set row ───────────────────────────────────────────────────────────
@@ -123,241 +97,465 @@ type SetRowProps = {
   onChecked: (setId: string, reps: number | null, weight: number | null, cfg: TechniqueConfig | null) => void
   onRestEnd: () => void
   onRemove: () => void
-  onSetTypeChange: () => void
+  onTechniqueTap: () => void
 }
 
-function SimpleSetRow({ set, index, restSeconds, onChecked, onRestEnd, onRemove, onSetTypeChange }: SetRowProps) {
+function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRowProps) {
   const [reps, setReps] = useState(set.repsCompleted != null && set.repsCompleted > 0 ? String(set.repsCompleted) : '')
   const [weight, setWeight] = useState(set.weightKg != null && set.weightKg > 0 ? String(set.weightKg) : '')
-  const [showRest, setShowRest] = useState(false)
   const ts = getTechStyle(set.setType, set.technique)
-  const badge = getBadge(set.setType, set.technique, index)
   const isNonVolume = set.setType === 'WARMUP' || set.setType === 'FEEDER'
+  const hasAccent = isNonVolume || set.technique === 'BACK_OFF'
+  // Completed rows settle into a slightly dimmed, resolved state
+  const rowFade = useCompletedFade(set.isChecked)
 
-  const remainingRest = useRestTimer(showRest && restSeconds ? restSeconds : 0, () => {
-    setShowRest(false)
-    onRestEnd()
-  })
-
-  function handleCheck() {
-    const r = reps ? parseInt(reps, 10) : null
-    const w = weight ? parseFloat(weight) : null
-    if (!set.isChecked) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-    onChecked(set.id, r, w, null)
-    if (!set.isChecked && restSeconds && restSeconds > 0) setShowRest(true)
+  function handleCheck(): false | void {
+    const result = validateSimpleSet(reps, weight)
+    if (!result.ok) { showToast(result.message, 'warning'); return false }
+    onChecked(set.id, parseInt(reps, 10), parseFloat(weight), null)
   }
 
   return (
-    <View>
-      <View style={[ex.setRow, set.isChecked && ex.setRowDone]}>
-        {/* Badge — tappable to cycle setType: WORKING → WARMUP → FEEDER */}
-        <TouchableOpacity onPress={onSetTypeChange} activeOpacity={0.7} style={[ex.badge, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]}>
-          <Text style={[ex.badgeText, { color: ts.badgeText }]}>{badge}</Text>
-        </TouchableOpacity>
+    <Animated.View style={[
+      ex.setRowOuter,
+      { opacity: rowFade },
+      hasAccent && { borderLeftWidth: 2, borderLeftColor: ts.borderColor, paddingLeft: 6, marginLeft: 2 },
+    ]}>
+      <CompletedAccentOverlay active={set.isChecked} radius={10} />
+      <View style={ex.setRow}>
+        <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
 
-        {set.isChecked ? (
-          <Text style={ex.inputDone}>{reps || '—'}</Text>
-        ) : (
-          <TextInput
-            style={ex.repsInput}
+        <View style={ex.inputsGroup}>
+          <WorkoutInput
+            flex={1}
             value={reps}
             onChangeText={setReps}
             placeholder="—"
-            placeholderTextColor="#333344"
             keyboardType="number-pad"
+            completed={set.isChecked}
+            leadingIcon="repeat-outline"
+            unit="reps"
           />
-        )}
-
-        <Text style={ex.inputSep}>×</Text>
-
-        {set.isChecked ? (
-          <Text style={ex.inputDone}>{weight || '—'}</Text>
-        ) : (
-          <TextInput
-            style={ex.weightInput}
+          <WorkoutInput
+            flex={1}
             value={weight}
             onChangeText={setWeight}
             placeholder="—"
-            placeholderTextColor="#333344"
             keyboardType="decimal-pad"
+            completed={set.isChecked}
+            leadingIcon="barbell-outline"
+            unit="kg"
           />
-        )}
-        <Text style={ex.kgLabel}>kg</Text>
+        </View>
 
-        <View style={{ flex: 1 }} />
+        <CompleteSetButton checked={set.isChecked} onPress={handleCheck} />
 
-        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 12, right: 4 }}>
-          <Ionicons name="close" size={14} color="#3A3A4A" />
+        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 4, right: 8 }} style={ex.removeSetBtn}>
+          <Ionicons name="close" size={13} color="#2E2E3E" />
         </TouchableOpacity>
-
-        <CheckButton checked={set.isChecked} onPress={handleCheck} />
       </View>
-
-      {isNonVolume && (
-        <Text style={ex.volumeHint}>Não conta no volume</Text>
-      )}
-
-      {showRest && restSeconds && restSeconds > 0 && (
-        <TouchableOpacity onPress={() => setShowRest(false)} style={ex.restTimer}>
-          <Text style={ex.restTimerText}>
-            Descanso: {String(Math.floor(remainingRest / 60)).padStart(2, '0')}:{String(remainingRest % 60).padStart(2, '0')}
-          </Text>
-          <Text style={ex.restSkip}>pular</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+      {isNonVolume && <Text style={ex.nonVolNote}>Não conta para o volume</Text>}
+    </Animated.View>
   )
 }
 
 // ─── Technique set row ────────────────────────────────────────────────────────
+// Only for techniques with block expansion: REST_PAUSE, CLUSTER_SET, MUSCLE_ROUND, DROP_SET.
+// Visual style matches WorkoutDetailScreen expansion components.
 
 type TechSetRowProps = {
   set: ExecutionSetLogRecord
   index: number
   onChecked: (setId: string, reps: number | null, weight: number | null, cfg: TechniqueConfig | null) => void
   onRemove: () => void
+  onTechniqueTap: () => void
 }
 
-function TechSetRow({ set, index, onChecked, onRemove }: TechSetRowProps) {
+type BlockData = { reps: string; weight: string; failed?: boolean }
+
+function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSetRowProps) {
   const ts = getTechStyle(set.setType, set.technique)
-  const badge = getBadge(set.setType, set.technique, index)
   const cfg = set.techniqueConfig as Record<string, unknown> | null
 
-  type BlockData = { reps: string; weight: string; checked: boolean; failed?: boolean }
-
   const initBlocks = useCallback((): BlockData[] => {
-    if (!cfg) return [{ reps: '', weight: '', checked: false }]
+    if (!cfg) return [{ reps: '', weight: '' }]
     if (set.technique === 'REST_PAUSE') {
-      const pts = cfg['execPoints'] as { reps: null | number; weightKg: null | number; checked: boolean }[] | undefined
-      return (pts ?? Array.from({ length: (cfg['failurePoints'] as number) ?? 3 }, () => ({ reps: null, weightKg: null, checked: false }))).map(p => ({
+      const pts = cfg['execPoints'] as { reps: null | number; weightKg: null | number }[] | undefined
+      // +1 because index 0 is the main set; 1..failurePoints are failure blocks
+      const count = ((cfg['failurePoints'] as number) ?? 3) + 1
+      // weight is shared via mainWeight — blocks only track reps
+      return (pts ?? Array.from({ length: count }, () => ({ reps: null, weightKg: null }))).map(p => ({
         reps: p.reps != null ? String(p.reps) : '',
-        weight: p.weightKg != null ? String(p.weightKg) : '',
-        checked: p.checked,
+        weight: '',
       }))
     }
-    if (set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND') {
-      const blks = cfg['execBlocks'] as { reps: null | number; weightKg: null | number; checked: boolean; failed?: boolean }[] | undefined
-      const count = (cfg['blocks'] as number) ?? 3
-      return (blks ?? Array.from({ length: count }, () => ({ reps: null, weightKg: null, checked: false, failed: false }))).map(b => ({
+    if (set.technique === 'CLUSTER_SET') {
+      const blks = cfg['execBlocks'] as { reps: null | number; weightKg: null | number }[] | undefined
+      const count = (cfg['blocks'] as number) ?? 4
+      // weight is shared via mainWeight — blocks only track reps
+      return (blks ?? Array.from({ length: count }, () => ({ reps: null, weightKg: null }))).map(b => ({
         reps: b.reps != null ? String(b.reps) : '',
-        weight: b.weightKg != null ? String(b.weightKg) : '',
-        checked: b.checked,
+        weight: '',
+      }))
+    }
+    if (set.technique === 'MUSCLE_ROUND') {
+      const blks = cfg['execBlocks'] as { reps: null | number; failed?: boolean }[] | undefined
+      const count = (cfg['blocks'] as number) ?? 6
+      // weight is now shared (mainWeight / dropWeight) — blocks only track reps and failure flag
+      return (blks ?? Array.from({ length: count }, () => ({ reps: null, failed: false }))).map(b => ({
+        reps: b.reps != null ? String(b.reps) : '',
+        weight: '',
         failed: b.failed,
       }))
     }
     if (set.technique === 'DROP_SET') {
-      const drops = cfg['execDrops'] as { weightKg: null | number; reps: null | number; checked: boolean }[] | undefined
-      const count = (cfg['drops'] as number) ?? 2
-      return (drops ?? Array.from({ length: count }, () => ({ weightKg: null, reps: null, checked: false }))).map(d => ({
-        reps: d.reps != null ? String(d.reps) : '',
-        weight: d.weightKg != null ? String(d.weightKg) : '',
-        checked: d.checked,
-      }))
+      const drops = (cfg['drops'] as number) ?? 2
+      const execDrops = cfg['execDrops'] as { weightKg: null | number; reps: null | number }[] | undefined
+      // total = main + drops; weights come from prior execution input (execDrops)
+      const totalBlocks = Array.isArray(execDrops) ? execDrops.length : drops + 1
+      return Array.from({ length: totalBlocks }, (_, i) => {
+        const execDrop = execDrops?.[i]
+        return {
+          reps: execDrop?.reps != null ? String(execDrop.reps) : '',
+          weight: execDrop?.weightKg != null ? String(execDrop.weightKg) : '',
+        }
+      })
     }
-    return [{ reps: '', weight: '', checked: false }]
+    if (set.technique === 'MYOREP') {
+      const execActivation = cfg['execActivationReps'] as number | null | undefined
+      const execMinis = cfg['execMiniBlocks'] as { reps: null | number; failed?: boolean }[] | undefined
+      return [
+        // index 0 = activation set
+        { reps: execActivation != null ? String(execActivation) : '', weight: '' },
+        // index 1..N = completed mini-blocks (only existing ones — user adds more via button)
+        ...(execMinis ?? []).map(m => ({
+          reps: m.reps != null ? String(m.reps) : '',
+          weight: '',
+          failed: m.failed,
+        })),
+      ]
+    }
+    return [{ reps: '', weight: '' }]
   }, [])
 
   const [blocks, setBlocks] = useState<BlockData[]>(initBlocks)
   const restSec = cfg ? ((cfg['restBetweenSeconds'] as number) ?? 0) : 0
 
-  function toggleBlock(i: number) {
-    setBlocks(prev => prev.map((b, bi) => bi !== i ? b : { ...b, checked: !b.checked }))
+  // Shared weight for REST_PAUSE / CLUSTER_SET; main weight for MUSCLE_ROUND
+  const [mainWeight, setMainWeight] = useState<string>(() => {
+    if (!cfg) return ''
+    if (set.technique === 'CLUSTER_SET') {
+      const blks = cfg['execBlocks'] as { weightKg: null | number }[] | undefined
+      const w = blks?.[0]?.weightKg
+      return w != null ? String(w) : ''
+    }
+    if (set.technique === 'REST_PAUSE') {
+      const pts = cfg['execPoints'] as { weightKg: null | number }[] | undefined
+      const w = pts?.[0]?.weightKg
+      return w != null ? String(w) : ''
+    }
+    if (set.technique === 'MUSCLE_ROUND') {
+      // prefer saved execConfig value, fall back to set's weightKg (seeded from targetWeight)
+      const w = cfg['mainWeightKg'] as number | null | undefined
+      if (w != null) return String(w)
+      return set.weightKg != null && set.weightKg > 0 ? String(set.weightKg) : ''
+    }
+    if (set.technique === 'MYOREP') {
+      const w = (cfg['mainWeightKg'] as number | null | undefined) ?? (cfg['weightKg'] as number | null | undefined)
+      if (w != null) return String(w)
+      return set.weightKg != null && set.weightKg > 0 ? String(set.weightKg) : ''
+    }
+    return ''
+  })
+
+  // Drop weight for MUSCLE_ROUND (applied from the failure block onward)
+  const [dropWeight, setDropWeight] = useState<string>(() => {
+    if (set.technique !== 'MUSCLE_ROUND' || !cfg) return ''
+    const w = cfg['dropWeightKg'] as number | null | undefined
+    return w != null ? String(w) : ''
+  })
+
+  const isMYO = set.technique === 'MYOREP'
+  const anyMYOFailed = isMYO && blocks.slice(1).some(b => !!b.failed)
+  const myoActivationRest = isMYO && cfg ? ((cfg['activationRestSeconds'] as number) ?? 20) : 0
+
+  function addMiniBlock() {
+    setBlocks(prev => [...prev, { reps: '', weight: '', failed: false }])
   }
-  function toggleFailed(i: number) {
-    setBlocks(prev => prev.map((b, bi) => bi !== i ? b : { ...b, failed: !b.failed }))
-  }
+
   function updateBlock(i: number, field: 'reps' | 'weight', val: string) {
     setBlocks(prev => prev.map((b, bi) => bi !== i ? b : { ...b, [field]: val }))
   }
-
-  const allChecked = blocks.every(b => b.checked)
-
-  function handleParentCheck() {
-    if (!set.isChecked && !allChecked) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-    const updated = blocks.map(b => ({ ...b, checked: true }))
-    setBlocks(updated)
-    const totalReps = updated.reduce((sum, b) => sum + (parseInt(b.reps, 10) || 0), 0)
-    const maxWeight = updated.reduce((mx, b) => Math.max(mx, parseFloat(b.weight) || 0), 0)
-    const techCfg = buildUpdatedCfg(updated)
-    onChecked(set.id, totalReps || null, maxWeight || null, techCfg)
+  function toggleFailed(i: number) {
+    if (set.technique === 'MUSCLE_ROUND') {
+      // Only one failure point allowed; toggle off if clicking the same block
+      setBlocks(prev => prev.map((b, bi) => ({ ...b, failed: bi === i ? !b.failed : false })))
+    } else {
+      setBlocks(prev => prev.map((b, bi) => bi !== i ? b : { ...b, failed: !b.failed }))
+    }
   }
 
-  function buildUpdatedCfg(updated: BlockData[]): TechniqueConfig | null {
+  function buildCfg(bks: BlockData[]): TechniqueConfig | null {
     if (!cfg) return null
-    if (set.technique === 'REST_PAUSE') {
-      return { ...cfg, execPoints: updated.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(b.weight) || null, checked: b.checked })) } as TechniqueConfig
-    }
-    if (set.technique === 'CLUSTER_SET') {
-      return { ...cfg, execBlocks: updated.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(b.weight) || null, checked: b.checked })) } as TechniqueConfig
-    }
+    if (set.technique === 'REST_PAUSE')
+      return { ...cfg, execPoints: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(mainWeight) || null })) } as TechniqueConfig
+    if (set.technique === 'CLUSTER_SET')
+      return { ...cfg, execBlocks: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(mainWeight) || null })) } as TechniqueConfig
     if (set.technique === 'MUSCLE_ROUND') {
-      return { ...cfg, execBlocks: updated.map(b => ({ reps: parseInt(b.reps, 10) || null, weightKg: parseFloat(b.weight) || null, checked: b.checked, failed: !!b.failed })) } as TechniqueConfig
+      const failedAt = bks.findIndex(b => !!b.failed)
+      return {
+        ...cfg,
+        execBlocks: bks.map(b => ({ reps: parseInt(b.reps, 10) || null, failed: !!b.failed })),
+        mainWeightKg: parseFloat(mainWeight) || null,
+        dropWeightKg: parseFloat(dropWeight) || null,
+        failedAtBlock: failedAt >= 0 ? failedAt : null,
+      } as TechniqueConfig
     }
     if (set.technique === 'DROP_SET') {
-      return { ...cfg, execDrops: updated.map(b => ({ weightKg: parseFloat(b.weight) || null, reps: parseInt(b.reps, 10) || null, checked: b.checked })) } as TechniqueConfig
+      // Weights are entered here during execution and saved to the session.
+      return {
+        ...cfg,
+        execDrops: bks.map(b => ({
+          weightKg: parseFloat(b.weight) || null,
+          reps: parseInt(b.reps, 10) || null,
+        })),
+      } as TechniqueConfig
+    }
+    if (set.technique === 'MYOREP') {
+      return {
+        ...cfg,
+        execActivationReps: parseInt(bks[0]?.reps ?? '', 10) || null,
+        execMiniBlocks: bks.slice(1).map(b => ({
+          reps: parseInt(b.reps, 10) || null,
+          failed: !!b.failed,
+        })),
+        mainWeightKg: parseFloat(mainWeight) || null,
+      } as TechniqueConfig
     }
     return null
   }
 
+  function handleDone(): false | void {
+    const result = validateTechniqueSet({
+      technique: set.technique,
+      blocks,
+      mainWeight,
+      dropWeight,
+      blockLabel,
+    })
+    if (!result.ok) { showToast(result.message, 'warning'); return false }
+    const totalReps = blocks.reduce((sum, b) => sum + (parseInt(b.reps, 10) || 0), 0)
+    let maxWeight: number
+    if (set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE' || set.technique === 'MUSCLE_ROUND' || isMYO) {
+      maxWeight = parseFloat(mainWeight) || 0
+    } else if (set.technique === 'DROP_SET') {
+      maxWeight = blocks.reduce((mx, b) => Math.max(mx, parseFloat(b.weight) || 0), 0)
+    } else {
+      maxWeight = blocks.reduce((mx, b) => Math.max(mx, parseFloat(b.weight) || 0), 0)
+    }
+    onChecked(set.id, totalReps || null, maxWeight || null, buildCfg(blocks))
+  }
+
+  const showMainWeight = set.technique === 'CLUSTER_SET' || set.technique === 'REST_PAUSE' || isMYO
+  const isMuscleRound = set.technique === 'MUSCLE_ROUND'
+  const failedAtBlock = isMuscleRound ? blocks.findIndex(b => !!b.failed) : -1
+  const summaryText = buildTechSummary(set.technique, cfg)
+
+  // Completed technique sets settle into a slightly dimmed, resolved state
+  const rowFade = useCompletedFade(set.isChecked)
+
   const blockLabel = (i: number) => {
-    if (set.technique === 'REST_PAUSE') return `Falha ${i + 1}`
-    if (set.technique === 'DROP_SET') return `Drop ${i + 1}`
+    if (set.technique === 'REST_PAUSE') return i === 0 ? 'Série Principal' : `Falha ${i}`
+    if (set.technique === 'DROP_SET') return i === 0 ? 'Série Principal' : `Drop ${i}`
+    if (set.technique === 'MYOREP') return i === 0 ? 'Ativação' : `Mini ${i}`
     return `Bloco ${i + 1}`
   }
 
   return (
-    <View style={[ex.techSetWrap, { borderLeftColor: ts.borderColor }]}>
+    <Animated.View style={[
+      ex.techSetWrap,
+      { borderLeftColor: ts.borderColor, opacity: rowFade },
+    ]}>
+      <CompletedAccentOverlay active={set.isChecked} radius={10} />
+      {/* Header row — badge, set number, weight (RP/CS/MYO), done, remove */}
       <View style={ex.setRow}>
-        <View style={[ex.badge, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]}>
-          <Text style={[ex.badgeText, { color: ts.badgeText }]}>{badge}</Text>
-        </View>
-        <Text style={[ex.setNum, { flex: 1 }]}>{index + 1}</Text>
-        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 12, right: 4 }}>
-          <Ionicons name="close" size={14} color="#3A3A4A" />
+        <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
+        <Text style={ex.techSetNum}>Série {index + 1}</Text>
+        <View style={{ flex: 1 }} />
+        {showMainWeight && (
+          <WorkoutInput
+            width={96}
+            value={mainWeight}
+            onChangeText={setMainWeight}
+            placeholder="—"
+            keyboardType="decimal-pad"
+            completed={set.isChecked}
+            unit="kg"
+          />
+        )}
+        <CompleteSetButton checked={set.isChecked} onPress={handleDone} />
+        <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 4, right: 6 }} style={ex.removeSetBtn}>
+          <Ionicons name="close" size={13} color="#3A3A4A" />
         </TouchableOpacity>
-        <CheckButton checked={set.isChecked || allChecked} onPress={handleParentCheck} />
       </View>
 
-      {blocks.map((block, bi) => (
-        <View key={bi}>
-          {bi > 0 && restSec > 0 && (
-            <View style={ex.restSep}>
-              <View style={ex.restDots} />
-              <Text style={ex.restSecText}>{restSec}s</Text>
-              <View style={ex.restDots} />
-            </View>
-          )}
-          <View style={[ex.blockRow, block.checked && ex.blockRowDone]}>
-            <CheckButton checked={block.checked} onPress={() => toggleBlock(bi)} size={26} />
-            <Text style={ex.blockLabel}>{blockLabel(bi)}</Text>
-            {block.checked ? (
-              <>
-                <Text style={[ex.inputDone, ex.inputDoneSm]}>{block.reps || '—'}</Text>
-                <Text style={[ex.inputSep, { fontSize: 12 }]}>×</Text>
-                <Text style={[ex.inputDone, ex.inputDoneSm]}>{block.weight || '—'}</Text>
-                <Text style={[ex.kgLabel, { fontSize: 11 }]}>kg</Text>
-              </>
-            ) : (
-              <>
-                <TextInput style={ex.repsInputSm} value={block.reps} onChangeText={v => updateBlock(bi, 'reps', v)} placeholder="—" placeholderTextColor="#333344" keyboardType="number-pad" />
-                <Text style={[ex.inputSep, { fontSize: 12 }]}>×</Text>
-                <TextInput style={ex.weightInputSm} value={block.weight} onChangeText={v => updateBlock(bi, 'weight', v)} placeholder="—" placeholderTextColor="#333344" keyboardType="decimal-pad" />
-                <Text style={[ex.kgLabel, { fontSize: 11 }]}>kg</Text>
-              </>
-            )}
-            {set.technique === 'MUSCLE_ROUND' && (
-              <TouchableOpacity
-                style={[ex.failCircle, block.failed && ex.failCircleActive]}
-                onPress={() => toggleFailed(bi)}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              >
-                {block.failed && <Text style={ex.failCircleX}>✗</Text>}
-              </TouchableOpacity>
-            )}
+      {/* Technique summary */}
+      {summaryText != null && (
+        <View style={ex.techSummaryRow}>
+          <View style={[ex.techSummaryAccent, { backgroundColor: ts.borderColor }]} />
+          <Text style={[ex.techSummaryText, { color: ts.badgeText }]} numberOfLines={1}>{summaryText}</Text>
+        </View>
+      )}
+
+      {/* MUSCLE_ROUND: two-weight row — principal + queda */}
+      {isMuscleRound && (
+        <View style={ex.mrWeightsRow}>
+          <View style={ex.mrWeightCol}>
+            <Text style={ex.mrWeightLabel}>PRINCIPAL</Text>
+            <WorkoutInput
+              flex={1}
+              value={mainWeight}
+              onChangeText={setMainWeight}
+              placeholder="—"
+              keyboardType="decimal-pad"
+              completed={set.isChecked}
+              unit="kg"
+            />
+          </View>
+          <View style={ex.mrWeightCol}>
+            <Text style={[ex.mrWeightLabel, { color: '#A78BFA' }]}>↓ QUEDA</Text>
+            <WorkoutInput
+              flex={1}
+              value={dropWeight}
+              onChangeText={setDropWeight}
+              placeholder="—"
+              keyboardType="decimal-pad"
+              completed={set.isChecked}
+              unit="kg"
+            />
           </View>
         </View>
-      ))}
-    </View>
+      )}
+
+      {/* Technique blocks */}
+      <View style={ex.techBlocks}>
+        {blocks.map((block, bi) => {
+          const isFailureBlock = isMuscleRound && block.failed
+          const isDropBlock = isMuscleRound && failedAtBlock >= 0 && bi > failedAtBlock
+          const isDS = set.technique === 'DROP_SET'
+          return (
+            <View key={bi}>
+              {/* Drop set: connector between drops */}
+              {bi > 0 && isDS && (
+                <View style={ex.dropConnector}>
+                  <View style={ex.dropConnectorLine} />
+                  <Text style={ex.dropConnectorLabel}>↓ drop</Text>
+                  <View style={ex.dropConnectorLine} />
+                </View>
+              )}
+              {/* Other techniques: rest separator */}
+              {bi > 0 && !isDS && !isMYO && restSec > 0 && (
+                <View style={ex.blockSep}>
+                  <View style={ex.blockSepLine} />
+                  <Text style={ex.blockSepLabel}>{restSec}s</Text>
+                  <View style={ex.blockSepLine} />
+                </View>
+              )}
+              {bi > 0 && !isDS && !isMYO && restSec === 0 && (
+                <View style={ex.blockSepThin} />
+              )}
+              {/* MYOREP: activation rest before mini 1, block rest between minis */}
+              {bi > 0 && isMYO && (
+                <View style={ex.blockSep}>
+                  <View style={[ex.blockSepLine, { backgroundColor: 'rgba(244,114,182,0.25)' }]} />
+                  <Text style={[ex.blockSepLabel, { color: '#F472B6' }]}>
+                    {bi === 1 ? `${myoActivationRest}s` : `${restSec}s`}
+                  </Text>
+                  <View style={[ex.blockSepLine, { backgroundColor: 'rgba(244,114,182,0.25)' }]} />
+                </View>
+              )}
+              <View style={[
+                ex.blockRow,
+                isFailureBlock && ex.blockRowFailed,
+                isDropBlock && ex.blockRowDrop,
+                isDS && ex.blockRowDS,
+                isMYO && bi === 0 && ex.blockRowMYOActivation,
+                isMYO && bi > 0 && ex.blockRowMYOMini,
+                isMYO && bi > 0 && block.failed && ex.blockRowFailed,
+              ]}>
+                {isDropBlock && <Text style={ex.mrDropIndicator}>↓</Text>}
+                {isDS && <Text style={ex.dsBlockArrow}>→</Text>}
+                <Text style={[
+                  ex.blockLabel,
+                  isDropBlock && ex.blockLabelDrop,
+                  isMYO && bi === 0 && ex.blockLabelMYO,
+                ]}>{blockLabel(bi)}</Text>
+                {isDS && (
+                  <WorkoutInput
+                    width={80}
+                    value={block.weight}
+                    onChangeText={v => updateBlock(bi, 'weight', v)}
+                    placeholder="—"
+                    keyboardType="decimal-pad"
+                    completed={set.isChecked}
+                    unit="kg"
+                  />
+                )}
+                <WorkoutInput
+                  width={isDS ? 80 : 92}
+                  value={block.reps}
+                  onChangeText={v => updateBlock(bi, 'reps', v)}
+                  placeholder={
+                    (set.technique === 'CLUSTER_SET' && cfg?.['repsPerBlock']) ? String(cfg['repsPerBlock']) :
+                    (isMYO && bi === 0 && cfg?.['activationReps']) ? String(cfg['activationReps']) :
+                    (isMYO && bi > 0 && cfg?.['repsPerBlock']) ? String(cfg['repsPerBlock']) :
+                    '—'
+                  }
+                  keyboardType="number-pad"
+                  completed={set.isChecked}
+                  unit="reps"
+                />
+                {isMuscleRound && (
+                  <TouchableOpacity
+                    style={[ex.failDot, isFailureBlock && ex.failDotActive]}
+                    onPress={() => toggleFailed(bi)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    {isFailureBlock && <Ionicons name="close" size={10} color="#fff" />}
+                  </TouchableOpacity>
+                )}
+                {/* MYOREP mini-block failure marker */}
+                {isMYO && bi > 0 && (
+                  <TouchableOpacity
+                    style={[ex.failDot, ex.failDotMYO, block.failed && ex.failDotMYOActive]}
+                    onPress={() => toggleFailed(bi)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    {block.failed && <Ionicons name="close" size={10} color="#fff" />}
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )
+        })}
+        {isMuscleRound && (
+          <Text style={ex.mrHint}>
+            {failedAtBlock >= 0
+              ? `Falha no bloco ${failedAtBlock + 1} — blocos restantes com peso de queda`
+              : 'Marque o bloco onde ocorreu a falha'}
+          </Text>
+        )}
+        {isMYO && !set.isChecked && !anyMYOFailed && (
+          <TouchableOpacity style={ex.myoAddBtn} onPress={addMiniBlock} activeOpacity={0.7}>
+            <Ionicons name="add-circle-outline" size={14} color="#F472B6" />
+            <Text style={ex.myoAddText}>Mini-bloco</Text>
+          </TouchableOpacity>
+        )}
+        {isMYO && anyMYOFailed && (
+          <Text style={ex.myoFailHint}>Falha marcada — confirme a série</Text>
+        )}
+      </View>
+    </Animated.View>
   )
 }
 
@@ -370,10 +568,15 @@ type ExerciseCardProps = {
   onRemoveSet: (execExId: string, setId: string) => void
   onRemoveExercise: (execExId: string) => void
   onUpdateNotes: (execExId: string, notes: string) => void
-  onSetTypeChange: (execExId: string, setId: string, newType: SetType) => void
+  onTechniqueTap: (execExId: string, setId: string) => void
 }
 
-function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveExercise, onUpdateNotes, onSetTypeChange }: ExerciseCardProps) {
+// Techniques that need block-level expansion (mirrors WorkoutDetailScreen)
+function needsBlockExpansion(t: PlannedSetTechnique) {
+  return t === 'REST_PAUSE' || t === 'CLUSTER_SET' || t === 'MUSCLE_ROUND' || t === 'DROP_SET' || t === 'MYOREP'
+}
+
+function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveExercise, onUpdateNotes, onTechniqueTap }: ExerciseCardProps) {
   const [notes, setNotes] = useState(exercise.exerciseNotes ?? '')
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -384,96 +587,70 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
   }
 
   return (
-    <View style={ex.card}>
-      {/* Full-width exercise image */}
-      <View style={ex.imgContainer}>
-        {exercise.exercise.gifUrl ? (
-          <Image source={{ uri: exercise.exercise.gifUrl }} style={ex.img} resizeMode="cover" />
-        ) : (
-          <View style={[ex.img, ex.imgPlaceholder]}>
-            <Ionicons name="barbell-outline" size={40} color="#3A3A4A" />
-          </View>
-        )}
-        <LinearGradient
-          colors={['transparent', 'rgba(30,30,36,0.9)']}
-          style={ex.imgGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-        />
+    <ExerciseCardShell
+      gifUrl={exercise.exercise.gifUrl ?? null}
+      name={exercise.exercise.name}
+      meta={
+        <View style={cardMetaStyles.row}>
+          <Text style={cardMetaStyles.text}>{exercise.exercise.muscleGroup.toLowerCase()}</Text>
+          <Text style={cardMetaStyles.dot}>·</Text>
+          <Text style={cardMetaStyles.text}>{exercise.sets.length} {exercise.sets.length === 1 ? 'série' : 'séries'}</Text>
+        </View>
+      }
+      rightSlot={
         <TouchableOpacity
           onPress={() => onRemoveExercise(exercise.id)}
           style={ex.removeExBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <View style={ex.removeExBtnWrap}>
-            <Ionicons name="trash-outline" size={14} color="#FF5252" />
-          </View>
+          <Ionicons name="close" size={15} color="#3A3A4A" />
         </TouchableOpacity>
-      </View>
-
-      {/* Exercise name + muscle */}
-      <View style={ex.cardInfo}>
-        <Text style={ex.exerciseName}>{exercise.exercise.name}</Text>
-        <Text style={ex.muscleTag}>{exercise.exercise.muscleGroup.toLowerCase()}</Text>
-      </View>
-
-      {/* Notes (always visible) */}
-      <View style={ex.notesWrap}>
+      }
+    >
+      <View style={cardBodyStyles.observationWrap}>
         <TextInput
-          style={ex.notesInput}
+          style={cardBodyStyles.observationInput}
           value={notes}
           onChangeText={handleNotesChange}
-          placeholder="Notas do exercício..."
-          placeholderTextColor="#3A3A4A"
+          placeholder="Adicionar observação..."
+          placeholderTextColor="#8A8A9A"
+          selectionColor="#4FC3F7"
           multiline
         />
       </View>
 
-      {/* Sets */}
       <View style={ex.setsWrap}>
-        <View style={ex.setsHeader}>
-          <View style={ex.badgeHeaderSpace} />
-          <Text style={[ex.setsHeaderCell, { flex: 1, textAlign: 'center' }]}>Reps</Text>
-          <View style={{ width: 22 }} />
-          <Text style={[ex.setsHeaderCell, { flex: 1.1, textAlign: 'center' }]}>Kg</Text>
-          <View style={{ width: 62 }} />
-        </View>
-
-        {exercise.sets.map((set, idx) => {
-          if (set.technique !== 'NONE') {
-            return (
+        {exercise.sets.map((set, idx) => (
+          <React.Fragment key={set.id}>
+            {idx > 0 && <View style={ex.setSeparator} />}
+            {needsBlockExpansion(set.technique) ? (
               <TechSetRow
-                key={set.id}
                 set={set}
                 index={idx}
                 onChecked={(id, reps, weight, cfg) => onSetChecked(exercise.id, id, reps, weight, cfg)}
                 onRemove={() => onRemoveSet(exercise.id, set.id)}
+                onTechniqueTap={() => onTechniqueTap(exercise.id, set.id)}
               />
-            )
-          }
-          return (
-            <SimpleSetRow
-              key={set.id}
-              set={set}
-              index={idx}
-              restSeconds={null}
-              onChecked={(id, reps, weight, cfg) => onSetChecked(exercise.id, id, reps, weight, cfg)}
-              onRestEnd={() => {}}
-              onRemove={() => onRemoveSet(exercise.id, set.id)}
-              onSetTypeChange={() => {
-                const next: SetType = set.setType === 'WORKING' ? 'WARMUP' : set.setType === 'WARMUP' ? 'FEEDER' : 'WORKING'
-                onSetTypeChange(exercise.id, set.id, next)
-              }}
-            />
-          )
-        })}
+            ) : (
+              <SimpleSetRow
+                set={set}
+                index={idx}
+                restSeconds={null}
+                onChecked={(id, reps, weight, cfg) => onSetChecked(exercise.id, id, reps, weight, cfg)}
+                onRestEnd={() => {}}
+                onRemove={() => onRemoveSet(exercise.id, set.id)}
+                onTechniqueTap={() => onTechniqueTap(exercise.id, set.id)}
+              />
+            )}
+          </React.Fragment>
+        ))}
 
-        <TouchableOpacity style={ex.addSetBtn} onPress={() => onAddSet(exercise.id)} activeOpacity={0.7}>
-          <Ionicons name="add-circle-outline" size={16} color="#4FC3F7" />
-          <Text style={ex.addSetText}>Adicionar série</Text>
+        <TouchableOpacity style={cardBodyStyles.addSetBtn} onPress={() => onAddSet(exercise.id)} activeOpacity={0.75}>
+          <Ionicons name="add-circle-outline" size={14} color="#8A8A9A" />
+          <Text style={cardBodyStyles.addSetText}>Adicionar série</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </ExerciseCardShell>
   )
 }
 
@@ -482,22 +659,92 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
 export function WorkoutExecutionScreen() {
   const navigation = useNavigation<NavProp>()
   const route = useRoute<RouteProps>()
-  const { workoutId } = route.params
+  const { workoutId, resumeSessionId } = route.params
 
+  const insets = useSafeAreaInsets()
   const store = useSessionStore()
   const [isLoading, setIsLoading] = useState(true)
   const [cancelModal, setCancelModal] = useState(false)
   const [finishModal, setFinishModal] = useState(false)
+  const [analyticsOpen, setAnalyticsOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [techniquePicker, setTechniquePicker] = useState<{
+    visible: boolean; execExId: string | null; setId: string | null
+  }>({ visible: false, execExId: null, setId: null })
+  const [barRestRemaining, setBarRestRemaining] = useState(0)
+  const [restPickerVisible, setRestPickerVisible] = useState(false)
+  const [restTimerTipVisible, setRestTimerTipVisible] = useState(false)
+  const [customRestInput, setCustomRestInput] = useState('')
+  const barRestRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const tipSeenRef = useRef(false)
 
   const session = store.session
   const sessionId = store.sessionId
+
+  const currentExecSet = (() => {
+    if (!techniquePicker.execExId || !techniquePicker.setId) return null
+    const ex = session?.exercises.find(e => e.id === techniquePicker.execExId)
+    return ex?.sets.find(s => s.id === techniquePicker.setId) ?? null
+  })()
+
+  useEffect(() => {
+    SecureStore.getItemAsync(REST_TIMER_TIP_KEY).then(val => {
+      tipSeenRef.current = val === 'true'
+    })
+    return () => { if (barRestRef.current) clearInterval(barRestRef.current) }
+  }, [])
+
+  function dismissRestTimerTip(dontShowAgain: boolean) {
+    if (dontShowAgain) {
+      tipSeenRef.current = true
+      SecureStore.setItemAsync(REST_TIMER_TIP_KEY, 'true')
+    }
+    setRestTimerTipVisible(false)
+  }
+
+  function startBarRest(seconds: number) {
+    if (barRestRef.current) clearInterval(barRestRef.current)
+    setBarRestRemaining(seconds)
+    barRestRef.current = setInterval(() => {
+      setBarRestRemaining(prev => {
+        if (prev <= 1) {
+          clearInterval(barRestRef.current!)
+          barRestRef.current = null
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  function cancelBarRest() {
+    if (barRestRef.current) { clearInterval(barRestRef.current); barRestRef.current = null }
+    setBarRestRemaining(0)
+  }
 
   useEffect(() => {
     async function init() {
       try {
         if (store.isActive && store.session) {
-          setIsLoading(false)
+          const sessionMatchesRoute = resumeSessionId
+            ? store.session.id === resumeSessionId
+            : workoutId
+              ? store.session.workoutId === workoutId
+              : store.session.isFreeWorkout
+          if (sessionMatchesRoute) {
+            setIsLoading(false)
+            store.startTimer()
+            return
+          }
+          // Active session is for a different workout — discard and start fresh
+          store.clearSession()
+        }
+        // Returning from the post screen ("Back to workout"): rehydrate the
+        // existing TrainingLog as the editable session — never start a new one.
+        if (resumeSessionId) {
+          const res = await api.sessions.get(resumeSessionId)
+          store.setSession(res.data.session)
           store.startTimer()
           return
         }
@@ -530,13 +777,22 @@ export function WorkoutExecutionScreen() {
     }
   }
 
-  async function handleSetTypeChange(execExId: string, setId: string, newType: SetType) {
+  async function handleSetTechniqueChange(execExId: string, setId: string, sel: TechniqueSelection) {
     if (!sessionId) return
-    store.updateSet(execExId, setId, { setType: newType })
+    store.updateSet(execExId, setId, {
+      setType: sel.setType,
+      technique: sel.technique,
+      techniqueConfig: sel.config,
+    })
     try {
-      await api.sessions.updateSet(sessionId, setId, { setType: newType })
+      await api.sessions.updateSet(sessionId, setId, {
+        setType: sel.setType,
+        technique: sel.technique,
+        techniqueConfig: sel.config,
+      })
     } catch {
-      showToast('Erro ao atualizar tipo')
+      store.updateSet(execExId, setId, { setType: 'WORKING', technique: 'NONE' })
+      showToast('Erro ao atualizar técnica')
     }
   }
 
@@ -639,6 +895,26 @@ export function WorkoutExecutionScreen() {
   }
 
   const exercises = session?.exercises ?? []
+
+  const analyticsData = (() => {
+    let totalVolume = 0
+    let validSetsCount = 0
+    const perExercise = exercises.map(ex => {
+      let exVolume = 0
+      let exValidSets = 0
+      for (const set of ex.sets) {
+        if (set.isChecked) {
+          exVolume += (set.repsCompleted ?? 0) * (set.weightKg ?? 0)
+          if (set.setType === 'WORKING') exValidSets++
+        }
+      }
+      totalVolume += exVolume
+      validSetsCount += exValidSets
+      return { id: ex.id, name: ex.exercise.name, muscleGroup: ex.exercise.muscleGroup, volume: exVolume, validSets: exValidSets }
+    }).filter(e => e.volume > 0 || e.validSets > 0)
+    return { totalVolume, validSetsCount, perExercise }
+  })()
+
   const totalSets = exercises.reduce((acc, e) => acc + e.sets.length, 0)
   const checkedSets = exercises.reduce((acc, e) => acc + e.sets.filter(s => s.isChecked).length, 0)
   const progress = totalSets > 0 ? checkedSets / totalSets : 0
@@ -653,7 +929,9 @@ export function WorkoutExecutionScreen() {
           <Text style={s.headerTitle} numberOfLines={1}>
             {session?.workoutName ?? 'Treino Livre'}
           </Text>
-          <Text style={s.timer}>{formatElapsed(store.elapsedSeconds)}</Text>
+          <TouchableOpacity onPress={() => setAnalyticsOpen(true)} style={s.headerSideBtn}>
+            <Ionicons name="stats-chart-outline" size={20} color="#8A8A9A" />
+          </TouchableOpacity>
         </View>
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
@@ -684,23 +962,123 @@ export function WorkoutExecutionScreen() {
             onRemoveSet={handleRemoveSet}
             onRemoveExercise={handleRemoveExercise}
             onUpdateNotes={handleUpdateNotes}
-            onSetTypeChange={handleSetTypeChange}
+            onTechniqueTap={(execExId, setId) => setTechniquePicker({ visible: true, execExId, setId })}
           />
         ))}
 
         <TouchableOpacity style={s.addExBtn} onPress={() => setPickerOpen(true)} activeOpacity={0.7}>
-          <Ionicons name="add" size={18} color="#4FC3F7" />
+          <Ionicons name="add" size={18} color="#8A8A9A" />
           <Text style={s.addExText}>Adicionar exercício</Text>
         </TouchableOpacity>
       </ScrollView>
 
-      <View style={s.footer}>
-        <TouchableOpacity onPress={onFinalizarPress} activeOpacity={0.85} style={s.footerBtn}>
-          <LinearGradient colors={['#2979FF', '#1565C0']} style={s.footerBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-            <Text style={s.footerBtnText}>Finalizar treino</Text>
+      {/* Bottom control bar */}
+      <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <TouchableOpacity
+          style={s.barSection}
+          onPress={barRestRemaining > 0 ? cancelBarRest : () => {
+            if (!tipSeenRef.current) {
+              setRestTimerTipVisible(true)
+            } else {
+              setRestPickerVisible(true)
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          {barRestRemaining > 0 ? (
+            <>
+              <Text style={s.barRestCountdown}>
+                {String(Math.floor(barRestRemaining / 60)).padStart(2, '0')}:{String(barRestRemaining % 60).padStart(2, '0')}
+              </Text>
+              <Text style={s.barSubLabel}>pular</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="timer-outline" size={22} color="#555560" />
+              <Text style={s.barSubLabel}>Descanso</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <View style={s.barDivider} />
+
+        <TouchableOpacity
+          style={[s.barSection, { flex: 1.3 }]}
+          onPress={() => store.isPaused ? store.resumeTimer() : store.pauseTimer()}
+          activeOpacity={0.7}
+        >
+          <Text style={[s.barTimerText, store.isPaused && { color: '#555560' }]}>
+            {formatElapsed(store.elapsedSeconds)}
+          </Text>
+          <View style={s.barTimerRow}>
+            <Ionicons name={store.isPaused ? 'play-outline' : 'pause-outline'} size={11} color="#555560" />
+            <Text style={s.barSubLabel}>{store.isPaused ? 'retomar' : 'pausar'}</Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={s.barDivider} />
+
+        <TouchableOpacity onPress={onFinalizarPress} activeOpacity={0.85} style={s.barFinishBtn}>
+          <LinearGradient
+            colors={['#2979FF', '#1565C0']}
+            style={s.barFinishGrad}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <Ionicons name="checkmark-done-outline" size={16} color="#fff" />
+            <Text style={s.barFinishText}>Finalizar</Text>
           </LinearGradient>
         </TouchableOpacity>
       </View>
+
+      <Modal visible={analyticsOpen} transparent animationType="fade" onRequestClose={() => setAnalyticsOpen(false)}>
+        <View style={s.analyticsOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setAnalyticsOpen(false)} />
+          <View style={s.analyticsModal}>
+            <View style={s.analyticsHeader}>
+              <Text style={s.analyticsTitle}>Análise da sessão</Text>
+              <TouchableOpacity onPress={() => setAnalyticsOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color="#555560" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.analyticsSummary}>
+              <View style={s.analyticsCard}>
+                <Text style={s.analyticsCardNum}>{formatVolume(analyticsData.totalVolume)}</Text>
+                <Text style={s.analyticsCardUnit}>kg volume total</Text>
+              </View>
+              <View style={s.analyticsDivider} />
+              <View style={s.analyticsCard}>
+                <Text style={s.analyticsCardNum}>{analyticsData.validSetsCount}</Text>
+                <Text style={s.analyticsCardUnit}>séries válidas</Text>
+              </View>
+            </View>
+
+            {analyticsData.perExercise.length > 0 ? (
+              <ScrollView style={s.analyticsScroll} showsVerticalScrollIndicator={false}>
+                {analyticsData.perExercise.map((e, i) => (
+                  <View key={e.id} style={[s.analyticsRow, i === analyticsData.perExercise.length - 1 && { borderBottomWidth: 0 }]}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={s.analyticsExName} numberOfLines={1}>{e.name}</Text>
+                      <Text style={s.analyticsExMuscle}>{e.muscleGroup.toLowerCase()}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                      {e.volume > 0 && <Text style={s.analyticsExVol}>{formatVolume(e.volume)} kg</Text>}
+                      {e.validSets > 0 && (
+                        <Text style={s.analyticsExSets}>{e.validSets} {e.validSets === 1 ? 'série' : 'séries'}</Text>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={s.analyticsEmpty}>
+                <Text style={s.analyticsEmptyText}>Complete séries para ver análise</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={cancelModal} transparent animationType="fade" onRequestClose={() => setCancelModal(false)}>
         <View style={s.overlay}>
@@ -734,17 +1112,86 @@ export function WorkoutExecutionScreen() {
         </View>
       </Modal>
 
+      <Modal visible={restPickerVisible} transparent animationType="fade" onRequestClose={() => setRestPickerVisible(false)}>
+        <View style={s.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setRestPickerVisible(false)} />
+          <View style={s.modal}>
+            <Text style={s.modalTitle}>Tempo de descanso</Text>
+            <Text style={s.modalBody}>Defina a duração do seu descanso</Text>
+            <View style={s.restInputRow}>
+              <TextInput
+                style={s.restInput}
+                value={customRestInput}
+                onChangeText={setCustomRestInput}
+                keyboardType="number-pad"
+                placeholder="90"
+                placeholderTextColor="#3A3A4A"
+                selectionColor="#4FC3F7"
+                autoFocus
+              />
+              <Text style={s.restInputUnit}>seg</Text>
+            </View>
+            <TouchableOpacity
+              style={s.modalBtnPrimary}
+              onPress={() => {
+                const sec = parseInt(customRestInput, 10)
+                if (sec > 0) { startBarRest(sec); setRestPickerVisible(false); setCustomRestInput('') }
+              }}
+            >
+              <Text style={s.modalBtnPrimaryText}>Iniciar descanso</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.modalBtnDanger} onPress={() => setRestPickerVisible(false)}>
+              <Text style={s.modalBtnDangerText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={restTimerTipVisible} transparent animationType="fade" onRequestClose={() => dismissRestTimerTip(false)}>
+        <View style={s.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => dismissRestTimerTip(false)} />
+          <View style={s.modal}>
+            <View style={s.restTipIconRow}>
+              <Ionicons name="timer-outline" size={32} color="#4FC3F7" />
+            </View>
+            <Text style={s.modalTitle}>Temporizador de descanso</Text>
+            <Text style={s.modalBody}>O timer de descanso é opcional e você controla quando ativá-lo. Após completar uma série, toque em Descanso para iniciar a contagem. Defina a duração que quiser.</Text>
+            <TouchableOpacity style={s.modalBtnPrimary} onPress={() => dismissRestTimerTip(false)}>
+              <Text style={s.modalBtnPrimaryText}>Entendido</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.modalBtnDanger, { backgroundColor: 'transparent' }]}
+              onPress={() => dismissRestTimerTip(true)}
+            >
+              <Text style={[s.modalBtnDangerText, { color: '#555560' }]}>Não mostrar novamente</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <ExercisePickerModal
         visible={pickerOpen}
         existingExerciseIds={exercises.map(e => e.exerciseId)}
         onSelect={e => handleAddExercise(e.id)}
         onClose={() => setPickerOpen(false)}
       />
+
+      <TechniquePickerSheet
+        visible={techniquePicker.visible}
+        currentSetType={currentExecSet?.setType ?? 'WORKING'}
+        currentTechnique={currentExecSet?.technique ?? 'NONE'}
+        currentConfig={currentExecSet?.techniqueConfig ?? null}
+        onConfirm={sel => {
+          if (techniquePicker.execExId && techniquePicker.setId)
+            handleSetTechniqueChange(techniquePicker.execExId, techniquePicker.setId, sel)
+        }}
+        onClose={() => setTechniquePicker({ visible: false, execExId: null, setId: null })}
+      />
     </SafeAreaView>
   )
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Screen styles ─────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#141418' },
@@ -758,287 +1205,285 @@ const s = StyleSheet.create({
   },
   headerSideBtn: { width: 44, justifyContent: 'center', alignItems: 'flex-start' },
   headerTitle: { flex: 1, color: '#F0F0F5', fontSize: 17, fontWeight: '500', textAlign: 'center' },
-  timer: { width: 56, color: '#4FC3F7', fontSize: 13, fontFamily: 'monospace', textAlign: 'right' },
-  progressTrack: { height: 3, backgroundColor: '#2A2A35' },
-  progressFill: { height: 3, backgroundColor: '#4FC3F7' },
+  progressTrack: { height: 2, backgroundColor: '#2A2A35' },
+  progressFill: { height: 2, backgroundColor: '#4FC3F7' },
 
-  footer: { paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#1E1E24' },
-  footerBtn: { borderRadius: 14, overflow: 'hidden' },
-  footerBtnGradient: { height: 50, justifyContent: 'center', alignItems: 'center' },
-  footerBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  bar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1E1E24',
+    backgroundColor: '#141418',
+    gap: 6,
+  },
+  barSection: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    gap: 4,
+  },
+  barDivider: { width: 1, height: 34, backgroundColor: '#252530' },
+  barRestCountdown: { color: '#4FC3F7', fontSize: 22, fontFamily: 'monospace', fontWeight: '600' },
+  barTimerText: { color: '#F0F0F5', fontSize: 22, fontFamily: 'monospace', fontWeight: '600' },
+  barTimerRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  barSubLabel: { color: '#555560', fontSize: 10 },
+  barFinishBtn: { flex: 1.4, borderRadius: 12, overflow: 'hidden' },
+  barFinishGrad: { height: 54, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 6 },
+  barFinishText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 
-  scroll: { paddingBottom: 60, paddingTop: 12, gap: 12, paddingHorizontal: 14 },
+  scroll: { paddingBottom: 16, paddingTop: 8, gap: 8, paddingHorizontal: 12 },
 
   emptyWrap: { alignItems: 'center', paddingVertical: 60, gap: 12 },
   emptyText: { color: '#555560', fontSize: 14, textAlign: 'center' },
 
   addExBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, marginTop: 4, paddingVertical: 16,
-    borderWidth: 1.5, borderColor: '#2A2A35', borderStyle: 'dashed', borderRadius: 14,
+    gap: 8, marginTop: 2, paddingVertical: 14,
+    borderWidth: 1, borderColor: '#252530', borderStyle: 'dashed', borderRadius: 14,
   },
-  addExText: { color: '#4FC3F7', fontSize: 14, fontWeight: '500' },
+  addExText: { color: '#8A8A9A', fontSize: 14, fontWeight: '500' },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
-  modal: { backgroundColor: '#1E1E24', borderRadius: 20, width: '100%', padding: 24, gap: 12 },
+  modal: { backgroundColor: '#1E1E24', borderRadius: 20, width: '100%', padding: 24, gap: 10 },
   modalTitle: { color: '#F0F0F5', fontSize: 17, fontWeight: '600', textAlign: 'center' },
   modalBody: { color: '#8A8A9A', fontSize: 14, lineHeight: 20, textAlign: 'center' },
-  modalBtnPrimary: { height: 50, borderRadius: 14, backgroundColor: '#2979FF', justifyContent: 'center', alignItems: 'center' },
+  modalBtnPrimary: { height: 48, borderRadius: 14, backgroundColor: '#2979FF', justifyContent: 'center', alignItems: 'center' },
   modalBtnPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  modalBtnDanger: { height: 50, borderRadius: 14, backgroundColor: 'rgba(255,82,82,0.12)', justifyContent: 'center', alignItems: 'center' },
-  modalBtnDangerText: { color: '#FF5252', fontSize: 15, fontWeight: '600' },
-})
+  // Secondary/destructive/cancel action — neutral gray, sits below the blue primary
+  modalBtnDanger: { height: 48, borderRadius: 14, backgroundColor: '#2A2A35', justifyContent: 'center', alignItems: 'center' },
+  modalBtnDangerText: { color: '#8A8A9A', fontSize: 15, fontWeight: '600' },
 
-const ex = StyleSheet.create({
-  // Card
-  card: {
-    backgroundColor: '#1E1E24',
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-
-  // Full-width image
-  imgContainer: {
-    width: '100%',
-    height: 160,
-    position: 'relative',
-  },
-  img: {
-    width: '100%',
-    height: 160,
-  },
-  imgPlaceholder: {
-    backgroundColor: '#1A1A22',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imgGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 90,
-  },
-  removeExBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-  },
-  removeExBtnWrap: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 8,
-    padding: 7,
+  restInputRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginVertical: 4 },
+  restInput: {
+    width: 100,
+    height: 52,
+    backgroundColor: '#141418',
     borderWidth: 1,
-    borderColor: 'rgba(255,82,82,0.25)',
-  },
-
-  // Card info (below image)
-  cardInfo: {
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 8,
-    gap: 2,
-  },
-  exerciseName: {
+    borderColor: '#252530',
+    borderRadius: 12,
     color: '#F0F0F5',
-    fontSize: 16,
+    fontSize: 24,
     fontWeight: '600',
+    textAlign: 'center',
   },
-  muscleTag: {
-    color: '#8A8A9A',
-    fontSize: 12,
-  },
+  restInputUnit: { color: '#8A8A9A', fontSize: 15 },
+  restTipIconRow: { alignItems: 'center', marginBottom: 4 },
 
-  // Notes
-  notesWrap: {
-    paddingHorizontal: 14,
-    paddingBottom: 10,
-  },
-  notesInput: {
-    backgroundColor: '#141418',
+  analyticsOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', paddingHorizontal: 20 },
+  analyticsModal: {
+    backgroundColor: '#1A1A22',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#222232',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    color: '#8A8A9A',
-    fontSize: 13,
-    minHeight: 44,
+    borderColor: '#252530',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+    maxHeight: '78%',
   },
-
-  // Sets area
-  setsWrap: {
+  analyticsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  analyticsTitle: { color: '#F0F0F5', fontSize: 16, fontWeight: '600' },
+  analyticsSummary: {
+    flexDirection: 'row',
     backgroundColor: '#141418',
-    paddingHorizontal: 14,
-    paddingTop: 6,
-    paddingBottom: 12,
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#252530',
   },
-  setsHeader: {
+  analyticsCard: { flex: 1, alignItems: 'center', gap: 4 },
+  analyticsCardNum: { color: '#4FC3F7', fontSize: 30, fontWeight: '700', fontFamily: 'monospace' },
+  analyticsCardUnit: { color: '#8A8A9A', fontSize: 11 },
+  analyticsDivider: { width: 1, backgroundColor: '#252530', marginHorizontal: 8 },
+  analyticsScroll: { maxHeight: 300 },
+  analyticsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 6,
-    paddingHorizontal: 2,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E1E28',
+    gap: 12,
   },
-  setsHeaderCell: {
-    color: '#3A3A4A',
-    fontSize: 10,
-    fontWeight: '500',
-    letterSpacing: 0.5,
-  },
-  badgeHeaderSpace: {
-    width: 38,
-    marginRight: 8,
+  analyticsExName: { color: '#F0F0F5', fontSize: 14, fontWeight: '500' },
+  analyticsExMuscle: { color: '#555560', fontSize: 11, textTransform: 'capitalize', marginTop: 2 },
+  analyticsExVol: { color: '#4FC3F7', fontSize: 14, fontWeight: '600' },
+  analyticsExSets: { color: '#8A8A9A', fontSize: 11 },
+  analyticsEmpty: { paddingVertical: 40, alignItems: 'center' },
+  analyticsEmptyText: { color: '#555560', fontSize: 14 },
+})
+
+// ─── Exercise card styles ──────────────────────────────────────────────────────
+
+const ex = StyleSheet.create({
+  removeExBtn: {
+    width: 30,
+    height: CARD_IMG_SIZE + 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
 
-  // Set row
+  setsWrap: {
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+
+  setRowOuter: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+
+  // Thin separator rendered between consecutive set rows
+  setSeparator: {
+    height: 1,
+    backgroundColor: '#1E1E2C',
+    marginHorizontal: 4,
+    marginVertical: 3,
+  },
+
+  // Input row
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 5,
+    paddingBottom: 8,
     gap: 8,
-    borderRadius: 10,
-    paddingHorizontal: 2,
-    marginBottom: 3,
+    paddingHorizontal: 6,
   },
-  setRowDone: {
-    backgroundColor: 'rgba(0,230,118,0.05)',
-  },
-
-  // Badge
-  badge: {
-    width: 30,
-    height: 26,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  badgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-  },
-
-  setNum: { color: '#555560', fontSize: 13, textAlign: 'center' },
-
-  // Check button
-  check: {
-    borderWidth: 2,
-    borderColor: '#2A2A35',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkDone: {
-    backgroundColor: '#00E676',
-    borderColor: '#00E676',
-    shadowColor: '#00E676',
-    shadowOpacity: 0.45,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 5,
-  },
-
-  // Inputs
-  repsInput: {
-    width: 56,
-    height: 38,
-    backgroundColor: '#1A1A22',
-    borderWidth: 1,
-    borderColor: '#2A2A35',
-    borderRadius: 8,
-    color: '#F0F0F5',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  weightInput: {
-    width: 68,
-    height: 38,
-    backgroundColor: '#1A1A22',
-    borderWidth: 1,
-    borderColor: '#2A2A35',
-    borderRadius: 8,
-    color: '#F0F0F5',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  inputSep: { color: '#555560', fontSize: 14 },
-  kgLabel: { color: '#555560', fontSize: 12 },
-  inputDone: { color: '#8A8A9A', fontSize: 16, width: 56, textAlign: 'center' },
-  inputDoneSm: { fontSize: 13, width: 44 },
-
-  volumeHint: { color: '#3A3A4A', fontSize: 10, paddingLeft: 38, paddingBottom: 2 },
-
-  // Rest timer
-  restTimer: {
+  // Inputs group — fills space between badge and action buttons
+  inputsGroup: {
+    flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 6,
-    marginHorizontal: 4,
-    backgroundColor: 'rgba(79,195,247,0.07)',
-    borderRadius: 8,
-    marginBottom: 4,
+    alignItems: 'stretch',
+    gap: 8,
   },
-  restTimerText: { color: '#4FC3F7', fontSize: 13 },
-  restSkip: { color: '#555560', fontSize: 11 },
+  nonVolLabel: { color: '#3A3A4A', fontSize: 9, flexShrink: 0 },
+  nonVolNote: { color: '#3A3A4A', fontSize: 9, marginLeft: 46, marginTop: 0, marginBottom: 2 },
+  removeSetBtn: { width: 28, height: 28, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  dropConnector: { flexDirection: 'row', alignItems: 'center', marginVertical: 3 },
+  dropConnectorLine: { flex: 1, height: 1, backgroundColor: 'rgba(239,68,68,0.3)' },
+  dropConnectorLabel: { color: '#EF4444', fontSize: 10, marginHorizontal: 6 },
 
-  // Add set button
-  addSetBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    marginTop: 6,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#252530',
-    borderRadius: 10,
+  // MYOREP — activation + mini-block styles
+  blockRowMYOActivation: { borderLeftColor: 'rgba(244,114,182,0.45)' },
+  blockRowMYOMini: { borderLeftColor: 'rgba(244,114,182,0.22)' },
+  blockLabelMYO: { color: '#F472B6' },
+  failDotMYO: {
+    borderColor: 'rgba(244,114,182,0.4)',
   },
-  addSetText: { color: '#4FC3F7', fontSize: 13 },
+  failDotMYOActive: { backgroundColor: '#F472B6', borderColor: '#F472B6' },
+  myoAddBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, marginTop: 6, paddingVertical: 7,
+    borderWidth: 1, borderColor: 'rgba(244,114,182,0.3)', borderStyle: 'dashed', borderRadius: 8,
+  },
+  myoAddText: { color: '#F472B6', fontSize: 12, fontWeight: '500' },
+  myoFailHint: { color: '#F472B6', fontSize: 10, marginTop: 6, textAlign: 'center', opacity: 0.7 },
+
+  // DROP_SET — weight + reps share the standard block row layout
+  blockRowDS: { borderLeftColor: 'rgba(239,68,68,0.4)' },
+  dsBlockArrow: { color: 'rgba(239,68,68,0.45)', fontSize: 10, marginRight: 2 },
 
   // Technique set
   techSetWrap: {
     borderLeftWidth: 2,
-    marginLeft: 4,
-    paddingLeft: 8,
-    marginVertical: 2,
+    marginLeft: 2,
+    paddingLeft: 6,
+    paddingTop: 10,
+    paddingBottom: 6,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
-  blockRow: {
+  techSetNum: {
+    color: '#555560',
+    fontSize: 12,
+  },
+
+  // Block expansion — indented to align with content after badge (paddingLeft:6 + paddingHorizontal:6 + badge:34 + gap:8 = 54; marginLeft from techSetWrap content = 44 aligns just past badge edge)
+  techBlocks: {
+    marginTop: 6,
+    marginLeft: 44,
+    marginBottom: 6,
+  },
+  blockSep: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 5,
-    gap: 7,
-    borderRadius: 8,
-    paddingHorizontal: 2,
+    marginVertical: 3,
   },
-  blockRowDone: { backgroundColor: 'rgba(0,230,118,0.06)' },
-  blockLabel: { color: '#555560', fontSize: 11, width: 44 },
-  repsInputSm: {
-    width: 52, height: 34, backgroundColor: '#1A1A22',
-    borderWidth: 1, borderColor: '#2A2A35', borderRadius: 7,
-    color: '#F0F0F5', fontSize: 14, textAlign: 'center',
+  blockSepLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  blockSepLabel: { color: '#555560', fontSize: 10, marginHorizontal: 6 },
+  blockSepThin: { height: 3 },
+  blockRow: {
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 6,
+    borderLeftWidth: 2,
+    borderLeftColor: 'transparent',
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  weightInputSm: {
-    width: 62, height: 34, backgroundColor: '#1A1A22',
-    borderWidth: 1, borderColor: '#2A2A35', borderRadius: 7,
-    color: '#F0F0F5', fontSize: 14, textAlign: 'center',
+  blockLabel: { color: '#555560', fontSize: 11, flex: 1 },
+  // Block state — subtle left-rail indicator only, never a strong fill
+  blockRowFailed: { borderLeftColor: 'rgba(255,82,82,0.5)' },
+  blockRowDrop: { borderLeftColor: 'rgba(123,97,255,0.45)' },
+  blockLabelDrop: { color: '#A78BFA' },
+  mrDropIndicator: { color: '#7B61FF', fontSize: 10, marginRight: -2 },
+
+  // Muscle round fail indicator
+  failDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#333344',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  failDotActive: { backgroundColor: '#FF5252', borderColor: '#FF5252' },
+  mrHint: { color: '#555560', fontSize: 10, marginTop: 6, textAlign: 'center' },
+
+  // MUSCLE_ROUND two-weight row (principal + queda) — same indent as techBlocks
+  mrWeightsRow: {
+    flexDirection: 'row',
+    marginLeft: 44,
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  mrWeightCol: { flex: 1, gap: 4 },
+  mrWeightLabel: {
+    color: '#8A8A9A',
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
 
-  // Rest separator
-  restSep: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 2, gap: 6, paddingLeft: 36,
+  // Technique summary row — below header, above blocks
+  techSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingBottom: 6,
   },
-  restDots: { flex: 1, height: 1, backgroundColor: '#2A2A35' },
-  restSecText: { color: '#3A3A4A', fontSize: 10 },
-
-  // Muscle round failure
-  failCircle: {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 1.5, borderColor: '#333344',
-    justifyContent: 'center', alignItems: 'center',
+  techSummaryAccent: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    opacity: 0.8,
+    flexShrink: 0,
   },
-  failCircleActive: { backgroundColor: '#FF5252', borderColor: '#FF5252' },
-  failCircleX: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  techSummaryText: {
+    fontSize: 11,
+    letterSpacing: 0.2,
+    flex: 1,
+    opacity: 0.8,
+  },
 })

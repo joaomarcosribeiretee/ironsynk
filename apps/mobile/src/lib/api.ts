@@ -168,13 +168,20 @@ export type SetTechnique =
   | 'BISET'
   | 'SUPERSET'
 
-export type PlannedSetTechnique = 'NONE' | 'REST_PAUSE' | 'MUSCLE_ROUND' | 'CLUSTER_SET' | 'BACK_OFF' | 'DROP_SET'
+export type PlannedSetTechnique = 'NONE' | 'REST_PAUSE' | 'MUSCLE_ROUND' | 'CLUSTER_SET' | 'BACK_OFF' | 'DROP_SET' | 'MYOREP'
 
 export type RestPauseConfig = { failurePoints: number; restBetweenSeconds: number; blockReps?: string[] }
 export type MuscleRoundConfig = { blocks: number; repsPerBlock?: number; restBetweenSeconds: number; blockReps?: string[]; blockWeights?: string[]; failedAtBlock?: number }
 export type ClusterSetConfig = { blocks: number; restBetweenSeconds: number; blockReps?: string[] }
 export type DropSetConfig = { drops: number; blockReps?: string[]; blockWeights?: string[] }
-export type TechniqueConfig = RestPauseConfig | MuscleRoundConfig | ClusterSetConfig | DropSetConfig | Record<string, unknown>
+export type MyoRepConfig = {
+  activationReps: number
+  activationRestSeconds: number
+  repsPerBlock: number
+  restBetweenSeconds: number
+  weightKg?: number | null
+}
+export type TechniqueConfig = RestPauseConfig | MuscleRoundConfig | ClusterSetConfig | DropSetConfig | MyoRepConfig | Record<string, unknown>
 
 export type SetTechniqueEntry = { technique: SetTechnique; config: TechniqueConfig | null }
 
@@ -346,6 +353,16 @@ export type UpdateProgramInput = { name?: string; description?: string | null }
 export type CreateWorkoutInput = { programId: string; name: string; description?: string }
 export type UpdateWorkoutInput = { name?: string; description?: string | null; order?: number }
 
+export type WorkoutPostRecord = {
+  id: string
+  content: string | null
+  imageUrls: string[]
+  videoUrl: string | null
+  createdAt: string
+  user: { id: string; name: string | null; avatar: string | null }
+  session: SessionRecord | null
+}
+
 export type TrainerDashboardData = {
   totalStudents: number
   trainedToday: number
@@ -490,5 +507,14 @@ export const api = {
   posts: {
     create: (body: { trainingLogId: string; content?: string }) =>
       request<{ data: { post: { id: string } } }>('/api/v1/posts', { method: 'POST', body }),
+    listMine: (params?: { limit?: number; offset?: number }) => {
+      const qs = new URLSearchParams()
+      if (params?.limit !== undefined) qs.set('limit', String(params.limit))
+      if (params?.offset !== undefined) qs.set('offset', String(params.offset))
+      const query = qs.toString()
+      return request<{ data: { posts: WorkoutPostRecord[]; total: number } }>(
+        `/api/v1/posts/me${query ? `?${query}` : ''}`
+      )
+    },
   },
 }

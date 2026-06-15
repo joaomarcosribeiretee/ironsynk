@@ -13,6 +13,7 @@ import {
   Switch,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store/authStore'
@@ -285,7 +286,7 @@ export function EditTrainerProfileScreen({ navigation }: Props) {
               {specialties.map((sp) => (
                 <TouchableOpacity key={sp} style={s.chipActive} onPress={() => removeSpecialty(sp)}>
                   <Text style={s.chipActiveText}>{sp}</Text>
-                  <Text style={s.chipRemove}>  ✕</Text>
+                  <Ionicons name="close" size={13} color="#4FC3F7" style={{ marginLeft: 4 }} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -391,5 +392,4 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(41,121,255,0.15)', borderWidth: 1, borderColor: '#2979FF',
   },
   chipActiveText: { color: '#4FC3F7', fontSize: 12, fontWeight: '600' },
-  chipRemove: { color: '#4FC3F7', fontSize: 11 },
 })

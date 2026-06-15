@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Animated,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DragSortableList, DragRenderParams } from '../../components/DragSortableList'
 import { api } from '../../lib/api'
@@ -153,13 +154,20 @@ export function ProgramCard({
   function renderWorkoutItem({ item: workout, drag, isActive }: DragRenderParams<WorkoutRecord>) {
     return (
       <View style={[s.workoutRow, isActive && s.workoutRowActive]}>
-        <TouchableOpacity
-          onPress={() => onStartWorkout(workout)}
-          activeOpacity={0.6}
+        <LinearGradient
+          colors={['#2979FF', '#1A237E']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
           style={s.playBtnWrap}
         >
-          <Ionicons name="play" size={13} color="#4FC3F7" style={{ marginLeft: 2 }} />
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onStartWorkout(workout)}
+            activeOpacity={0.7}
+            style={s.playTouchInner}
+          >
+            <Ionicons name="play" size={16} color="#fff" style={{ marginLeft: 2 }} />
+          </TouchableOpacity>
+        </LinearGradient>
         <TouchableOpacity
           style={s.workoutInfo}
           onPress={() => onViewWorkout(workout)}
@@ -340,8 +348,10 @@ const s = StyleSheet.create({
     width: 46,
     alignSelf: 'stretch',
     borderRightWidth: 1,
-    borderRightColor: '#252530',
-    backgroundColor: 'rgba(41,121,255,0.07)',
+    borderRightColor: '#1A237E',
+  },
+  playTouchInner: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },

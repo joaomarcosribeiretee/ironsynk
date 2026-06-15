@@ -1,11 +1,11 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useFocusEffect } from '@react-navigation/native'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as SecureStore from 'expo-secure-store'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
@@ -17,7 +17,7 @@ import { ProgramCard } from './ProgramCard'
 import { ProgramModal } from './ProgramModal'
 import { WorkoutModal } from './WorkoutModal'
 import { FreeWorkoutInfoModal } from './FreeWorkoutInfoModal'
-import { Toast, showToast } from '../../components/Toast'
+import { showToast } from '../../components/Toast'
 
 const FREE_WORKOUT_KEY = 'hasSeenFreeWorkoutModal'
 const PROGRAMS_ORDER_KEY = 'programs_order'
@@ -44,26 +44,33 @@ export function WorkoutScreen() {
   const [programModal, setProgramModal] = useState<{ open: boolean; editing: ProgramRecord | null }>({ open: false, editing: null })
   const [workoutModal, setWorkoutModal] = useState<{ open: boolean; programId: string | null; editing: WorkoutRecord | null }>({ open: false, programId: null, editing: null })
   const [freeWorkoutModal, setFreeWorkoutModal] = useState(false)
-  const [orderedPrograms, setOrderedPrograms] = useState<ProgramRecord[]>([])
+  const [savedOrder, setSavedOrder] = useState<string[]>([])
   const [dragging, setDragging] = useState(false)
-  const savedOrderRef = useRef<string[]>([])
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['programs'],
     queryFn: () => api.programs.list(),
     staleTime: 30_000,
   })
   const programs = data?.data.programs ?? []
 
+  // Load the persisted manual order once.
   useEffect(() => {
-    async function loadOrder() {
-      const raw = await SecureStore.getItemAsync(PROGRAMS_ORDER_KEY).catch(() => null)
-      const order: string[] = raw ? JSON.parse(raw) : []
-      savedOrderRef.current = order
-      setOrderedPrograms(applyOrder(data?.data.programs ?? [], order))
-    }
-    loadOrder()
-  }, [data])
+    SecureStore.getItemAsync(PROGRAMS_ORDER_KEY)
+      .then(raw => setSavedOrder(raw ? JSON.parse(raw) : []))
+      .catch(() => {})
+  }, [])
+
+  // Keep the list in sync with the live query (covers programs created elsewhere).
+  useFocusEffect(
+    useCallback(() => {
+      refetch()
+    }, [refetch])
+  )
+
+  // Derive the displayed order synchronously from query data so newly created
+  // programs surface immediately instead of lagging behind async local state.
+  const orderedPrograms = useMemo(() => applyOrder(programs, savedOrder), [programs, savedOrder])
 
   const createProgram = useMutation({
     mutationFn: (body: Parameters<typeof api.programs.create>[0]) => api.programs.create(body),
@@ -135,9 +142,8 @@ export function WorkoutScreen() {
   }
 
   async function handleProgramDragEnd(data: ProgramRecord[]) {
-    setOrderedPrograms(data)
     const order = data.map(p => p.id)
-    savedOrderRef.current = order
+    setSavedOrder(order)
     await SecureStore.setItemAsync(PROGRAMS_ORDER_KEY, JSON.stringify(order)).catch(() => {})
   }
 
@@ -256,8 +262,6 @@ export function WorkoutScreen() {
         onConfirm={handleFreeWorkoutConfirm}
         onDismissForever={handleFreeWorkoutDismissForever}
       />
-
-      <Toast />
     </SafeAreaView>
   )
 }

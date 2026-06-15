@@ -116,7 +116,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 14, gap: 14,
   },
   avatarOuter: {
-    width: 56, height: 56, borderRadius: 14,
+    width: 80, height: 80, borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: '#1E1E24',
     borderWidth: 1.5, borderColor: '#2A2A35',
@@ -127,7 +127,7 @@ const s = StyleSheet.create({
     flex: 1, justifyContent: 'center', alignItems: 'center',
     backgroundColor: '#1E1E24',
   },
-  initials: { color: '#F0F0F5', fontSize: 18, fontWeight: '700' },
+  initials: { color: '#F0F0F5', fontSize: 24, fontWeight: '700' },
   spinnerOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(20,20,24,0.55)',

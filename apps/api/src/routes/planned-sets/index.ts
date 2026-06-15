@@ -7,7 +7,7 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 
 const UpdateBody = z.object({
   setType: z.enum(['WORKING', 'WARMUP', 'FEEDER']).optional(),
-  technique: z.enum(['NONE', 'REST_PAUSE', 'MUSCLE_ROUND', 'CLUSTER_SET', 'BACK_OFF', 'DROP_SET']).optional(),
+  technique: z.enum(['NONE', 'REST_PAUSE', 'MUSCLE_ROUND', 'CLUSTER_SET', 'BACK_OFF', 'DROP_SET', 'MYOREP']).optional(),
   techniqueConfig: z.record(z.string(), z.unknown()).nullable().optional(),
   targetReps: z.string().max(10).nullable().optional(),
   targetWeight: z.number().min(0).max(1000).nullable().optional(),

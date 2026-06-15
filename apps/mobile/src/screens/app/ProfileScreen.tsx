@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   View, Text, TouchableOpacity, ScrollView, Alert, Image,
-  StyleSheet, Animated as RNAnimated, Easing,
+  StyleSheet, Animated as RNAnimated, Easing, ActivityIndicator,
 } from 'react-native'
+import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -12,13 +13,18 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store/authStore'
 import { api } from '../../lib/api'
-import type { TrainerProfileRecord, ProfileRecord } from '../../lib/api'
+import type { TrainerProfileRecord, ProfileRecord, ProgramRecord, TrainingGoal } from '../../lib/api'
+import { WorkoutPostCard } from '../../components/WorkoutPostCard'
 
 type AthleteTab = 'historico' | 'desempenho' | 'programa' | 'sobre'
 type TrainerTab = 'alunos' | 'consultas' | 'sobre'
 
 const GOAL_LABELS: Record<string, string> = {
   HYPERTROPHY: 'Hipertrofia', STRENGTH: 'Força', FAT_LOSS: 'Perda de gordura',
+  ENDURANCE: 'Resistência', HEALTH: 'Saúde', PERFORMANCE: 'Performance',
+}
+const PROGRAM_GOAL_LABELS: Record<string, string> = {
+  HYPERTROPHY: 'Hipertrofia', STRENGTH: 'Força', FAT_LOSS: 'Emagrecimento',
   ENDURANCE: 'Resistência', HEALTH: 'Saúde', PERFORMANCE: 'Performance',
 }
 const SEX_LABELS: Record<string, string> = {
@@ -39,7 +45,7 @@ function SectionTitle({ children }: { children: string }) {
 function EmptyState({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
   return (
     <View style={s.emptyState}>
-      <Text style={{ fontSize: 34, marginBottom: 10 }}>{icon}</Text>
+      <Ionicons name={icon as any} size={34} color="#4FC3F7" style={{ marginBottom: 10 }} />
       <Text style={s.emptyTitle}>{title}</Text>
       {!!sub && <Text style={s.emptySub}>{sub}</Text>}
     </View>
@@ -69,13 +75,42 @@ function InfoCard({ rows }: {
 // ─── Athlete tab: Histórico ─────────────────────────────────────────────
 
 function HistoricoTab() {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['my-workout-posts'],
+    queryFn: () => api.posts.listMine(),
+  })
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch()
+    }, [refetch])
+  )
+
+  const posts = data?.data.posts ?? []
+
+  if (isLoading) {
+    return (
+      <View style={[s.tabContent, { paddingVertical: 36, alignItems: 'center' }]}>
+        <ActivityIndicator color="#4FC3F7" />
+      </View>
+    )
+  }
+
+  if (posts.length === 0) {
+    return (
+      <View style={s.tabContent}>
+        <EmptyState
+          icon="calendar-outline"
+          title="Nenhum treino registrado"
+          sub="Complete seu primeiro treino para ver o histórico aqui"
+        />
+      </View>
+    )
+  }
+
   return (
     <View style={s.tabContent}>
-      <EmptyState
-        icon="📋"
-        title="Nenhum treino registrado"
-        sub="Complete seu primeiro treino para ver o histórico aqui"
-      />
+      {posts.map((post) => <WorkoutPostCard key={post.id} post={post} />)}
     </View>
   )
 }
@@ -122,7 +157,7 @@ function DesempenhoTab() {
       {/* Records pessoais */}
       <SectionTitle>RECORDS PESSOAIS</SectionTitle>
       <View style={s.infoCard}>
-        <EmptyState icon="🏆" title="Nenhum record ainda" />
+        <EmptyState icon="trophy-outline" title="Nenhum record ainda" />
       </View>
 
       {/* Volume por grupamento */}
@@ -147,7 +182,7 @@ function DesempenhoTab() {
       <SectionTitle>EVOLUÇÃO DE CARGA</SectionTitle>
       <View style={s.infoCard}>
         <EmptyState
-          icon="📈"
+          icon="trending-up-outline"
           title="Sem dados suficientes"
           sub="Complete ao menos 3 sessões com o mesmo exercício para ver a evolução de carga"
         />
@@ -167,22 +202,108 @@ function DesempenhoTab() {
 
 // ─── Athlete tab: Programa ──────────────────────────────────────────────
 
+function formatProgramDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('pt-BR')
+}
+
+function ProgramSummaryCard({
+  program, onPress,
+}: {
+  program: ProgramRecord
+  onPress: () => void
+}) {
+  const visibleGoals = (program.goals ?? []).slice(0, 3)
+  return (
+    <TouchableOpacity style={s.programCard} onPress={onPress} activeOpacity={0.7}>
+      <View style={s.programCardTop}>
+        <Text style={s.programCardName} numberOfLines={1}>{program.name}</Text>
+        <Ionicons name="chevron-forward" size={18} color="#555560" />
+      </View>
+      {visibleGoals.length > 0 && (
+        <View style={s.programPillsRow}>
+          {visibleGoals.map((g) => (
+            <View key={g} style={s.programPill}>
+              <Text style={s.programPillText}>{PROGRAM_GOAL_LABELS[g] ?? g}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+      <View style={s.programMetaRow}>
+        <View style={s.programMeta}>
+          <Ionicons name="barbell-outline" size={13} color="#8A8A9A" />
+          <Text style={s.programMetaText}>
+            {program.workoutsCount} {program.workoutsCount === 1 ? 'treino' : 'treinos'}
+          </Text>
+        </View>
+        <View style={s.programMeta}>
+          <Ionicons name="time-outline" size={13} color="#8A8A9A" />
+          <Text style={s.programMetaText}>{formatProgramDate(program.updatedAt)}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  )
+}
+
 function ProgramaTab() {
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['programs'],
+    queryFn: () => api.programs.list(),
+    staleTime: 30_000,
+  })
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch()
+    }, [refetch])
+  )
+
+  const programs = data?.data.programs ?? []
+
+  function openProgram(program: ProgramRecord) {
+    navigation.navigate('ProgramDetail', {
+      programId: program.id,
+      programName: program.name,
+      goals: (program.goals ?? []) as TrainingGoal[],
+      workoutsCount: program.workoutsCount,
+      updatedAt: program.updatedAt,
+    })
+  }
+
   return (
     <View style={s.tabContent}>
-      <SectionTitle>PROGRAMA DE TREINO</SectionTitle>
-      <View style={[s.infoCard, s.emptyCard]}>
-        <EmptyState
-          icon="🏋️"
-          title="Nenhum programa ativo"
-          sub="Crie ou receba um programa de treino"
-        />
-      </View>
+      <SectionTitle>PROGRAMAS DE TREINO</SectionTitle>
+      {isLoading ? (
+        <View style={[s.infoCard, s.emptyCard, { paddingVertical: 28, alignItems: 'center' }]}>
+          <ActivityIndicator color="#4FC3F7" />
+        </View>
+      ) : programs.length > 0 ? (
+        <View style={{ gap: 10 }}>
+          {programs.map((program) => (
+            <ProgramSummaryCard
+              key={program.id}
+              program={program}
+              onPress={() => openProgram(program)}
+            />
+          ))}
+        </View>
+      ) : (
+        <View style={[s.infoCard, s.emptyCard]}>
+          <EmptyState
+            icon="barbell-outline"
+            title="Nenhum programa ativo"
+            sub="Crie ou receba um programa de treino"
+          />
+        </View>
+      )}
 
       <SectionTitle>DIETA ATIVA</SectionTitle>
       <View style={[s.infoCard, s.emptyCard]}>
         <EmptyState
-          icon="🥗"
+          icon="nutrition-outline"
           title="Nenhuma dieta ativa"
           sub="Crie ou receba um plano nutricional"
         />
@@ -240,7 +361,7 @@ function AlunosTab() {
     <View style={s.tabContent}>
       <Text style={s.countLbl}>0 alunos ativos</Text>
       <EmptyState
-        icon="👥"
+        icon="people-outline"
         title="Nenhum aluno vinculado ainda"
         sub="Alunos aparecerão aqui após o vínculo de consultoria"
       />
@@ -254,7 +375,7 @@ function ConsultasTab({ onCreateForm }: { onCreateForm: () => void }) {
   return (
     <View style={s.tabContent}>
       <EmptyState
-        icon="📝"
+        icon="document-text-outline"
         title="Nenhuma consulta criada ainda"
         sub="Crie formulários de avaliação para seus alunos"
       />
@@ -569,6 +690,23 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: '#2A2A35', marginBottom: 4,
   },
   emptyCard: { marginBottom: 4 },
+
+  // Program summary card
+  programCard: {
+    backgroundColor: '#1E1E24', borderRadius: 14,
+    borderWidth: 1, borderColor: '#2A2A35', padding: 14,
+  },
+  programCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  programCardName: { color: '#F0F0F5', fontSize: 16, fontWeight: '600', flex: 1, minWidth: 0 },
+  programPillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  programPill: {
+    backgroundColor: 'rgba(41,121,255,0.08)', borderWidth: 1, borderColor: 'rgba(41,121,255,0.2)',
+    borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3,
+  },
+  programPillText: { color: 'rgba(79,195,247,0.85)', fontSize: 11 },
+  programMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 12 },
+  programMeta: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  programMetaText: { color: '#8A8A9A', fontSize: 12 },
   infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
   infoRowLabel: { color: '#8A8A9A', fontSize: 14 },
   infoRowValue: { color: '#F0F0F5', fontSize: 14, fontWeight: '500', maxWidth: '60%', textAlign: 'right' },

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, Image, ActivityIndicator, Modal, Pressable,
+  TextInput, ActivityIndicator, Modal, Pressable,
 } from 'react-native'
+import { ExerciseCardShell, cardMetaStyles, cardBodyStyles } from '../../components/ExerciseCardShell'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
@@ -19,44 +20,8 @@ import {
   PlannedSetRecord, SetType, PlannedSetTechnique, TechniqueConfig,
 } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
-
-// ─── Technique visual config ──────────────────────────────────────────────────
-
-type TechStyle = {
-  borderColor: string
-  bgColor: string
-  badge: string
-  badgeBg: string
-  badgeText: string
-}
-
-const TECH_STYLE: Record<string, TechStyle> = {
-  WARMUP:       { borderColor: '#FFB300', bgColor: '#1A1500', badge: 'W',  badgeBg: '#2A2200', badgeText: '#FFB300' },
-  FEEDER:       { borderColor: '#4FC3F7', bgColor: '#001A1A', badge: 'F',  badgeBg: '#002233', badgeText: '#4FC3F7' },
-  REST_PAUSE:   { borderColor: '#2979FF', bgColor: '#001428', badge: 'RP', badgeBg: '#001A3A', badgeText: '#4FC3F7' },
-  MUSCLE_ROUND: { borderColor: '#7B61FF', bgColor: '#0D0A1E', badge: 'MR', badgeBg: '#1A1030', badgeText: '#A78BFA' },
-  CLUSTER_SET:  { borderColor: '#00E676', bgColor: '#001A0A', badge: 'CS', badgeBg: '#002210', badgeText: '#00E676' },
-  BACK_OFF:     { borderColor: '#F97316', bgColor: '#1A0C00', badge: 'BO', badgeBg: '#2A1400', badgeText: '#F97316' },
-  DROP_SET:     { borderColor: '#EF4444', bgColor: '#1A0505', badge: 'DS', badgeBg: '#2A0A0A', badgeText: '#EF4444' },
-}
-
-const DEFAULT_TECH_STYLE: TechStyle = {
-  borderColor: '#2A2A35', bgColor: '#141418', badge: '', badgeBg: '#2A2A35', badgeText: '#8A8A9A',
-}
-
-function getTechStyle(setType: SetType, technique: PlannedSetTechnique): TechStyle {
-  if (setType === 'WARMUP') return TECH_STYLE['WARMUP']!
-  if (setType === 'FEEDER') return TECH_STYLE['FEEDER']!
-  if (technique !== 'NONE') return TECH_STYLE[technique] ?? DEFAULT_TECH_STYLE
-  return DEFAULT_TECH_STYLE
-}
-
-function getBadge(setType: SetType, technique: PlannedSetTechnique, index: number): string {
-  if (setType === 'WARMUP') return 'W'
-  if (setType === 'FEEDER') return 'F'
-  if (technique !== 'NONE') return TECH_STYLE[technique]?.badge ?? String(index + 1)
-  return String(index + 1)
-}
+import { SetBadge, getTechStyle } from '../../components/SetBadge'
+import { WorkoutInput } from '../../components/WorkoutInput'
 
 function getVolumeHint(setType: SetType): string | null {
   if (setType === 'WARMUP') return 'Não conta no volume'
@@ -160,7 +125,7 @@ function RestPickerModal({ visible, initialSeconds, onConfirm, onClose }: {
 
 // ─── Technique expansion sub-rows ─────────────────────────────────────────────
 
-type BlockData = { blockReps: string[]; blockWeights: string[]; failedAtBlock: number | null }
+type BlockData = { blockReps: string[]; blockWeights: string[]; failedAtBlock: number | null; dropWeight?: string }
 
 function RestSeparator({ seconds }: { seconds: number }) {
   return (
@@ -178,23 +143,25 @@ function RestPauseExpansion({ config, blockReps, onBlockRepsChange }: {
   onBlockRepsChange: (idx: number, val: string) => void
 }) {
   const c = config as Record<string, unknown> | null
-  const failurePoints = Math.min(4, Math.max(2, Number(c?.['failurePoints'] ?? 3)))
+  const failurePoints = Math.min(5, Math.max(1, Number(c?.['failurePoints'] ?? 3)))
   const rest = Number(c?.['restBetweenSeconds'] ?? 20)
+  // index 0 = main set, 1..failurePoints = failure blocks
+  const totalBlocks = failurePoints + 1
   return (
     <View style={exp.wrap}>
-      {Array.from({ length: failurePoints }).map((_, i) => (
+      {Array.from({ length: totalBlocks }).map((_, i) => (
         <React.Fragment key={i}>
           {i > 0 && <RestSeparator seconds={rest} />}
           <View style={exp.block}>
-            <TextInput
-              style={exp.blockInput}
+            <WorkoutInput
+              width={96}
               value={blockReps[i] ?? ''}
               onChangeText={val => onBlockRepsChange(i, val)}
-              placeholder="reps"
-              placeholderTextColor="#3A3A4A"
+              placeholder="—"
               keyboardType="number-pad"
+              unit="reps"
             />
-            <Text style={exp.blockLabelRight}>Falha {i + 1}</Text>
+            <Text style={exp.blockLabelRight}>{i === 0 ? 'Série Principal' : `Falha ${i}`}</Text>
           </View>
         </React.Fragment>
       ))}
@@ -208,23 +175,24 @@ function ClusterSetExpansion({ config, blockReps, onBlockRepsChange }: {
   onBlockRepsChange: (idx: number, val: string) => void
 }) {
   const c = config as Record<string, unknown> | null
-  const blocks = Math.min(6, Math.max(2, Number(c?.['blocks'] ?? 4)))
+  const blocks = Math.min(10, Math.max(2, Number(c?.['blocks'] ?? 4)))
   const rest = Number(c?.['restBetweenSeconds'] ?? 15)
+  const repsPerBlock = c?.['repsPerBlock'] != null ? String(c['repsPerBlock']) : ''
   return (
     <View style={exp.wrap}>
       {Array.from({ length: blocks }).map((_, i) => (
         <React.Fragment key={i}>
           {i > 0 && <RestSeparator seconds={rest} />}
           <View style={exp.block}>
-            <Text style={exp.blockLabel}>Bloco {i + 1}</Text>
-            <TextInput
-              style={exp.blockInput}
+            <WorkoutInput
+              width={96}
               value={blockReps[i] ?? ''}
               onChangeText={val => onBlockRepsChange(i, val)}
-              placeholder="reps"
-              placeholderTextColor="#3A3A4A"
+              placeholder={repsPerBlock || '—'}
               keyboardType="number-pad"
+              unit="reps"
             />
+            <Text style={exp.blockLabelRight}>Bloco {i + 1}</Text>
           </View>
         </React.Fragment>
       ))}
@@ -232,104 +200,153 @@ function ClusterSetExpansion({ config, blockReps, onBlockRepsChange }: {
   )
 }
 
-function MuscleRoundExpansion({ config, blockReps, blockWeights, failedAtBlock, onBlockRepsChange, onBlockWeightChange, onFailedAtBlock }: {
+function MuscleRoundExpansion({ config, blockReps, dropWeight, onBlockRepsChange, onDropWeightChange }: {
   config: TechniqueConfig | null
   blockReps: string[]
-  blockWeights: string[]
-  failedAtBlock: number | null
+  dropWeight: string
   onBlockRepsChange: (idx: number, val: string) => void
-  onBlockWeightChange: (idx: number, val: string) => void
-  onFailedAtBlock: (idx: number) => void
+  onDropWeightChange: (val: string) => void
 }) {
   const c = config as Record<string, unknown> | null
   const blocks = Math.min(10, Math.max(4, Number(c?.['blocks'] ?? 6)))
   const rest = Number(c?.['restBetweenSeconds'] ?? 35)
   return (
     <View style={exp.wrap}>
-      {Array.from({ length: blocks }).map((_, i) => {
-        const isFailurePoint = failedAtBlock === i
-        return (
-          <React.Fragment key={i}>
-            {i > 0 && <RestSeparator seconds={rest} />}
-            <View style={[exp.block, exp.blockMr, isFailurePoint && exp.blockMrFailed]}>
-              <TextInput
-                style={exp.blockInputSmall}
-                value={blockReps[i] ?? ''}
-                onChangeText={val => onBlockRepsChange(i, val)}
-                placeholder="reps"
-                placeholderTextColor="#3A3A4A"
-                keyboardType="number-pad"
-              />
-              <Text style={exp.blockSep}>×</Text>
-              <TextInput
-                style={exp.blockInputSmall}
-                value={blockWeights[i] ?? ''}
-                onChangeText={val => onBlockWeightChange(i, val)}
-                placeholder="kg"
-                placeholderTextColor="#3A3A4A"
-                keyboardType="decimal-pad"
-              />
-              <TouchableOpacity
-                style={[exp.failCircle, isFailurePoint && exp.failCircleActive]}
-                onPress={() => onFailedAtBlock(i)}
-                activeOpacity={0.7}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              >
-                {isFailurePoint && <Text style={exp.failCircleX}>✗</Text>}
-              </TouchableOpacity>
-            </View>
-          </React.Fragment>
-        )
-      })}
-      <Text style={exp.mrHint}>Marque o bloco onde ocorreu a falha</Text>
+      {/* Drop weight row — used from the failure block onward */}
+      <View style={[exp.block, exp.blockMr, { marginBottom: 6 }]}>
+        <Text style={[exp.blockLabel, { color: '#A78BFA' }]}>↓ Peso de queda</Text>
+        <WorkoutInput
+          width={96}
+          value={dropWeight}
+          onChangeText={onDropWeightChange}
+          placeholder="—"
+          keyboardType="decimal-pad"
+          unit="kg"
+        />
+      </View>
+      {/* Blocks — reps only; weight is determined during execution */}
+      {Array.from({ length: blocks }).map((_, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <RestSeparator seconds={rest} />}
+          <View style={[exp.block, exp.blockMr]}>
+            <WorkoutInput
+              width={96}
+              value={blockReps[i] ?? ''}
+              onChangeText={val => onBlockRepsChange(i, val)}
+              placeholder="—"
+              keyboardType="number-pad"
+              unit="reps"
+            />
+            <Text style={exp.blockLabelRight}>Bloco {i + 1}</Text>
+          </View>
+        </React.Fragment>
+      ))}
+      <Text style={exp.mrHint}>Marque o bloco da falha durante a execução</Text>
     </View>
   )
 }
 
-function DropSetExpansion({ config, blockReps, blockWeights, onBlockRepsChange, onBlockWeightChange }: {
+function DropSetExpansion({ config, blockReps, onBlockRepsChange }: {
   config: TechniqueConfig | null
   blockReps: string[]
-  blockWeights: string[]
   onBlockRepsChange: (idx: number, val: string) => void
-  onBlockWeightChange: (idx: number, val: string) => void
 }) {
   const c = config as Record<string, unknown> | null
   const drops = Math.min(10, Math.max(1, Number(c?.['drops'] ?? 2)))
+  const totalBlocks = drops + 1
   return (
     <View style={exp.wrap}>
-      {Array.from({ length: drops }).map((_, i) => (
+      {Array.from({ length: totalBlocks }).map((_, i) => (
         <React.Fragment key={i}>
           {i > 0 && (
             <View style={exp.sep}>
-              <View style={exp.sepLine} />
+              <View style={[exp.sepLine, { backgroundColor: 'rgba(239,68,68,0.15)' }]} />
               <Text style={[exp.sepText, exp.dropSepText]}>↓ drop</Text>
-              <View style={exp.sepLine} />
+              <View style={[exp.sepLine, { backgroundColor: 'rgba(239,68,68,0.15)' }]} />
             </View>
           )}
+          {/* Reps block — weights are filled during execution */}
           <View style={[exp.block, exp.blockDrop]}>
-            <Text style={exp.blockLabel}>Drop {i + 1}</Text>
-            <TextInput
-              style={exp.blockInputSmall}
-              value={blockWeights[i] ?? ''}
-              onChangeText={val => onBlockWeightChange(i, val)}
-              placeholder="kg"
-              placeholderTextColor="#3A3A4A"
-              keyboardType="decimal-pad"
-            />
-            <Text style={exp.blockSep}>×</Text>
-            <TextInput
-              style={exp.blockInputSmall}
+            <Text style={exp.dsArrow}>→</Text>
+            <Text style={exp.blockLabel}>{i === 0 ? 'Série Principal' : `Drop ${i}`}</Text>
+            <WorkoutInput
+              width={96}
               value={blockReps[i] ?? ''}
               onChangeText={val => onBlockRepsChange(i, val)}
-              placeholder="reps"
-              placeholderTextColor="#3A3A4A"
+              placeholder="—"
               keyboardType="number-pad"
+              unit="reps"
             />
           </View>
         </React.Fragment>
       ))}
+      <Text style={exp.dsHint}>Os pesos são definidos durante a execução · UMA série no volume</Text>
     </View>
   )
+}
+
+function MyoRepExpansion({ config }: { config: TechniqueConfig | null }) {
+  const c = config as Record<string, unknown> | null
+  const activationReps = Number(c?.['activationReps'] ?? 5)
+  const activationRest = Number(c?.['activationRestSeconds'] ?? 40)
+  const repsPerBlock = Number(c?.['repsPerBlock'] ?? 2)
+  const restBetween = Number(c?.['restBetweenSeconds'] ?? 20)
+  return (
+    <View style={exp.wrap}>
+      <View style={exp.myoRow}>
+        <Text style={exp.myoRowLabel}>→ Ativação</Text>
+        <Text style={exp.myoRowValue}>{activationReps} reps</Text>
+      </View>
+      <RestSeparator seconds={activationRest} />
+      <View style={exp.myoRow}>
+        <Text style={exp.myoRowLabel}>→ Mini-blocos</Text>
+        <Text style={exp.myoRowValue}>{repsPerBlock} reps cada</Text>
+      </View>
+      <RestSeparator seconds={restBetween} />
+      <Text style={exp.myoHint}>Qtd. de mini-blocos definida durante a execução</Text>
+      <Text style={exp.dsHint}>Conta como UMA série no volume total</Text>
+    </View>
+  )
+}
+
+// ─── Technique summary helper ─────────────────────────────────────────────────
+
+function buildDetailTechSummary(technique: PlannedSetTechnique, cfg: Record<string, unknown> | null): string | null {
+  if (!cfg) return null
+  switch (technique) {
+    case 'REST_PAUSE': {
+      const pts = (cfg['failurePoints'] as number) ?? 3
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 20
+      return `${pts} pontos de falha · ${rest}s descanso`
+    }
+    case 'CLUSTER_SET': {
+      const blks = (cfg['blocks'] as number) ?? 4
+      const rpp = cfg['repsPerBlock'] as number | undefined
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 15
+      return `${blks} blocos${rpp ? ` × ${rpp} reps` : ''} · ${rest}s`
+    }
+    case 'MUSCLE_ROUND': {
+      const blks = (cfg['blocks'] as number) ?? 6
+      const rest = (cfg['restBetweenSeconds'] as number) ?? 35
+      const dropKg = cfg['dropWeightKg'] as number | null | undefined
+      return `${blks} blocos · ${rest}s${dropKg != null ? ` · ↓ ${dropKg} kg` : ''}`
+    }
+    case 'DROP_SET': {
+      const dw = cfg['dropWeights'] as (number | null)[] | undefined
+      const drops = (cfg['drops'] as number) ?? 2
+      if (dw && dw.some(w => w != null)) {
+        return dw.map(w => (w != null ? `${w} kg` : '—')).join(' → ')
+      }
+      return `${drops + 1} drops`
+    }
+    case 'MYOREP': {
+      const aReps = (cfg['activationReps'] as number) ?? 15
+      const aRest = (cfg['activationRestSeconds'] as number) ?? 20
+      const rpp = (cfg['repsPerBlock'] as number) ?? 5
+      return `Ativ. ${aReps} reps · ${aRest}s · ${rpp}/bloco`
+    }
+    default: return null
+  }
 }
 
 // ─── Set row ──────────────────────────────────────────────────────────────────
@@ -337,7 +354,7 @@ function DropSetExpansion({ config, blockReps, blockWeights, onBlockRepsChange, 
 function SetRow({
   set, index, reps, weight, blockData, canDelete,
   onRepsChange, onWeightChange, onTechniqueTap, onDelete,
-  onBlockRepsChange, onBlockWeightChange, onFailedAtBlock,
+  onBlockRepsChange, onFailedAtBlock, onDropWeightChange,
 }: {
   set: PlannedSetRecord
   index: number
@@ -350,47 +367,48 @@ function SetRow({
   onTechniqueTap: () => void
   onDelete: () => void
   onBlockRepsChange: (idx: number, val: string) => void
-  onBlockWeightChange: (idx: number, val: string) => void
   onFailedAtBlock: (idx: number) => void
+  onDropWeightChange?: (val: string) => void
 }) {
   const ts = getTechStyle(set.setType, set.technique)
-  const badge = getBadge(set.setType, set.technique, index)
   const volumeHint = getVolumeHint(set.setType)
-  const hasLeftBorder = set.setType !== 'WORKING' || set.technique !== 'NONE'
-  // Per-block techniques control reps/weight inside blocks
-  const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND'
-  const hideWeight = set.technique === 'MUSCLE_ROUND'
+  const hasLeftBorder = set.setType === 'WARMUP' || set.setType === 'FEEDER' || set.technique !== 'NONE'
+  // Per-block techniques control reps inside blocks; MUSCLE_ROUND/MYOREP main weight shown in main row
+  const hideReps = set.technique === 'CLUSTER_SET' || set.technique === 'MUSCLE_ROUND' || set.technique === 'REST_PAUSE' || set.technique === 'DROP_SET' || set.technique === 'MYOREP'
+  const hideWeight = set.technique === 'DROP_SET'
+  const isAdvanced = set.technique === 'REST_PAUSE' || set.technique === 'CLUSTER_SET' ||
+    set.technique === 'MUSCLE_ROUND' || set.technique === 'DROP_SET' || set.technique === 'MYOREP'
+  const summaryText = isAdvanced
+    ? buildDetailTechSummary(set.technique, set.techniqueConfig as Record<string, unknown> | null)
+    : null
 
   return (
-    <View style={[sr.wrap, { backgroundColor: ts.bgColor }, hasLeftBorder && { borderLeftWidth: 3, borderLeftColor: ts.borderColor }]}>
+    <View style={[sr.wrap, hasLeftBorder && { borderLeftWidth: 2, borderLeftColor: ts.borderColor }]}>
       <View style={sr.main}>
-        <TouchableOpacity style={[sr.badge, { backgroundColor: ts.badgeBg }]} onPress={onTechniqueTap} activeOpacity={0.7}>
-          <Text style={[sr.badgeText, { color: ts.badgeText }]}>{badge}</Text>
-        </TouchableOpacity>
+        <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
 
         {!hideReps && (
-          <TextInput
-            style={sr.repsInput}
+          <WorkoutInput
+            flex={1}
             value={reps}
             onChangeText={onRepsChange}
-            placeholder="Reps"
-            placeholderTextColor="#3A3A4A"
-            returnKeyType="done"
-            blurOnSubmit
+            placeholder="—"
+            keyboardType="number-pad"
+            unit="reps"
           />
         )}
         {!hideReps && !hideWeight && <Text style={sr.timesText}>×</Text>}
         {!hideWeight && (
-          <TextInput
-            style={hideReps ? sr.weightInputFull : sr.weightInput}
+          <WorkoutInput
+            flex={hideReps ? 1 : 1.2}
             value={weight}
             onChangeText={onWeightChange}
             placeholder="—"
-            placeholderTextColor="#3A3A4A"
             keyboardType="decimal-pad"
+            unit="kg"
           />
         )}
-        {!hideWeight && <Text style={sr.kgText}>kg</Text>}
+        {hideReps && hideWeight && <View style={{ flex: 1 }} />}
 
         {canDelete && (
           <TouchableOpacity
@@ -405,6 +423,13 @@ function SetRow({
 
       {volumeHint && (
         <Text style={sr.volumeHint}>{volumeHint}</Text>
+      )}
+
+      {summaryText != null && (
+        <View style={sr.techSummaryRow}>
+          <View style={[sr.techSummaryAccent, { backgroundColor: ts.borderColor }]} />
+          <Text style={[sr.techSummaryText, { color: ts.badgeText }]} numberOfLines={1}>{summaryText}</Text>
+        </View>
       )}
 
       {set.setType === 'WORKING' && set.technique === 'REST_PAUSE' && (
@@ -425,21 +450,20 @@ function SetRow({
         <MuscleRoundExpansion
           config={set.techniqueConfig}
           blockReps={blockData?.blockReps ?? []}
-          blockWeights={blockData?.blockWeights ?? []}
-          failedAtBlock={blockData?.failedAtBlock ?? null}
+          dropWeight={blockData?.dropWeight ?? ''}
           onBlockRepsChange={onBlockRepsChange}
-          onBlockWeightChange={onBlockWeightChange}
-          onFailedAtBlock={onFailedAtBlock}
+          onDropWeightChange={onDropWeightChange ?? (() => {})}
         />
       )}
       {set.setType === 'WORKING' && set.technique === 'DROP_SET' && (
         <DropSetExpansion
           config={set.techniqueConfig}
           blockReps={blockData?.blockReps ?? []}
-          blockWeights={blockData?.blockWeights ?? []}
           onBlockRepsChange={onBlockRepsChange}
-          onBlockWeightChange={onBlockWeightChange}
         />
+      )}
+      {set.setType === 'WORKING' && set.technique === 'MYOREP' && (
+        <MyoRepExpansion config={set.techniqueConfig} />
       )}
     </View>
   )
@@ -552,14 +576,15 @@ export function WorkoutDetailScreen() {
         if (s.technique === 'REST_PAUSE') {
           const fp = Number(c?.['failurePoints'] ?? 3)
           newBlockData[s.id] = {
-            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(fp).fill(''),
+            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(fp + 1).fill(''),
             blockWeights: [],
             failedAtBlock: null,
           }
         } else if (s.technique === 'CLUSTER_SET') {
           const b = Number(c?.['blocks'] ?? 4)
+          const rpp = c?.['repsPerBlock'] != null ? String(c['repsPerBlock']) : ''
           newBlockData[s.id] = {
-            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(b).fill(''),
+            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(b).fill(rpp),
             blockWeights: [],
             failedAtBlock: null,
           }
@@ -567,14 +592,17 @@ export function WorkoutDetailScreen() {
           const b = Number(c?.['blocks'] ?? 6)
           newBlockData[s.id] = {
             blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(b).fill(''),
-            blockWeights: (c?.['blockWeights'] as string[] | undefined) ?? Array(b).fill(''),
-            failedAtBlock: c?.['failedAtBlock'] != null ? Number(c['failedAtBlock']) : null,
+            blockWeights: [],
+            failedAtBlock: null,
+            dropWeight: c?.['dropWeightKg'] != null ? String(c['dropWeightKg']) : '',
           }
         } else if (s.technique === 'DROP_SET') {
           const d = Number(c?.['drops'] ?? 2)
+          const totalBlocks = d + 1
+          // Weights are entered during execution, not planned here.
           newBlockData[s.id] = {
-            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(d).fill(''),
-            blockWeights: (c?.['blockWeights'] as string[] | undefined) ?? Array(d).fill(''),
+            blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(totalBlocks).fill(''),
+            blockWeights: [],
             failedAtBlock: null,
           }
         }
@@ -609,13 +637,18 @@ export function WorkoutDetailScreen() {
       case 'CLUSTER_SET':
         newConfig = { ...c, blockReps: data.blockReps }
         break
-      case 'MUSCLE_ROUND':
-        newConfig = { ...c, blockReps: data.blockReps, blockWeights: data.blockWeights }
-        if (data.failedAtBlock != null) newConfig['failedAtBlock'] = data.failedAtBlock
+      case 'MUSCLE_ROUND': {
+        newConfig = { ...c, blockReps: data.blockReps }
+        const dropN = data.dropWeight != null ? parseFloat(data.dropWeight) : NaN
+        if (!isNaN(dropN) && dropN > 0) newConfig['dropWeightKg'] = dropN
         break
+      }
       case 'DROP_SET':
-        newConfig = { ...c, blockReps: data.blockReps, blockWeights: data.blockWeights }
+        // Only planned reps; weights are collected during execution.
+        newConfig = { ...c, blockReps: data.blockReps }
         break
+      case 'MYOREP':
+        return // no block-level data to save for MYOREP
       default:
         return
     }
@@ -649,21 +682,18 @@ export function WorkoutDetailScreen() {
     scheduleBlockDataSave(setId, set.technique, next, set.techniqueConfig)
   }
 
-  function handleBlockWeightChange(setId: string, blockIdx: number, val: string, set: PlannedSetRecord) {
+  function handleFailedAtBlock(setId: string, blockIdx: number, set: PlannedSetRecord) {
     const cur = localBlockDataRef.current[setId] ?? { blockReps: [], blockWeights: [], failedAtBlock: null }
-    const blockWeights = [...cur.blockWeights]
-    while (blockWeights.length <= blockIdx) blockWeights.push('')
-    blockWeights[blockIdx] = val
-    const next = { ...cur, blockWeights }
+    const newFailed = cur.failedAtBlock === blockIdx ? null : blockIdx
+    const next = { ...cur, failedAtBlock: newFailed }
     localBlockDataRef.current[setId] = next
     setLocalBlockData(prev => ({ ...prev, [setId]: next }))
     scheduleBlockDataSave(setId, set.technique, next, set.techniqueConfig)
   }
 
-  function handleFailedAtBlock(setId: string, blockIdx: number, set: PlannedSetRecord) {
+  function handleMrDropWeightChange(setId: string, val: string, set: PlannedSetRecord) {
     const cur = localBlockDataRef.current[setId] ?? { blockReps: [], blockWeights: [], failedAtBlock: null }
-    const newFailed = cur.failedAtBlock === blockIdx ? null : blockIdx
-    const next = { ...cur, failedAtBlock: newFailed }
+    const next = { ...cur, dropWeight: val }
     localBlockDataRef.current[setId] = next
     setLocalBlockData(prev => ({ ...prev, [setId]: next }))
     scheduleBlockDataSave(setId, set.technique, next, set.techniqueConfig)
@@ -713,16 +743,22 @@ export function WorkoutDetailScreen() {
       let newEntry: BlockData | undefined
       if (sel.technique === 'REST_PAUSE') {
         const fp = Number(c?.['failurePoints'] ?? 3)
-        newEntry = { blockReps: Array(fp).fill(''), blockWeights: [], failedAtBlock: null }
+        newEntry = { blockReps: Array(fp + 1).fill(''), blockWeights: [], failedAtBlock: null }
       } else if (sel.technique === 'CLUSTER_SET') {
         const b = Number(c?.['blocks'] ?? 4)
-        newEntry = { blockReps: Array(b).fill(''), blockWeights: [], failedAtBlock: null }
+        const rpp = c?.['repsPerBlock'] != null ? String(c['repsPerBlock']) : ''
+        newEntry = { blockReps: Array(b).fill(rpp), blockWeights: [], failedAtBlock: null }
       } else if (sel.technique === 'MUSCLE_ROUND') {
         const b = Number(c?.['blocks'] ?? 6)
-        newEntry = { blockReps: Array(b).fill(''), blockWeights: Array(b).fill(''), failedAtBlock: null }
+        newEntry = { blockReps: Array(b).fill(''), blockWeights: [], failedAtBlock: null, dropWeight: '' }
       } else if (sel.technique === 'DROP_SET') {
         const d = Number(c?.['drops'] ?? 2)
-        newEntry = { blockReps: Array(d).fill(''), blockWeights: Array(d).fill(''), failedAtBlock: null }
+        const totalBlocks = d + 1
+        newEntry = {
+          blockReps: Array(totalBlocks).fill(''),
+          blockWeights: [],
+          failedAtBlock: null,
+        }
       }
 
       if (newEntry) {
@@ -787,6 +823,7 @@ export function WorkoutDetailScreen() {
       clearTimeout(setTimers.current[id])
       delete setTimers.current[id]
     }
+    await qc.invalidateQueries({ queryKey: ['workout', workoutId] })
     showToast('Treino salvo')
     navigation.goBack()
   }
@@ -883,115 +920,111 @@ export function WorkoutDetailScreen() {
               const isLastInPair = isInSuperset && nextTe?.supersetGroupId !== te.supersetGroupId
 
               return (
-                <View key={te.id} style={[
-                  s.card,
-                  isInSuperset && s.cardSuperset,
-                  isFirstInPair && s.cardSupersetFirst,
-                  isLastInPair && s.cardSupersetLast,
-                  !isLastInPair && isInSuperset && { marginBottom: 2 },
-                ]}>
-                  {isInSuperset && (
-                    <View style={s.supersetBadge}>
-                      <Text style={s.supersetBadgeText}>
-                        {te.technique === 'BISET' ? '⇅ BISET' : '⇅ SUPERSET'}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Exercise header */}
-                  <View style={s.cardTop}>
-                    <View style={s.imgContainer}>
-                      {te.exercise.gifUrl ? (
-                        <Image source={{ uri: te.exercise.gifUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-                      ) : (
-                        <Ionicons name="barbell-outline" size={24} color="#4A4A5A" />
-                      )}
-                    </View>
-                    <View style={s.cardMid}>
-                      <Text style={s.exName} numberOfLines={1}>{te.exercise.name}</Text>
-                      {te.exercise.equipment ? (
-                        <View style={s.equipPill}>
-                          <Text style={s.equipPillText}>{txEquip(te.exercise.equipment)}</Text>
-                        </View>
-                      ) : null}
-                    </View>
+                <ExerciseCardShell
+                  key={te.id}
+                  gifUrl={te.exercise.gifUrl ?? null}
+                  name={te.exercise.name}
+                  meta={
+                    te.exercise.equipment ? (
+                      <View style={cardMetaStyles.pill}>
+                        <Text style={cardMetaStyles.pillText}>{txEquip(te.exercise.equipment)}</Text>
+                      </View>
+                    ) : null
+                  }
+                  rightSlot={
                     <TouchableOpacity style={s.dotBtn} onPress={() => setSheet({ visible: true, teId: te.id })}>
                       <Ionicons name="ellipsis-vertical" size={18} color="#8A8A9A" />
                     </TouchableOpacity>
-                  </View>
-
-                  {/* Coach notes */}
-                  <TextInput
-                    style={s.exerciseNotesInput}
-                    value={notes}
-                    onChangeText={val => handleNotesChange(te.id, val)}
-                    placeholder="Observações do exercício..."
-                    placeholderTextColor="#3A3A4A"
-                    multiline
-                    blurOnSubmit
-                  />
-
-                  {/* Volume counter */}
-                  <VolumeCounter sets={sets} />
-
-                  {/* Set rows */}
-                  {sets.map((set, i) => {
-                    const rw = localRepsWeight[set.id] ?? { reps: set.targetReps ?? '', weight: set.targetWeight != null ? String(set.targetWeight) : '' }
-                    const bd = localBlockData[set.id]
-                    return (
-                      <SetRow
-                        key={set.id}
-                        set={set}
-                        index={i}
-                        reps={rw.reps}
-                        weight={rw.weight}
-                        blockData={bd}
-                        canDelete={sets.length > 1}
-                        onRepsChange={v => handleRepsChange(set.id, v)}
-                        onWeightChange={v => handleWeightChange(set.id, v)}
-                        onTechniqueTap={() => setTechniquePicker({ visible: true, teId: te.id, setId: set.id })}
-                        onDelete={() => {
-                          if (sets.length > 1)
-                            setConfirmDeleteSet({ visible: true, teId: te.id, setId: set.id })
-                        }}
-                        onBlockRepsChange={(idx, val) => handleBlockRepsChange(set.id, idx, val, set)}
-                        onBlockWeightChange={(idx, val) => handleBlockWeightChange(set.id, idx, val, set)}
-                        onFailedAtBlock={idx => handleFailedAtBlock(set.id, idx, set)}
+                  }
+                  topStrip={
+                    isInSuperset ? (
+                      <View style={s.supersetStrip}>
+                        <Text style={s.supersetStripText}>
+                          {te.technique === 'BISET' ? '⇅ BISET' : '⇅ SUPERSET'}
+                        </Text>
+                      </View>
+                    ) : undefined
+                  }
+                  cardStyle={[
+                    isInSuperset && { borderLeftWidth: 3, borderLeftColor: '#4FC3F7' },
+                    isFirstInPair && { borderBottomLeftRadius: 4, borderBottomRightRadius: 4 },
+                    isLastInPair && { borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+                  ]}
+                  shadowStyle={[
+                    isFirstInPair && { borderBottomLeftRadius: 4, borderBottomRightRadius: 4 },
+                    isLastInPair && { borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+                    !isLastInPair && isInSuperset ? { marginBottom: 2 } : { marginBottom: 12 },
+                  ]}
+                >
+                  <View style={s.cardBody}>
+                    <View style={cardBodyStyles.observationWrap}>
+                      <TextInput
+                        style={cardBodyStyles.observationInput}
+                        value={notes}
+                        onChangeText={val => handleNotesChange(te.id, val)}
+                        placeholder="Adicionar observação..."
+                        placeholderTextColor="#3A3A4A"
+                        multiline
+                        blurOnSubmit
                       />
-                    )
-                  })}
+                    </View>
 
-                  {/* Add set */}
-                  <View style={s.setActions}>
+                    <VolumeCounter sets={sets} />
+
+                    {sets.map((set, i) => {
+                      const rw = localRepsWeight[set.id] ?? { reps: set.targetReps ?? '', weight: set.targetWeight != null ? String(set.targetWeight) : '' }
+                      const bd = localBlockData[set.id]
+                      return (
+                        <SetRow
+                          key={set.id}
+                          set={set}
+                          index={i}
+                          reps={rw.reps}
+                          weight={rw.weight}
+                          blockData={bd}
+                          canDelete={sets.length > 1}
+                          onRepsChange={v => handleRepsChange(set.id, v)}
+                          onWeightChange={v => handleWeightChange(set.id, v)}
+                          onTechniqueTap={() => setTechniquePicker({ visible: true, teId: te.id, setId: set.id })}
+                          onDelete={() => {
+                            if (sets.length > 1)
+                              setConfirmDeleteSet({ visible: true, teId: te.id, setId: set.id })
+                          }}
+                          onBlockRepsChange={(idx, val) => handleBlockRepsChange(set.id, idx, val, set)}
+                          onFailedAtBlock={idx => handleFailedAtBlock(set.id, idx, set)}
+                          onDropWeightChange={val => handleMrDropWeightChange(set.id, val, set)}
+                        />
+                      )
+                    })}
+
                     <TouchableOpacity
-                      style={s.addSerieBtn}
+                      style={cardBodyStyles.addSetBtn}
                       onPress={() => handleAddSet(te.id)}
                       disabled={addingSet[te.id]}
                       activeOpacity={0.7}
                     >
                       {addingSet[te.id] ? (
-                        <ActivityIndicator size="small" color="#4FC3F7" />
+                        <ActivityIndicator size="small" color="#555560" />
                       ) : (
                         <>
-                          <Ionicons name="add-circle-outline" size={14} color="#4FC3F7" />
-                          <Text style={s.addSerieText}>Adicionar série</Text>
+                          <Ionicons name="add-circle-outline" size={14} color="#8A8A9A" />
+                          <Text style={cardBodyStyles.addSetText}>Adicionar série</Text>
                         </>
                       )}
                     </TouchableOpacity>
-                  </View>
 
-                  {/* Rest time */}
-                  <TouchableOpacity
-                    style={s.restRow}
-                    onPress={() => setRestPicker({ visible: true, teId: te.id })}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="timer-outline" size={14} color="#555560" />
-                    <Text style={s.restLabel}>Descanso</Text>
-                    <Text style={s.restValue}>{formatRest(rest)}</Text>
-                    <Ionicons name="chevron-forward" size={12} color="#3A3A4A" />
-                  </TouchableOpacity>
-                </View>
+                    <TouchableOpacity
+                      style={s.restRow}
+                      onPress={() => setRestPicker({ visible: true, teId: te.id })}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="timer-outline" size={14} color="#555560" />
+                      <Text style={s.restLabel}>Descanso</Text>
+                      <Text style={s.restValue}>{formatRest(rest)}</Text>
+                      <Ionicons name="chevron-forward" size={12} color="#3A3A4A" />
+                    </TouchableOpacity>
+                  </View>
+                </ExerciseCardShell>
               )
             })
           )}
@@ -1203,44 +1236,16 @@ const s = StyleSheet.create({
 
   scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 110 },
 
-  card: {
-    backgroundColor: '#1E1E24',
-    borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 14, padding: 14, marginBottom: 12,
-  },
-  cardSuperset: { borderLeftWidth: 3, borderLeftColor: '#4FC3F7' },
-  cardSupersetFirst: { borderBottomLeftRadius: 4, borderBottomRightRadius: 4 },
-  cardSupersetLast: { borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-  imgContainer: {
-    width: 64, height: 64, borderRadius: 12, overflow: 'hidden',
-    backgroundColor: '#2A2A35', justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  cardMid: { flex: 1 },
-  exName: { color: '#F0F0F5', fontSize: 15, fontWeight: '500' },
-  equipPill: {
-    backgroundColor: '#141418', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2, marginTop: 5, alignSelf: 'flex-start',
-  },
-  equipPillText: { color: '#8A8A9A', fontSize: 11 },
+  cardBody: { paddingHorizontal: 10, paddingBottom: 10 },
+
   dotBtn: { padding: 4, flexShrink: 0 },
 
-  exerciseNotesInput: {
-    color: '#8A8A9A', fontSize: 12,
-    paddingHorizontal: 8, paddingVertical: 6, marginBottom: 6,
-    backgroundColor: 'rgba(42,42,53,0.6)', borderRadius: 8, minHeight: 30,
+  supersetStrip: {
+    paddingHorizontal: 12, paddingVertical: 5,
+    backgroundColor: 'rgba(79,195,247,0.08)',
+    borderBottomWidth: 1, borderBottomColor: 'rgba(79,195,247,0.15)',
   },
-
-  setActions: {
-    flexDirection: 'row', alignItems: 'center',
-    marginTop: 4, marginBottom: 4,
-    borderTopWidth: 1, borderTopColor: '#252530', paddingTop: 8,
-  },
-  addSerieBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    height: 32,
-  },
-  addSerieText: { color: '#4FC3F7', fontSize: 13 },
+  supersetStripText: { color: '#4FC3F7', fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
 
   restRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6,
@@ -1249,14 +1254,6 @@ const s = StyleSheet.create({
   },
   restLabel: { flex: 1, color: '#8A8A9A', fontSize: 13 },
   restValue: { color: '#F0F0F5', fontSize: 13, fontWeight: '500' },
-
-  supersetBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(79,195,247,0.1)',
-    borderRadius: 6,
-    paddingHorizontal: 8, paddingVertical: 3, marginBottom: 8,
-  },
-  supersetBadgeText: { color: '#4FC3F7', fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
 
   fab: { position: 'absolute', left: 16, right: 16 },
   fabBtn: {
@@ -1273,31 +1270,30 @@ const sr = StyleSheet.create({
     borderRadius: 10, marginBottom: 6, overflow: 'hidden',
     paddingVertical: 8, paddingHorizontal: 10,
   },
-  main: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  badge: {
-    width: 28, height: 28, borderRadius: 7,
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  badgeText: { fontSize: 11, fontWeight: '700' },
-  repsInput: {
-    flex: 1, height: 40,
-    backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 8, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
-  },
+  main: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   timesText: { width: 14, textAlign: 'center', color: '#2A2A35', fontSize: 13 },
-  weightInput: {
-    flex: 1.2, height: 40,
-    backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 8, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
-  },
-  kgText: { width: 18, color: '#555560', fontSize: 11 },
-  volumeHint: { color: '#8A8A9A', fontSize: 10, marginTop: 3, marginLeft: 35 },
+  volumeHint: { color: '#8A8A9A', fontSize: 10, marginTop: 3, marginLeft: 42 },
   deleteBtn: { width: 22, height: 22, justifyContent: 'center', alignItems: 'center', marginLeft: 2 },
-  // Used when reps are hidden (e.g. ClusterSet) — weight takes remaining space
-  weightInputFull: {
-    flex: 1, height: 40,
-    backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 8, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
+  techSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 4,
+    paddingTop: 3,
+    paddingBottom: 4,
+  },
+  techSummaryAccent: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    opacity: 0.8,
+    flexShrink: 0,
+  },
+  techSummaryText: {
+    fontSize: 11,
+    letterSpacing: 0.2,
+    flex: 1,
+    opacity: 0.75,
   },
 })
 
@@ -1318,19 +1314,6 @@ const exp = StyleSheet.create({
   blockAfterFailure: { opacity: 0.45 },
   blockLabel: { color: '#8A8A9A', fontSize: 12, flex: 1 },
   blockLabelRight: { color: '#8A8A9A', fontSize: 12, textAlign: 'right' },
-  blockSep: { color: '#3A3A4A', fontSize: 12 },
-
-  blockInput: {
-    height: 32, minWidth: 52,
-    backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 6, textAlign: 'center', color: '#F0F0F5', fontSize: 13,
-  },
-  blockInputSmall: {
-    height: 32, width: 52,
-    backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 6, textAlign: 'center', color: '#F0F0F5', fontSize: 13,
-  },
-  blockInputFaded: { opacity: 0.4 },
 
   failBtn: {
     paddingHorizontal: 8, paddingVertical: 3,
@@ -1348,8 +1331,21 @@ const exp = StyleSheet.create({
     flexShrink: 0,
   },
   failCircleActive: { backgroundColor: '#FF5252', borderColor: '#FF5252' },
-  failCircleX: { color: '#fff', fontSize: 11, fontWeight: '700' },
   mrHint: { color: '#555560', fontSize: 11, marginTop: 8, textAlign: 'center' },
+
+  // DROP_SET structured layout
+  dsArrow: { color: 'rgba(239,68,68,0.45)', fontSize: 11, width: 14 },
+  dsHint: { color: '#555560', fontSize: 11, marginTop: 8, textAlign: 'center' },
+
+  // MYOREP informational expansion
+  myoRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: 'rgba(244,114,182,0.06)', borderRadius: 6,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  myoRowLabel: { color: '#F472B6', fontSize: 12 },
+  myoRowValue: { color: '#F0F0F5', fontSize: 12, fontWeight: '500' },
+  myoHint: { color: '#555560', fontSize: 11, marginTop: 4, textAlign: 'center', fontStyle: 'italic' },
 })
 
 const vc = StyleSheet.create({
