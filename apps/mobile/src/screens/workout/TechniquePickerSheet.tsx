@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Modal, ScrollView, Pressable, TextInput, Switch,
+  Modal, ScrollView, Pressable, Switch,
 } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
 import { Ionicons } from '@expo/vector-icons'
 import type { SetType, PlannedSetTechnique, TechniqueConfig } from '../../lib/api'
+import { WorkoutInput } from '../../components/WorkoutInput'
 
 // ─── Technique metadata ───────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ const OPTIONS: TechniqueOption[] = [
     description: 'Blocos com breve descanso entre eles',
     setType: 'WORKING', technique: 'CLUSTER_SET', hasConfig: true,
     infoText:
-      'Divide uma série em mini-blocos com breves micro-descansos entre eles. Isso permite executar mais repetições totais com uma carga que normalmente daria para menos, mantendo a qualidade mecânica de cada rep. O número de blocos e o tempo de descanso são configuráveis.\n\nConta como UMA série no volume.',
+      'Divida uma série em mini-blocos com breves pausas entre eles. Exemplo: 4 blocos de 5 reps com 15s de descanso — em vez de falhar em 12 reps contínuas, você completa 20 reps com a mesma carga e maior qualidade mecânica.\n\nO peso é o mesmo do início ao fim. Configure o número de blocos, as reps alvo por bloco e o descanso entre eles.\n\nConta como UMA série no volume total.',
     seenKey: 'info_cluster_set',
   },
   {
@@ -72,15 +73,23 @@ const OPTIONS: TechniqueOption[] = [
     description: 'Blocos curtos com descanso mínimo',
     setType: 'WORKING', technique: 'MUSCLE_ROUND', hasConfig: true,
     infoText:
-      'Escolha uma carga com a qual faria 10–12 reps e divida em blocos curtos com pausas mínimas entre eles. A intenção não é falhar em cada bloco — a fadiga se acumula ao longo da série. Marque em qual bloco ocorreu a falha e use isso como referência de progresso. O objetivo é aumentar o total de reps a cada treino; quando atingir seu alvo, aumente a carga. Número de blocos, reps por bloco e tempo de descanso são configuráveis.\n\nConta como UMA série no volume total.',
+      'Execute blocos curtos de repetições com pausas mínimas entre eles. Use o peso principal nos primeiros blocos. Quando a falha ocorrer, marque o bloco — os blocos restantes são completados com o peso de queda (pré-definido por você). O objetivo é aumentar o total de reps a cada treino; quando atingir sua meta, aumente ambos os pesos.\n\nConfigure: blocos, reps por bloco, descanso entre blocos e peso de queda. O peso principal é definido na série.\n\nConta como UMA série no volume total.',
     seenKey: 'info_muscle_round',
+  },
+  {
+    label: 'Myo Reps',
+    description: 'Ativação + mini-blocos até a falha',
+    setType: 'WORKING', technique: 'MYOREP', hasConfig: true,
+    infoText:
+      'Técnica criada por Borge Fagerli. Comece com uma série de ativação próximo à falha para recrutar o máximo de fibras. Descanse brevemente e execute mini-blocos no mesmo peso até não conseguir mais.\n\nExemplo: Cadeira extensora 40 kg — ativação: 15 reps. Descanse 20s. Mini-blocos: 4, 4, 3 reps (15s entre eles). Parou ao atingir a falha.\n\nConfigure: reps de ativação, descanso pós-ativação, reps por mini-bloco e descanso entre mini-blocos. Quantidade de mini-blocos determinada durante a execução.\n\nTudo conta como UMA série no volume total.',
+    seenKey: 'info_myo_reps',
   },
   {
     label: 'Drop Set',
     description: 'Reduza a carga e continue sem descanso',
     setType: 'WORKING', technique: 'DROP_SET', hasConfig: true,
     infoText:
-      'Ao atingir a falha (ou próximo dela), você reduz a carga imediatamente sem descanso e continua. Cada redução é um "drop". Maximiza o volume em pouco tempo. O número de drops é configurável.\n\nConta como UMA série no volume total.',
+      'Ao atingir a falha (ou próximo dela), você reduz a carga imediatamente sem descanso e continua. Cada redução de carga é um "drop".\n\nExemplo: Rosca direta — Série Principal com 20 kg até a falha (10 reps). Drop 1: reduz para 15 kg, mais 8 reps. Drop 2: reduz para 10 kg, mais 6 reps.\n\nConfigure o número de drops e os pesos planejados para cada etapa. Durante a execução, apenas as repetições são registradas — os pesos já estão definidos.\n\nTudo conta como UMA série no volume total.',
     seenKey: 'info_drop_set',
   },
 ]
@@ -105,14 +114,14 @@ function ConfigInput({
     <View style={ci.wrap}>
       <Text style={ci.label}>{label}</Text>
       <View style={ci.row}>
-        <TextInput
-          style={[ci.input, !valid && ci.inputError]}
+        <WorkoutInput
+          flex={1}
           value={value}
           onChangeText={onChange}
           keyboardType="number-pad"
           maxLength={4}
-          placeholderTextColor="#4A4A5A"
           placeholder={`${min}–${max}`}
+          containerStyle={!valid ? ci.inputError : undefined}
         />
         {suffix ? <Text style={ci.suffix}>{suffix}</Text> : null}
       </View>
@@ -125,11 +134,6 @@ const ci = StyleSheet.create({
   wrap: { marginBottom: 20 },
   label: { color: '#8A8A9A', fontSize: 13, marginBottom: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  input: {
-    flex: 1, height: 44,
-    backgroundColor: '#141418', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 10, color: '#F0F0F5', fontSize: 16, paddingHorizontal: 14,
-  },
   inputError: { borderColor: '#FF5252' },
   suffix: { color: '#8A8A9A', fontSize: 14, width: 28 },
   hint: { color: '#FF5252', fontSize: 11, marginTop: 4 },
@@ -171,8 +175,14 @@ export function TechniquePickerSheet({
   const [mrRest, setMrRest] = useState('35')
   // CLUSTER_SET
   const [csBlocks, setCsBlocks] = useState('4')
+  const [csRepsPerBlock, setCsRepsPerBlock] = useState('5')
   const [csRest, setCsRest] = useState('15')
-  // DROP_SET
+  // MYOREP
+  const [myoActivationReps, setMyoActivationReps] = useState('5')
+  const [myoActivationRest, setMyoActivationRest] = useState('40')
+  const [myoRepsPerBlock, setMyoRepsPerBlock] = useState('2')
+  const [myoRestBetween, setMyoRestBetween] = useState('20')
+  // DROP_SET — weights are entered during Workout Execution, not here
   const [dsDrops, setDsDrops] = useState('2')
 
   useEffect(() => {
@@ -199,7 +209,14 @@ export function TechniquePickerSheet({
       }
       if (currentTechnique === 'CLUSTER_SET') {
         if (c['blocks']) setCsBlocks(String(c['blocks']))
+        if (c['repsPerBlock']) setCsRepsPerBlock(String(c['repsPerBlock']))
         if (c['restBetweenSeconds']) setCsRest(String(c['restBetweenSeconds']))
+      }
+      if (currentTechnique === 'MYOREP') {
+        if (c['activationReps']) setMyoActivationReps(String(c['activationReps']))
+        if (c['activationRestSeconds']) setMyoActivationRest(String(c['activationRestSeconds']))
+        if (c['repsPerBlock']) setMyoRepsPerBlock(String(c['repsPerBlock']))
+        if (c['restBetweenSeconds']) setMyoRestBetween(String(c['restBetweenSeconds']))
       }
       if (currentTechnique === 'DROP_SET') {
         if (c['drops']) setDsDrops(String(c['drops']))
@@ -248,7 +265,10 @@ export function TechniquePickerSheet({
       case 'MUSCLE_ROUND':
         return isIntInRange(mrBlocks, 4, 10) && isIntInRange(mrRepsPerBlock, 1, 10) && isIntInRange(mrRest, 20, 60)
       case 'CLUSTER_SET':
-        return isIntInRange(csBlocks, 2, 10) && isIntInRange(csRest, 5, 60)
+        return isIntInRange(csBlocks, 2, 10) && isIntInRange(csRepsPerBlock, 1, 20) && isIntInRange(csRest, 5, 60)
+      case 'MYOREP':
+        return isIntInRange(myoActivationReps, 5, 30) && isIntInRange(myoActivationRest, 10, 60) &&
+               isIntInRange(myoRepsPerBlock, 1, 10) && isIntInRange(myoRestBetween, 5, 45)
       case 'DROP_SET':
         return isIntInRange(dsDrops, 1, 10)
       default:
@@ -263,8 +283,16 @@ export function TechniquePickerSheet({
       case 'MUSCLE_ROUND':
         return { blocks: parseInt(mrBlocks), repsPerBlock: parseInt(mrRepsPerBlock), restBetweenSeconds: parseInt(mrRest) }
       case 'CLUSTER_SET':
-        return { blocks: parseInt(csBlocks), restBetweenSeconds: parseInt(csRest) }
+        return { blocks: parseInt(csBlocks), repsPerBlock: parseInt(csRepsPerBlock), restBetweenSeconds: parseInt(csRest) }
+      case 'MYOREP':
+        return {
+          activationReps: parseInt(myoActivationReps),
+          activationRestSeconds: parseInt(myoActivationRest),
+          repsPerBlock: parseInt(myoRepsPerBlock),
+          restBetweenSeconds: parseInt(myoRestBetween),
+        }
       case 'DROP_SET':
+        // Only the drop count is planned; weights are filled during execution.
         return { drops: parseInt(dsDrops) }
       default:
         return null
@@ -374,8 +402,8 @@ export function TechniquePickerSheet({
 
               {selectedOption.technique === 'REST_PAUSE' && (
                 <>
-                  <ConfigInput label="Pontos de falha" value={rpFailure} onChange={setRpFailure} min={1} max={5} />
-                  <ConfigInput label="Descanso entre falhas" value={rpRest} onChange={setRpRest} min={5} max={60} suffix="s" />
+                  <ConfigInput label="Blocos extras (falhas)" value={rpFailure} onChange={setRpFailure} min={1} max={5} />
+                  <ConfigInput label="Descanso entre blocos" value={rpRest} onChange={setRpRest} min={5} max={60} suffix="s" />
                 </>
               )}
 
@@ -390,12 +418,31 @@ export function TechniquePickerSheet({
               {selectedOption.technique === 'CLUSTER_SET' && (
                 <>
                   <ConfigInput label="Blocos" value={csBlocks} onChange={setCsBlocks} min={2} max={10} />
+                  <ConfigInput label="Reps por bloco" value={csRepsPerBlock} onChange={setCsRepsPerBlock} min={1} max={20} />
                   <ConfigInput label="Descanso entre blocos" value={csRest} onChange={setCsRest} min={5} max={60} suffix="s" />
                 </>
               )}
 
+              {selectedOption.technique === 'MYOREP' && (
+                <>
+                  <ConfigInput label="Reps de ativação" value={myoActivationReps} onChange={setMyoActivationReps} min={5} max={30} />
+                  <ConfigInput label="Descanso pós-ativação" value={myoActivationRest} onChange={setMyoActivationRest} min={10} max={60} suffix="s" />
+                  <ConfigInput label="Reps por mini-bloco" value={myoRepsPerBlock} onChange={setMyoRepsPerBlock} min={1} max={10} />
+                  <ConfigInput label="Descanso entre mini-blocos" value={myoRestBetween} onChange={setMyoRestBetween} min={5} max={45} suffix="s" />
+                </>
+              )}
+
               {selectedOption.technique === 'DROP_SET' && (
-                <ConfigInput label="Número de drops" value={dsDrops} onChange={setDsDrops} min={1} max={10} />
+                <>
+                  <ConfigInput
+                    label="Número de drops"
+                    value={dsDrops}
+                    onChange={setDsDrops}
+                    min={1}
+                    max={10}
+                  />
+                  <Text style={s.dropHint}>Os pesos de cada drop são definidos durante a execução do treino.</Text>
+                </>
               )}
 
               <TouchableOpacity
@@ -495,4 +542,5 @@ const s = StyleSheet.create({
   },
   confirmBtnDisabled: { backgroundColor: '#1A2A4A' },
   confirmText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  dropHint: { color: '#555560', fontSize: 12, lineHeight: 17, marginTop: -8, marginBottom: 20 },
 })

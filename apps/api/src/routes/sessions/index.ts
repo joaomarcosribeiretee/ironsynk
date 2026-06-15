@@ -30,14 +30,18 @@ function initExecTechConfig(technique: string, cfg: Record<string, unknown> | nu
       return {
         failurePoints: count,
         restBetweenSeconds: (cfg['restBetweenSeconds'] as number) ?? 15,
-        execPoints: Array.from({ length: count }, () => ({ reps: null, weightKg: null, checked: false })),
+        // index 0 = main set, indices 1..count = failure blocks
+        execPoints: Array.from({ length: count + 1 }, () => ({ reps: null, weightKg: null, checked: false })),
       }
     }
     case 'CLUSTER_SET': {
-      const blocks = (cfg['blocks'] as number) ?? 3
+      const blocks = (cfg['blocks'] as number) ?? 4
+      const repsPerBlock = (cfg['repsPerBlock'] as number) ?? 5
       return {
         blocks,
+        repsPerBlock,
         restBetweenSeconds: (cfg['restBetweenSeconds'] as number) ?? 15,
+        // weight is shared (setLog.weightKg); blocks only track reps
         execBlocks: Array.from({ length: blocks }, () => ({ reps: null, weightKg: null, checked: false })),
       }
     }
@@ -48,14 +52,35 @@ function initExecTechConfig(technique: string, cfg: Record<string, unknown> | nu
         blocks,
         repsPerBlock,
         restBetweenSeconds: (cfg['restBetweenSeconds'] as number) ?? 35,
-        execBlocks: Array.from({ length: blocks }, () => ({ reps: null, weightKg: null, checked: false, failed: false })),
+        // drop weight seeded from planning config; main weight comes from setLog.weightKg
+        dropWeightKg: (cfg['dropWeightKg'] as number | null) ?? null,
+        failedAtBlock: null,
+        execBlocks: Array.from({ length: blocks }, () => ({ reps: null, failed: false })),
+      }
+    }
+    case 'MYOREP': {
+      return {
+        activationReps: (cfg['activationReps'] as number) ?? 6,
+        activationRestSeconds: (cfg['activationRestSeconds'] as number) ?? 40,
+        repsPerBlock: (cfg['repsPerBlock'] as number) ?? 2,
+        restBetweenSeconds: (cfg['restBetweenSeconds'] as number) ?? 20,
+        weightKg: (cfg['weightKg'] as number | null) ?? null,
+        execActivationReps: null,
+        execMiniBlocks: [],
       }
     }
     case 'DROP_SET': {
+      // drops = additional drops; total blocks = main + drops. Weights are filled
+      // during execution, so they start null (no planned weight values).
       const drops = (cfg['drops'] as number) ?? 2
+      const totalBlocks = drops + 1
       return {
         drops,
-        execDrops: Array.from({ length: drops }, () => ({ weightKg: null, reps: null, checked: false })),
+        execDrops: Array.from({ length: totalBlocks }, () => ({
+          weightKg: null,
+          reps: null,
+          checked: false,
+        })),
       }
     }
     default:
@@ -120,32 +145,29 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
             },
           })
 
-          let setOrder = 0
-          for (const ps of te.plannedSets) {
-            const techCfg = initExecTechConfig(
-              ps.technique,
-              ps.techniqueConfig as Record<string, unknown> | null,
-            )
-            await tx.setLog.create({
-              data: {
+          if (te.plannedSets.length > 0) {
+            const setsData = te.plannedSets.map((ps, idx) => {
+              const techCfg = initExecTechConfig(
+                ps.technique,
+                ps.techniqueConfig as Record<string, unknown> | null,
+              )
+              return {
                 trainingLogId: log.id,
                 executionExerciseId: execEx.id,
                 trainingExerciseId: te.id,
                 exerciseId: te.exerciseId,
-                setNumber: setOrder + 1,
-                order: setOrder++,
+                setNumber: idx + 1,
+                order: idx,
                 setType: ps.setType,
                 technique: ps.technique,
                 techniqueConfig: (techCfg ?? undefined) as unknown as Prisma.InputJsonValue | undefined,
                 plannedSetId: ps.id,
                 repsCompleted: 0,
                 weightKg: ps.targetWeight ?? 0,
-              },
+              }
             })
-          }
-
-          // if no planned sets, add one empty WORKING set
-          if (te.plannedSets.length === 0) {
+            await tx.setLog.createMany({ data: setsData })
+          } else {
             await tx.setLog.create({
               data: {
                 trainingLogId: log.id,
@@ -174,7 +196,7 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
           startedAt: new Date(),
         },
       })
-    })
+    }, { timeout: 15000 })
 
     const full = await prisma.trainingLog.findUnique({
       where: { id: session.id },

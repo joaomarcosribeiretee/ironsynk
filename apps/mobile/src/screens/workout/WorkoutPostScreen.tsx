@@ -203,7 +203,10 @@ export function WorkoutPostScreen() {
               style={[ps.modalBtnPrimary, { backgroundColor: '#2A2A35' }]}
               onPress={() => {
                 setDiscardModal(false)
-                navigation.goBack()
+                // Reopen the same execution in editable state. WorkoutExecution
+                // replaced itself with this screen, so goBack() would skip to
+                // Training home; rehydrate the existing TrainingLog by id instead.
+                navigation.replace('WorkoutExecution', { resumeSessionId: sessionId })
               }}
             >
               <Text style={[ps.modalBtnPrimaryText, { color: '#8A8A9A' }]}>Voltar ao treino</Text>

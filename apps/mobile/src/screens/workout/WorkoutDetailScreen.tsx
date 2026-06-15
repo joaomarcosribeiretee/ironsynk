@@ -21,6 +21,7 @@ import {
 } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { SetBadge, getTechStyle } from '../../components/SetBadge'
+import { WorkoutInput } from '../../components/WorkoutInput'
 
 function getVolumeHint(setType: SetType): string | null {
   if (setType === 'WARMUP') return 'Não conta no volume'
@@ -152,13 +153,13 @@ function RestPauseExpansion({ config, blockReps, onBlockRepsChange }: {
         <React.Fragment key={i}>
           {i > 0 && <RestSeparator seconds={rest} />}
           <View style={exp.block}>
-            <TextInput
-              style={exp.blockInput}
+            <WorkoutInput
+              width={96}
               value={blockReps[i] ?? ''}
               onChangeText={val => onBlockRepsChange(i, val)}
-              placeholder="reps"
-              placeholderTextColor="#3A3A4A"
+              placeholder="—"
               keyboardType="number-pad"
+              unit="reps"
             />
             <Text style={exp.blockLabelRight}>{i === 0 ? 'Série Principal' : `Falha ${i}`}</Text>
           </View>
@@ -183,13 +184,13 @@ function ClusterSetExpansion({ config, blockReps, onBlockRepsChange }: {
         <React.Fragment key={i}>
           {i > 0 && <RestSeparator seconds={rest} />}
           <View style={exp.block}>
-            <TextInput
-              style={exp.blockInput}
+            <WorkoutInput
+              width={96}
               value={blockReps[i] ?? ''}
               onChangeText={val => onBlockRepsChange(i, val)}
-              placeholder={repsPerBlock || 'reps'}
-              placeholderTextColor="#3A3A4A"
+              placeholder={repsPerBlock || '—'}
               keyboardType="number-pad"
+              unit="reps"
             />
             <Text style={exp.blockLabelRight}>Bloco {i + 1}</Text>
           </View>
@@ -214,28 +215,27 @@ function MuscleRoundExpansion({ config, blockReps, dropWeight, onBlockRepsChange
       {/* Drop weight row — used from the failure block onward */}
       <View style={[exp.block, exp.blockMr, { marginBottom: 6 }]}>
         <Text style={[exp.blockLabel, { color: '#A78BFA' }]}>↓ Peso de queda</Text>
-        <TextInput
-          style={exp.blockInputSmall}
+        <WorkoutInput
+          width={96}
           value={dropWeight}
           onChangeText={onDropWeightChange}
-          placeholder="kg"
-          placeholderTextColor="#3A3A4A"
+          placeholder="—"
           keyboardType="decimal-pad"
+          unit="kg"
         />
-        <Text style={[exp.blockSep, { color: '#A78BFA' }]}>kg</Text>
       </View>
       {/* Blocks — reps only; weight is determined during execution */}
       {Array.from({ length: blocks }).map((_, i) => (
         <React.Fragment key={i}>
           {i > 0 && <RestSeparator seconds={rest} />}
           <View style={[exp.block, exp.blockMr]}>
-            <TextInput
-              style={exp.blockInput}
+            <WorkoutInput
+              width={96}
               value={blockReps[i] ?? ''}
               onChangeText={val => onBlockRepsChange(i, val)}
-              placeholder="reps"
-              placeholderTextColor="#3A3A4A"
+              placeholder="—"
               keyboardType="number-pad"
+              unit="reps"
             />
             <Text style={exp.blockLabelRight}>Bloco {i + 1}</Text>
           </View>
@@ -246,12 +246,10 @@ function MuscleRoundExpansion({ config, blockReps, dropWeight, onBlockRepsChange
   )
 }
 
-function DropSetExpansion({ config, blockReps, blockWeights, onBlockRepsChange, onBlockWeightChange }: {
+function DropSetExpansion({ config, blockReps, onBlockRepsChange }: {
   config: TechniqueConfig | null
   blockReps: string[]
-  blockWeights: string[]
   onBlockRepsChange: (idx: number, val: string) => void
-  onBlockWeightChange: (idx: number, val: string) => void
 }) {
   const c = config as Record<string, unknown> | null
   const drops = Math.min(10, Math.max(1, Number(c?.['drops'] ?? 2)))
@@ -267,36 +265,22 @@ function DropSetExpansion({ config, blockReps, blockWeights, onBlockRepsChange, 
               <View style={[exp.sepLine, { backgroundColor: 'rgba(239,68,68,0.15)' }]} />
             </View>
           )}
-          {/* Weight header row */}
-          <View style={exp.dsWeightRow}>
-            <Text style={exp.dsWeightLabel}>{i === 0 ? 'Peso Principal' : `Peso Drop ${i}`}</Text>
-            <TextInput
-              style={exp.dsWeightInput}
-              value={blockWeights[i] ?? ''}
-              onChangeText={val => onBlockWeightChange(i, val)}
-              placeholder="—"
-              placeholderTextColor="#3A3A4A"
-              keyboardType="decimal-pad"
-            />
-            <Text style={exp.dsWeightUnit}>kg</Text>
-          </View>
-          {/* Reps block */}
+          {/* Reps block — weights are filled during execution */}
           <View style={[exp.block, exp.blockDrop]}>
             <Text style={exp.dsArrow}>→</Text>
             <Text style={exp.blockLabel}>{i === 0 ? 'Série Principal' : `Drop ${i}`}</Text>
-            <TextInput
-              style={exp.blockInputSmall}
+            <WorkoutInput
+              width={96}
               value={blockReps[i] ?? ''}
               onChangeText={val => onBlockRepsChange(i, val)}
-              placeholder="reps"
-              placeholderTextColor="#3A3A4A"
+              placeholder="—"
               keyboardType="number-pad"
+              unit="reps"
             />
-            <Text style={[exp.blockSep, { color: '#555560', fontSize: 11 }]}>reps</Text>
           </View>
         </React.Fragment>
       ))}
-      <Text style={exp.dsHint}>Conta como UMA série no volume total</Text>
+      <Text style={exp.dsHint}>Os pesos são definidos durante a execução · UMA série no volume</Text>
     </View>
   )
 }
@@ -370,7 +354,7 @@ function buildDetailTechSummary(technique: PlannedSetTechnique, cfg: Record<stri
 function SetRow({
   set, index, reps, weight, blockData, canDelete,
   onRepsChange, onWeightChange, onTechniqueTap, onDelete,
-  onBlockRepsChange, onBlockWeightChange, onFailedAtBlock, onDropWeightChange,
+  onBlockRepsChange, onFailedAtBlock, onDropWeightChange,
 }: {
   set: PlannedSetRecord
   index: number
@@ -383,7 +367,6 @@ function SetRow({
   onTechniqueTap: () => void
   onDelete: () => void
   onBlockRepsChange: (idx: number, val: string) => void
-  onBlockWeightChange: (idx: number, val: string) => void
   onFailedAtBlock: (idx: number) => void
   onDropWeightChange?: (val: string) => void
 }) {
@@ -405,28 +388,26 @@ function SetRow({
         <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
 
         {!hideReps && (
-          <TextInput
-            style={sr.repsInput}
+          <WorkoutInput
+            flex={1}
             value={reps}
             onChangeText={onRepsChange}
-            placeholder="Reps"
-            placeholderTextColor="#3A3A4A"
-            returnKeyType="done"
-            blurOnSubmit
+            placeholder="—"
+            keyboardType="number-pad"
+            unit="reps"
           />
         )}
         {!hideReps && !hideWeight && <Text style={sr.timesText}>×</Text>}
         {!hideWeight && (
-          <TextInput
-            style={hideReps ? sr.weightInputFull : sr.weightInput}
+          <WorkoutInput
+            flex={hideReps ? 1 : 1.2}
             value={weight}
             onChangeText={onWeightChange}
             placeholder="—"
-            placeholderTextColor="#3A3A4A"
             keyboardType="decimal-pad"
+            unit="kg"
           />
         )}
-        {!hideWeight && <Text style={sr.kgText}>kg</Text>}
         {hideReps && hideWeight && <View style={{ flex: 1 }} />}
 
         {canDelete && (
@@ -478,9 +459,7 @@ function SetRow({
         <DropSetExpansion
           config={set.techniqueConfig}
           blockReps={blockData?.blockReps ?? []}
-          blockWeights={blockData?.blockWeights ?? []}
           onBlockRepsChange={onBlockRepsChange}
-          onBlockWeightChange={onBlockWeightChange}
         />
       )}
       {set.setType === 'WORKING' && set.technique === 'MYOREP' && (
@@ -620,14 +599,10 @@ export function WorkoutDetailScreen() {
         } else if (s.technique === 'DROP_SET') {
           const d = Number(c?.['drops'] ?? 2)
           const totalBlocks = d + 1
-          const storedWeights = c?.['dropWeights'] as (number | null)[] | undefined
-          const legacyWeights = c?.['blockWeights'] as string[] | undefined
+          // Weights are entered during execution, not planned here.
           newBlockData[s.id] = {
             blockReps: (c?.['blockReps'] as string[] | undefined) ?? Array(totalBlocks).fill(''),
-            blockWeights: Array(totalBlocks).fill('').map((_, i) =>
-              storedWeights?.[i] != null ? String(storedWeights[i]) :
-              (legacyWeights?.[i] ?? '')
-            ),
+            blockWeights: [],
             failedAtBlock: null,
           }
         }
@@ -669,11 +644,8 @@ export function WorkoutDetailScreen() {
         break
       }
       case 'DROP_SET':
-        newConfig = {
-          ...c,
-          blockReps: data.blockReps,
-          dropWeights: data.blockWeights.map(w => { const n = parseFloat(w); return isNaN(n) || n <= 0 ? null : n }),
-        }
+        // Only planned reps; weights are collected during execution.
+        newConfig = { ...c, blockReps: data.blockReps }
         break
       case 'MYOREP':
         return // no block-level data to save for MYOREP
@@ -705,17 +677,6 @@ export function WorkoutDetailScreen() {
     while (blockReps.length <= blockIdx) blockReps.push('')
     blockReps[blockIdx] = val
     const next = { ...cur, blockReps }
-    localBlockDataRef.current[setId] = next
-    setLocalBlockData(prev => ({ ...prev, [setId]: next }))
-    scheduleBlockDataSave(setId, set.technique, next, set.techniqueConfig)
-  }
-
-  function handleBlockWeightChange(setId: string, blockIdx: number, val: string, set: PlannedSetRecord) {
-    const cur = localBlockDataRef.current[setId] ?? { blockReps: [], blockWeights: [], failedAtBlock: null }
-    const blockWeights = [...cur.blockWeights]
-    while (blockWeights.length <= blockIdx) blockWeights.push('')
-    blockWeights[blockIdx] = val
-    const next = { ...cur, blockWeights }
     localBlockDataRef.current[setId] = next
     setLocalBlockData(prev => ({ ...prev, [setId]: next }))
     scheduleBlockDataSave(setId, set.technique, next, set.techniqueConfig)
@@ -793,12 +754,9 @@ export function WorkoutDetailScreen() {
       } else if (sel.technique === 'DROP_SET') {
         const d = Number(c?.['drops'] ?? 2)
         const totalBlocks = d + 1
-        const storedWeights = c?.['dropWeights'] as (number | null)[] | undefined
         newEntry = {
           blockReps: Array(totalBlocks).fill(''),
-          blockWeights: Array(totalBlocks).fill('').map((_, i) =>
-            storedWeights?.[i] != null ? String(storedWeights[i]) : ''
-          ),
+          blockWeights: [],
           failedAtBlock: null,
         }
       }
@@ -1033,7 +991,6 @@ export function WorkoutDetailScreen() {
                               setConfirmDeleteSet({ visible: true, teId: te.id, setId: set.id })
                           }}
                           onBlockRepsChange={(idx, val) => handleBlockRepsChange(set.id, idx, val, set)}
-                          onBlockWeightChange={(idx, val) => handleBlockWeightChange(set.id, idx, val, set)}
                           onFailedAtBlock={idx => handleFailedAtBlock(set.id, idx, set)}
                           onDropWeightChange={val => handleMrDropWeightChange(set.id, val, set)}
                         />
@@ -1314,18 +1271,7 @@ const sr = StyleSheet.create({
     paddingVertical: 8, paddingHorizontal: 10,
   },
   main: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  repsInput: {
-    flex: 1, height: 40,
-    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 10, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
-  },
   timesText: { width: 14, textAlign: 'center', color: '#2A2A35', fontSize: 13 },
-  weightInput: {
-    flex: 1.2, height: 40,
-    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 10, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
-  },
-  kgText: { width: 18, color: '#555560', fontSize: 11 },
   volumeHint: { color: '#8A8A9A', fontSize: 10, marginTop: 3, marginLeft: 42 },
   deleteBtn: { width: 22, height: 22, justifyContent: 'center', alignItems: 'center', marginLeft: 2 },
   techSummaryRow: {
@@ -1349,12 +1295,6 @@ const sr = StyleSheet.create({
     flex: 1,
     opacity: 0.75,
   },
-  // Used when reps are hidden (e.g. ClusterSet) — weight takes remaining space
-  weightInputFull: {
-    flex: 1, height: 40,
-    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 10, textAlign: 'center', color: '#F0F0F5', fontSize: 15, fontWeight: '500',
-  },
 })
 
 const exp = StyleSheet.create({
@@ -1374,19 +1314,6 @@ const exp = StyleSheet.create({
   blockAfterFailure: { opacity: 0.45 },
   blockLabel: { color: '#8A8A9A', fontSize: 12, flex: 1 },
   blockLabelRight: { color: '#8A8A9A', fontSize: 12, textAlign: 'right' },
-  blockSep: { color: '#3A3A4A', fontSize: 12 },
-
-  blockInput: {
-    height: 32, minWidth: 52,
-    backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 6, textAlign: 'center', color: '#F0F0F5', fontSize: 13,
-  },
-  blockInputSmall: {
-    height: 32, width: 52,
-    backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 6, textAlign: 'center', color: '#F0F0F5', fontSize: 13,
-  },
-  blockInputFaded: { opacity: 0.4 },
 
   failBtn: {
     paddingHorizontal: 8, paddingVertical: 3,
@@ -1407,17 +1334,6 @@ const exp = StyleSheet.create({
   mrHint: { color: '#555560', fontSize: 11, marginTop: 8, textAlign: 'center' },
 
   // DROP_SET structured layout
-  dsWeightRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 8, paddingVertical: 3,
-  },
-  dsWeightLabel: { color: '#EF4444', fontSize: 11, flex: 1 },
-  dsWeightInput: {
-    height: 28, width: 52,
-    backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)',
-    borderRadius: 6, textAlign: 'center', color: '#EF4444', fontSize: 13,
-  },
-  dsWeightUnit: { color: 'rgba(239,68,68,0.5)', fontSize: 11 },
   dsArrow: { color: 'rgba(239,68,68,0.45)', fontSize: 11, width: 14 },
   dsHint: { color: '#555560', fontSize: 11, marginTop: 8, textAlign: 'center' },
 

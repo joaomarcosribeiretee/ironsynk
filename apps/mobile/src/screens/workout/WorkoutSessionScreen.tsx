@@ -8,7 +8,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
-import type { ExecutionExerciseRecord, ExecutionSetLogRecord, PlannedSetTechnique } from '../../lib/api'
+import type { ExecutionExerciseRecord, ExecutionSetLogRecord } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { SetBadge, getTechStyle } from '../../components/SetBadge'
 
@@ -60,42 +60,156 @@ function formatWeight(kg: number | null) {
   return `${kg % 1 === 0 ? kg : kg.toFixed(1)} kg`
 }
 
-function getTechBlockSummary(technique: PlannedSetTechnique, cfg: Record<string, unknown> | null): string | null {
-  if (!cfg) return null
-  const blockReps = cfg['blockReps'] as string[] | undefined
-  const blockWeights = cfg['blockWeights'] as string[] | undefined
+// ─── Executed technique detail (read-only, full structure) ──────────────────────
 
-  switch (technique) {
-    case 'DROP_SET': {
-      if (blockWeights?.length && blockReps?.length) {
-        return blockWeights.map((w, i) => `${w}kg × ${blockReps[i] ?? '?'}`).join(' → ')
-      }
-      return null
+function RestSep({ seconds, color }: { seconds: number; color?: string }) {
+  if (!seconds) return <View style={ss.blockSepThin} />
+  return (
+    <View style={ss.restSep}>
+      <View style={[ss.restSepLine, color ? { backgroundColor: color } : null]} />
+      <Text style={[ss.restSepText, color ? { color } : null]}>{seconds}s</Text>
+      <View style={[ss.restSepLine, color ? { backgroundColor: color } : null]} />
+    </View>
+  )
+}
+
+function BlockRow({ label, reps, weight, failed, accent }: {
+  label: string
+  reps: number | null | undefined
+  weight?: number | null
+  failed?: boolean
+  accent?: string
+}) {
+  return (
+    <View style={[ss.blockRow, failed && ss.blockRowFailed]}>
+      <Text style={[ss.blockLabel, accent ? { color: accent } : null]}>{label}</Text>
+      <View style={ss.blockVals}>
+        {weight != null && weight > 0 && <Text style={ss.blockWeight}>{formatWeight(weight)}</Text>}
+        <Text style={ss.blockReps}>{reps != null ? `${reps} reps` : '—'}</Text>
+        {failed && <Text style={ss.failTag}>falha</Text>}
+      </View>
+    </View>
+  )
+}
+
+function TechniqueDetail({ set }: { set: ExecutionSetLogRecord }) {
+  const cfg = set.techniqueConfig as Record<string, unknown> | null
+  if (!cfg) return null
+  const rest = Number(cfg['restBetweenSeconds'] ?? 0)
+  const pink = 'rgba(244,114,182,0.25)'
+
+  switch (set.technique) {
+    case 'REST_PAUSE': {
+      const pts = (cfg['execPoints'] as { reps: number | null; weightKg: number | null }[] | undefined) ?? []
+      if (!pts.length) return null
+      return (
+        <View style={ss.techDetail}>
+          {pts.map((p, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <RestSep seconds={rest} />}
+              <BlockRow
+                label={i === 0 ? 'Série Principal' : `Falha ${i}`}
+                reps={p.reps}
+                weight={i === 0 ? p.weightKg : undefined}
+              />
+            </React.Fragment>
+          ))}
+        </View>
+      )
     }
-    case 'REST_PAUSE':
-    case 'CLUSTER_SET':
+    case 'CLUSTER_SET': {
+      const blks = (cfg['execBlocks'] as { reps: number | null; weightKg: number | null }[] | undefined) ?? []
+      if (!blks.length) return null
+      return (
+        <View style={ss.techDetail}>
+          {blks.map((b, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <RestSep seconds={rest} />}
+              <BlockRow label={`Bloco ${i + 1}`} reps={b.reps} weight={i === 0 ? b.weightKg : undefined} />
+            </React.Fragment>
+          ))}
+        </View>
+      )
+    }
     case 'MUSCLE_ROUND': {
-      if (blockReps?.length) return blockReps.map(r => `${r}x`).join(' · ')
-      return null
+      const blks = (cfg['execBlocks'] as { reps: number | null; failed?: boolean }[] | undefined) ?? []
+      const mainW = cfg['mainWeightKg'] as number | null | undefined
+      const dropW = cfg['dropWeightKg'] as number | null | undefined
+      const failedAt = blks.findIndex(b => b?.failed)
+      return (
+        <View style={ss.techDetail}>
+          <View style={ss.mrWeights}>
+            <View style={ss.mrWeightBox}>
+              <Text style={ss.mrWeightLabel}>PRINCIPAL</Text>
+              <Text style={ss.mrWeightVal}>{formatWeight(mainW ?? null)}</Text>
+            </View>
+            <View style={[ss.mrWeightBox, ss.mrWeightBoxDrop]}>
+              <Text style={[ss.mrWeightLabel, { color: '#A78BFA' }]}>↓ QUEDA</Text>
+              <Text style={ss.mrWeightVal}>{formatWeight(dropW ?? null)}</Text>
+            </View>
+          </View>
+          {blks.map((b, i) => {
+            const isDrop = failedAt >= 0 && i > failedAt
+            return (
+              <React.Fragment key={i}>
+                {i > 0 && <RestSep seconds={rest} />}
+                <BlockRow
+                  label={`Bloco ${i + 1}`}
+                  reps={b.reps}
+                  weight={isDrop ? dropW : mainW}
+                  failed={!!b.failed}
+                  accent={isDrop ? '#A78BFA' : undefined}
+                />
+              </React.Fragment>
+            )
+          })}
+        </View>
+      )
+    }
+    case 'DROP_SET': {
+      const drops = (cfg['execDrops'] as { weightKg: number | null; reps: number | null }[] | undefined) ?? []
+      if (!drops.length) return null
+      return (
+        <View style={ss.techDetail}>
+          {drops.map((d, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && (
+                <View style={ss.dropSep}>
+                  <View style={[ss.restSepLine, { backgroundColor: 'rgba(239,68,68,0.2)' }]} />
+                  <Text style={ss.dropSepText}>↓ drop</Text>
+                  <View style={[ss.restSepLine, { backgroundColor: 'rgba(239,68,68,0.2)' }]} />
+                </View>
+              )}
+              <BlockRow label={i === 0 ? 'Série Principal' : `Drop ${i}`} reps={d.reps} weight={d.weightKg} />
+            </React.Fragment>
+          ))}
+        </View>
+      )
     }
     case 'MYOREP': {
-      if (blockReps?.length) {
-        const [act, ...mini] = blockReps
-        return mini.length > 0
-          ? `Ativ: ${act}x · ${mini.map(r => `${r}x`).join(' · ')}`
-          : `Ativ: ${act}x`
-      }
-      return null
+      const act = cfg['execActivationReps'] as number | null | undefined
+      const minis = (cfg['execMiniBlocks'] as { reps: number | null; failed?: boolean }[] | undefined) ?? []
+      const mainW = (cfg['mainWeightKg'] as number | null | undefined) ?? (cfg['weightKg'] as number | null | undefined)
+      const actRest = Number(cfg['activationRestSeconds'] ?? 0)
+      if (act == null && minis.length === 0) return null
+      return (
+        <View style={ss.techDetail}>
+          <BlockRow label="Ativação" reps={act} weight={mainW} accent="#F472B6" />
+          {minis.map((m, i) => (
+            <React.Fragment key={i}>
+              <RestSep seconds={i === 0 ? actRest : rest} color={pink} />
+              <BlockRow label={`Mini ${i + 1}`} reps={m.reps} weight={mainW} failed={!!m.failed} accent="#F472B6" />
+            </React.Fragment>
+          ))}
+        </View>
+      )
     }
-    default: return null
+    default:
+      return null
   }
 }
 
 function SetDetailRow({ set, index }: { set: ExecutionSetLogRecord; index: number }) {
-  const blockSummary = set.technique !== 'NONE'
-    ? getTechBlockSummary(set.technique, set.techniqueConfig as Record<string, unknown> | null)
-    : null
-
   return (
     <View style={ss.setRow}>
       <SetBadge setType={set.setType} technique={set.technique} index={index} />
@@ -110,9 +224,7 @@ function SetDetailRow({ set, index }: { set: ExecutionSetLogRecord; index: numbe
             </View>
           )}
         </View>
-        {blockSummary && (
-          <Text style={ss.blockSummary}>{blockSummary}</Text>
-        )}
+        <TechniqueDetail set={set} />
       </View>
     </View>
   )
@@ -383,7 +495,37 @@ const ss = StyleSheet.create({
     paddingVertical: 2,
   },
   prText: { color: '#00E676', fontSize: 9, fontWeight: '700' },
-  blockSummary: { color: '#555560', fontSize: 11, paddingLeft: 2 },
+
+  // Executed technique detail
+  techDetail: { marginTop: 8, gap: 4 },
+  blockRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: 6,
+    paddingHorizontal: 10, paddingVertical: 6, gap: 8,
+  },
+  blockRowFailed: { backgroundColor: 'rgba(239,68,68,0.10)' },
+  blockLabel: { color: '#8A8A9A', fontSize: 12, flexShrink: 1 },
+  blockVals: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  blockWeight: { color: '#8A8A9A', fontSize: 12 },
+  blockReps: { color: '#F0F0F5', fontSize: 12, fontWeight: '500' },
+  failTag: { color: '#FF5252', fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
+
+  restSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 1 },
+  restSepLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+  restSepText: { color: '#4A4A5A', fontSize: 10, marginHorizontal: 8 },
+  blockSepThin: { height: 4 },
+
+  dropSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 1 },
+  dropSepText: { color: '#EF4444', fontSize: 10, marginHorizontal: 8, opacity: 0.75 },
+
+  mrWeights: { flexDirection: 'row', gap: 8, marginBottom: 2 },
+  mrWeightBox: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6,
+  },
+  mrWeightBoxDrop: { backgroundColor: 'rgba(123,97,255,0.10)' },
+  mrWeightLabel: { color: '#8A8A9A', fontSize: 10, fontWeight: '600' },
+  mrWeightVal: { color: '#F0F0F5', fontSize: 12, fontWeight: '500' },
 
   emptyExercises: { alignItems: 'center', paddingVertical: 24 },
   emptyText: { color: '#4A4A5A', fontSize: 13 },

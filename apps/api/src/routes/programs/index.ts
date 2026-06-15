@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
+import { getProgramAccess, getAssignedProgramIds } from '../../lib/program-access.js'
 
 const VALID_GOALS = ['HYPERTROPHY', 'STRENGTH', 'FAT_LOSS', 'ENDURANCE', 'HEALTH', 'PERFORMANCE'] as const
 
@@ -22,10 +23,16 @@ function formatProgram(p: any) {
 }
 
 export async function programRoutes(fastify: FastifyInstance): Promise<void> {
-  // GET /api/v1/programs
+  // GET /api/v1/programs — own programs + programs assigned via active consultation
   fastify.get('/', { preHandler: authMiddleware }, async (request, reply) => {
+    const assignedIds = await getAssignedProgramIds(request.authUser.id)
     const programs = await prisma.program.findMany({
-      where: { createdById: request.authUser.id },
+      where: {
+        OR: [
+          { createdById: request.authUser.id },
+          { id: { in: assignedIds } },
+        ],
+      },
       orderBy: { updatedAt: 'desc' },
       include: { _count: { select: { workouts: true } } },
     })
@@ -117,13 +124,12 @@ export async function programRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.status(201).send({ data: { program: { ...newProg, goals: newProg.goals, workoutsCount: original.workouts.length } } })
   })
 
-  // GET /api/v1/programs/:id/workouts
+  // GET /api/v1/programs/:id/workouts — read access for owner or assigned athlete
   fastify.get('/:id/workouts', { preHandler: authMiddleware }, async (request, reply) => {
     const { id } = request.params as { id: string }
 
-    const program = await prisma.program.findUnique({ where: { id } })
-    if (!program) return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
-    if (program.createdById !== request.authUser.id) return reply.status(403).send({ error: { code: 'FORBIDDEN' } })
+    const access = await getProgramAccess(id, request.authUser.id)
+    if (access === null) return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
 
     const workouts = await prisma.workout.findMany({
       where: { programId: id },

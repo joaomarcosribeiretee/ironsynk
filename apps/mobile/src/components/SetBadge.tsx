@@ -50,6 +50,9 @@ type SetBadgeProps = {
   onPress?: () => void
 }
 
+// The badge carries only technique identity (color + label). Its appearance is
+// intentionally identical whether the set is pending or completed — completion
+// is signalled by the completion check and the row accent, not the badge.
 export function SetBadge({ setType, technique, index, onPress }: SetBadgeProps) {
   const ts = getTechStyle(setType, technique)
   const label = getBadgeLabel(setType, technique, index)

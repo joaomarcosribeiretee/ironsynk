@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
+import { getProgramAccess } from '../../lib/program-access.js'
 
 const AddExerciseBody = z.object({
   exerciseId: z.string(),
@@ -134,8 +135,11 @@ export async function workoutRoutes(fastify: FastifyInstance): Promise<void> {
     })
 
     if (!workout) return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
-    if (!workout.program || workout.program.createdById !== request.authUser.id) {
-      return reply.status(403).send({ error: { code: 'FORBIDDEN' } })
+    if (!workout.program) return reply.status(403).send({ error: { code: 'FORBIDDEN' } })
+    // Read access: owner or athlete assigned via active consultation.
+    if (workout.program.createdById !== request.authUser.id) {
+      const access = await getProgramAccess(workout.program.id, request.authUser.id)
+      if (access === null) return reply.status(403).send({ error: { code: 'FORBIDDEN' } })
     }
 
     const { exercises, ...rest } = workout

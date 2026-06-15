@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { RootNavigator } from './src/navigation/RootNavigator'
+import { Toast } from './src/components/Toast'
 import { useAuthStore } from './src/store/authStore'
 
 const queryClient = new QueryClient()
@@ -35,6 +36,10 @@ export default function App() {
             <StatusBar style="light" />
             <RootNavigator />
           </NavigationContainer>
+          {/* Single global toast host — renders above every screen, including
+              the Workout Execution stack screen, so validation feedback is
+              always visible and never swallowed by an overlaying screen. */}
+          <Toast />
         </QueryClientProvider>
       </View>
     </SafeAreaProvider>
