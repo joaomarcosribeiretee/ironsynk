@@ -1,17 +1,43 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, Modal, Pressable, ActivityIndicator,
+  TextInput, Modal, Pressable,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import Reanimated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated'
+import * as ImagePicker from 'expo-image-picker'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import { useQueryClient } from '@tanstack/react-query'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { api } from '../../lib/api'
-import type { ExecutionExerciseRecord } from '../../lib/api'
+import type { ExecutionExerciseRecord, PostMediaItem } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { showToast } from '../../components/Toast'
+import { ActionSheet } from './ActionSheet'
+import { PostMediaPicker, POST_MEDIA_MAX } from '../../components/PostMediaPicker'
+import type { SelectedMedia } from '../../components/PostMediaPicker'
+import { uploadPostMedia } from '../../lib/postMediaUpload'
+import { getFriendlyErrorMessage } from '../../lib/errorMessages'
+
+const MAX_VIDEO_SEC = 60
+
+function makeId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+// Map an expo-image-picker asset to our local media descriptor; null if unusable.
+function assetToMedia(asset: ImagePicker.ImagePickerAsset): SelectedMedia | null {
+  if (!asset.uri) return null
+  const isVideo = asset.type === 'video' || (asset.mimeType?.startsWith('video/') ?? false)
+  const fileName = asset.fileName ?? asset.uri.split(/[\\/]/).pop() ?? (isVideo ? 'video' : 'image')
+  const mime = asset.mimeType ?? (isVideo ? 'video/mp4' : 'image/jpeg')
+  if (isVideo) {
+    const durationSec = (asset.duration ?? 0) / 1000
+    return { id: makeId(), uri: asset.uri, type: 'VIDEO', mime, fileName, durationSec }
+  }
+  return { id: makeId(), uri: asset.uri, type: 'IMAGE', mime, fileName }
+}
 
 type NavProp = NativeStackNavigationProp<AppStackParamList>
 type RouteProps = RouteProp<AppStackParamList, 'WorkoutPost'>
@@ -67,21 +93,112 @@ export function WorkoutPostScreen() {
   const [description, setDescription] = useState('')
   const [discardModal, setDiscardModal] = useState(false)
   const [publishing, setPublishing] = useState(false)
+  const [media, setMedia] = useState<SelectedMedia[]>([])
+  const [sheetVisible, setSheetVisible] = useState(false)
+  // Stable per-screen folder id so all media for this draft share a storage path.
+  const postDraftId = useRef(makeId()).current
 
   const visibleExercises = exercises.slice(0, 5)
   const extraCount = exercises.length - visibleExercises.length
   const muscles = [...new Set(exercises.map(e => e.exercise.muscleGroup))].slice(0, 6)
 
+  // Publish button opacity transition (200ms) while submitting.
+  const btnOpacity = useSharedValue(1)
+  useEffect(() => {
+    btnOpacity.value = withTiming(publishing ? 0.6 : 1, { duration: 200 })
+  }, [publishing, btnOpacity])
+  const btnAnimStyle = useAnimatedStyle(() => ({ opacity: btnOpacity.value }))
+
+  function addAssets(assets: ImagePicker.ImagePickerAsset[]) {
+    const remaining = POST_MEDIA_MAX - media.length
+    if (remaining <= 0) {
+      showToast(`Máximo de ${POST_MEDIA_MAX} mídias`, 'warning')
+      return
+    }
+
+    const mapped = assets.map(assetToMedia).filter((m): m is SelectedMedia => m !== null)
+    const valid = mapped.filter(m => {
+      if (m.type === 'VIDEO' && (m.durationSec ?? 0) > MAX_VIDEO_SEC) return false
+      return true
+    })
+    const rejectedForDuration = mapped.length - valid.length
+
+    if (rejectedForDuration > 0) {
+      showToast('Vídeos devem ter até 60 segundos.', 'error')
+    }
+
+    const accepted = valid.slice(0, remaining)
+    if (valid.length > remaining) {
+      showToast(`Máximo de ${POST_MEDIA_MAX} mídias`, 'warning')
+    }
+    if (accepted.length > 0) {
+      setMedia(prev => [...prev, ...accepted])
+    }
+  }
+
+  async function pickFromCamera() {
+    const perm = await ImagePicker.requestCameraPermissionsAsync()
+    if (!perm.granted) {
+      showToast('Permita o acesso à câmera para continuar', 'warning')
+      return
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images', 'videos'],
+      videoMaxDuration: MAX_VIDEO_SEC,
+      quality: 0.85,
+    })
+    if (result.canceled) return
+    addAssets(result.assets)
+  }
+
+  async function pickFromLibrary() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!perm.granted) {
+      showToast('Permita o acesso à galeria para continuar', 'warning')
+      return
+    }
+    const remaining = POST_MEDIA_MAX - media.length
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      allowsMultipleSelection: true,
+      selectionLimit: Math.max(remaining, 1),
+      quality: 0.85,
+    })
+    if (result.canceled) return
+    addAssets(result.assets)
+  }
+
+  function openSheet() {
+    if (media.length >= POST_MEDIA_MAX) {
+      showToast(`Máximo de ${POST_MEDIA_MAX} mídias`, 'warning')
+      return
+    }
+    setSheetVisible(true)
+  }
+
+  function removeMedia(id: string) {
+    setMedia(prev => prev.filter(m => m.id !== id))
+  }
+
   async function handlePublish() {
+    if (publishing) return // prevent double submit
     setPublishing(true)
     try {
-      await api.posts.create({ trainingLogId: sessionId, content: description.trim() || undefined })
+      let uploaded: PostMediaItem[] = []
+      if (media.length > 0) {
+        uploaded = await Promise.all(media.map((m, i) => uploadPostMedia(m, i, postDraftId)))
+      }
+      await api.posts.create({
+        trainingLogId: sessionId,
+        content: description.trim() || undefined,
+        media: uploaded.length > 0 ? uploaded : undefined,
+      })
       qc.invalidateQueries({ queryKey: ['my-workout-posts'] })
       qc.invalidateQueries({ queryKey: ['feed'] })
-      showToast('Treino publicado!')
+      showToast('Treino publicado!', 'success')
       navigation.navigate('AthleteTabs', { screen: 'Workout' })
-    } catch {
-      showToast('Erro ao publicar')
+    } catch (err) {
+      showToast(getFriendlyErrorMessage(err, 'Erro ao publicar'), 'error')
       setPublishing(false)
     }
   }
@@ -98,12 +215,11 @@ export function WorkoutPostScreen() {
           <Ionicons name="arrow-back" size={22} color="#8A8A9A" />
         </TouchableOpacity>
         <Text style={ps.headerTitle}>Nova publicação</Text>
-        <TouchableOpacity onPress={handlePublish} disabled={publishing} style={ps.publishPill}>
-          {publishing
-            ? <ActivityIndicator color="#fff" size="small" style={{ width: 56 }} />
-            : <Text style={ps.publishPillText}>Publicar</Text>
-          }
-        </TouchableOpacity>
+        <Reanimated.View style={btnAnimStyle}>
+          <TouchableOpacity onPress={handlePublish} disabled={publishing} style={ps.publishPill}>
+            <Text style={ps.publishPillText}>{publishing ? 'Publicando...' : 'Publicar'}</Text>
+          </TouchableOpacity>
+        </Reanimated.View>
       </View>
 
       <ScrollView
@@ -122,11 +238,8 @@ export function WorkoutPostScreen() {
           textAlignVertical="top"
         />
 
-        {/* Media placeholder */}
-        <TouchableOpacity style={ps.mediaBtn} activeOpacity={0.7}>
-          <Ionicons name="image-outline" size={20} color="#3A3A4A" />
-          <Text style={ps.mediaBtnText}>Adicionar foto ou vídeo</Text>
-        </TouchableOpacity>
+        {/* Media picker carousel */}
+        <PostMediaPicker items={media} onAddPress={openSheet} onRemove={removeMedia} />
 
         {/* Section divider */}
         <View style={ps.sectionDivider}>
@@ -188,6 +301,17 @@ export function WorkoutPostScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Media source action sheet */}
+      <ActionSheet
+        visible={sheetVisible}
+        onClose={() => setSheetVisible(false)}
+        actions={[
+          { label: 'Câmera', onPress: pickFromCamera },
+          { label: 'Galeria', onPress: pickFromLibrary },
+          { label: 'Cancelar', onPress: () => {}, cancel: true },
+        ]}
+      />
 
       {/* Back modal */}
       <Modal visible={discardModal} transparent animationType="fade" onRequestClose={() => setDiscardModal(false)}>
@@ -251,19 +375,6 @@ const ps = StyleSheet.create({
     minHeight: 72,
     paddingVertical: 4,
   },
-
-  mediaBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 52,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#252530',
-    borderRadius: 12,
-  },
-  mediaBtnText: { color: '#3A3A4A', fontSize: 13 },
 
   sectionDivider: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sectionLine: { flex: 1, height: 1, backgroundColor: '#1E1E24' },

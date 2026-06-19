@@ -6,6 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import type { WorkoutPostRecord, ExecutionExerciseRecord } from '../lib/api'
 import type { AppStackParamList } from '../navigation/AppNavigator'
 import { getTechStyle } from './SetBadge'
+import { PostMediaCarousel } from './PostMediaCarousel'
 
 type NavProp = NativeStackNavigationProp<AppStackParamList>
 
@@ -107,6 +108,9 @@ export function WorkoutPostCard({ post }: { post: WorkoutPostRecord }) {
 
         {/* Caption */}
         {!!post.content && <Text style={cs.caption}>{post.content}</Text>}
+
+        {/* Media carousel — renders above the workout summary */}
+        {post.media && post.media.length > 0 && <PostMediaCarousel media={post.media} />}
 
         {session && (
           <>

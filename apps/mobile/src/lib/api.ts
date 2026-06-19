@@ -353,11 +353,40 @@ export type UpdateProgramInput = { name?: string; description?: string | null }
 export type CreateWorkoutInput = { programId: string; name: string; description?: string }
 export type UpdateWorkoutInput = { name?: string; description?: string | null; order?: number }
 
+export type PostMediaType = 'IMAGE' | 'VIDEO'
+
+export type PostMediaItem = {
+  type: PostMediaType
+  url: string
+  thumbnailUrl?: string
+  durationSec?: number
+  order: number
+}
+
+export type PostMediaUploadFileType =
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/webp'
+  | 'video/mp4'
+  | 'video/quicktime'
+
+export type SignedPostMediaUpload = {
+  bucket: string
+  postDraftId: string
+  path: string
+  token: string
+  signedUrl: string
+  publicUrl: string
+  contentType: PostMediaUploadFileType
+  maxSizeBytes: number
+}
+
 export type WorkoutPostRecord = {
   id: string
   content: string | null
   imageUrls: string[]
   videoUrl: string | null
+  media: PostMediaItem[] | null
   createdAt: string
   user: { id: string; name: string | null; avatar: string | null }
   session: SessionRecord | null
@@ -505,8 +534,10 @@ export const api = {
       request<{ data: { success: boolean } }>(`/api/v1/sessions/${sessionId}`, { method: 'DELETE' }),
   },
   posts: {
-    create: (body: { trainingLogId: string; content?: string }) =>
-      request<{ data: { post: { id: string } } }>('/api/v1/posts', { method: 'POST', body }),
+    create: (body: { trainingLogId: string; content?: string; media?: PostMediaItem[] }) =>
+      request<{ data: { post: WorkoutPostRecord } }>('/api/v1/posts/from-training-log', { method: 'POST', body }),
+    signMediaUpload: (body: { fileName: string; fileType: PostMediaUploadFileType; postDraftId?: string }) =>
+      request<{ data: SignedPostMediaUpload }>('/api/v1/uploads/post-media/signed-url', { method: 'POST', body }),
     listMine: (params?: { limit?: number; offset?: number }) => {
       const qs = new URLSearchParams()
       if (params?.limit !== undefined) qs.set('limit', String(params.limit))
