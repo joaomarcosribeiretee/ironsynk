@@ -423,7 +423,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
             />
           </View>
           <View style={ex.mrWeightCol}>
-            <Text style={[ex.mrWeightLabel, { color: '#A78BFA' }]}>↓ QUEDA</Text>
+            <Text style={[ex.mrWeightLabel, { color: '#A78BFA' }]}>↓ DROP</Text>
             <WorkoutInput
               flex={1}
               value={dropWeight}
@@ -779,6 +779,16 @@ export function WorkoutExecutionScreen() {
 
   async function handleSetTechniqueChange(execExId: string, setId: string, sel: TechniqueSelection) {
     if (!sessionId) return
+    // Snapshot the exact prior state so a failed save can be restored precisely.
+    // The set is always updated IN PLACE — never added or removed — so a WORKING
+    // set reset to technique NONE stays in the list like any other set.
+    const prev = session?.exercises.find(e => e.id === execExId)?.sets.find(s => s.id === setId)
+    if (!prev) return
+    const prevState: Pick<ExecutionSetLogRecord, 'setType' | 'technique' | 'techniqueConfig'> = {
+      setType: prev.setType,
+      technique: prev.technique,
+      techniqueConfig: prev.techniqueConfig,
+    }
     store.updateSet(execExId, setId, {
       setType: sel.setType,
       technique: sel.technique,
@@ -791,7 +801,10 @@ export function WorkoutExecutionScreen() {
         techniqueConfig: sel.config,
       })
     } catch {
-      store.updateSet(execExId, setId, { setType: 'WORKING', technique: 'NONE' })
+      // Restore the precise previous state instead of force-resetting to
+      // WORKING/NONE, which could corrupt a warmup/feeder set or leave a stale
+      // techniqueConfig behind.
+      store.updateSet(execExId, setId, prevState)
       showToast('Erro ao atualizar técnica')
     }
   }
