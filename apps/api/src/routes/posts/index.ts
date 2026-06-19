@@ -1,7 +1,16 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { CreatePostFromTrainingLogSchema, type PostMediaItem } from '@ironsynk/shared'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
+
+// Derive legacy imageUrls/videoUrl from ordered media for backward-compatible reads.
+function deriveLegacyMedia(media: PostMediaItem[]): { imageUrls: string[]; videoUrl: string | null } {
+  const ordered = [...media].sort((a, b) => a.order - b.order)
+  const imageUrls = ordered.filter((m) => m.type === 'IMAGE').map((m) => m.url)
+  const firstVideo = ordered.find((m) => m.type === 'VIDEO')
+  return { imageUrls, videoUrl: firstVideo?.url ?? null }
+}
 
 const EXERCISE_SELECT = {
   id: true, name: true, muscleGroup: true, equipment: true, gifUrl: true, videoUrl: true,
@@ -41,6 +50,7 @@ function mapPost(p: any) {
     content: p.content,
     imageUrls: p.imageUrls,
     videoUrl: p.videoUrl,
+    media: (p.media ?? null) as PostMediaItem[] | null,
     createdAt: p.createdAt,
     user: {
       id: p.user.id,
@@ -92,6 +102,72 @@ export async function postRoutes(fastify: FastifyInstance): Promise<void> {
     })
 
     return reply.status(201).send({ data: { post } })
+  })
+
+  // POST /api/v1/posts/from-training-log — publish a finished workout with carousel media
+  // (idempotent per trainingLog; one post per trainingLogId)
+  fastify.post('/from-training-log', { preHandler: authMiddleware }, async (request, reply) => {
+    const parsed = CreatePostFromTrainingLogSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0]?.message ?? 'Invalid request body' },
+      })
+    }
+    const body = parsed.data
+    const userId = request.authUser.id
+
+    const log = await prisma.trainingLog.findUnique({
+      where: { id: body.trainingLogId },
+      select: { userId: true, finishedAt: true },
+    })
+    if (!log) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Training log not found' } })
+    if (log.userId !== userId) {
+      return reply.status(403).send({ error: { code: 'FORBIDDEN', message: 'Training log does not belong to you' } })
+    }
+    if (!log.finishedAt) {
+      return reply.status(422).send({ error: { code: 'SESSION_NOT_FINISHED', message: 'Finish the workout before publishing' } })
+    }
+
+    const existing = await prisma.post.findUnique({
+      where: { trainingLogId: body.trainingLogId },
+      select: { id: true },
+    })
+    if (existing) {
+      return reply.status(409).send({ error: { code: 'ALREADY_POSTED', message: 'This workout has already been posted' } })
+    }
+
+    const media = body.media ?? []
+    const { imageUrls, videoUrl } = deriveLegacyMedia(media)
+
+    const created = await prisma.$transaction(async (tx) => {
+      await tx.trainingLog.update({
+        where: { id: body.trainingLogId },
+        data: { isPosted: true },
+      })
+      // upsert guards against a concurrent publish racing past the check above
+      const post = await tx.post.upsert({
+        where: { trainingLogId: body.trainingLogId },
+        create: {
+          userId,
+          trainingLogId: body.trainingLogId,
+          content: body.content ?? null,
+          media: media.length > 0 ? media : undefined,
+          imageUrls,
+          videoUrl,
+        },
+        update: {},
+        select: { id: true },
+      })
+      return tx.post.findUniqueOrThrow({
+        where: { id: post.id },
+        include: {
+          user: { select: { id: true, profile: { select: { name: true, avatar: true } } } },
+          trainingLog: { include: SESSION_INCLUDE },
+        },
+      })
+    })
+
+    return reply.status(201).send({ data: { post: mapPost(created) } })
   })
 
   // GET /api/v1/posts/me — current user's published workouts (newest first)

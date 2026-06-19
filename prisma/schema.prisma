@@ -477,6 +477,9 @@ model Post {
   content       String?
   imageUrls     String[]
   videoUrl      String?
+  // Ordered carousel media: [{ type, url, thumbnailUrl?, durationSec?, order }]
+  // imageUrls/videoUrl kept in sync for backward-compatible reads.
+  media         Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

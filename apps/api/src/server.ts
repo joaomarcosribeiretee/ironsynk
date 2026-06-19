@@ -11,6 +11,7 @@ import { trainingExerciseRoutes } from './routes/training-exercises/index.js'
 import { plannedSetRoutes } from './routes/planned-sets/index.js'
 import { sessionRoutes } from './routes/sessions/index.js'
 import { postRoutes } from './routes/posts/index.js'
+import { uploadRoutes, POST_MEDIA_BUCKET } from './routes/uploads/index.js'
 import { supabaseAdmin } from './lib/supabase.js'
 
 const server = Fastify({ logger: true })
@@ -27,6 +28,13 @@ async function bootstrap(): Promise<void> {
   })
 
   await supabaseAdmin.storage.createBucket('avatars', { public: true }).catch(() => null)
+  await supabaseAdmin.storage
+    .createBucket(POST_MEDIA_BUCKET, {
+      public: true,
+      fileSizeLimit: '120MB',
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'],
+    })
+    .catch(() => null)
 
   server.get('/', async () => {
     return { service: 'ironsynk-api', status: 'ok' }
@@ -46,6 +54,7 @@ async function bootstrap(): Promise<void> {
   await server.register(plannedSetRoutes, { prefix: '/api/v1/planned-sets' })
   await server.register(sessionRoutes, { prefix: '/api/v1/sessions' })
   await server.register(postRoutes, { prefix: '/api/v1/posts' })
+  await server.register(uploadRoutes, { prefix: '/api/v1/uploads' })
 
   const port = Number(process.env['PORT'] ?? 3333)
   await server.listen({ port, host: '0.0.0.0' })
