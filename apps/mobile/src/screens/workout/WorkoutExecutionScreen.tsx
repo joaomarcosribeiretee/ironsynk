@@ -571,9 +571,16 @@ type ExerciseCardProps = {
   onTechniqueTap: (execExId: string, setId: string) => void
 }
 
+// A set with no technique is a normal set. Treat null/undefined/'' as 'NONE' so a
+// missing technique is never mistaken for an advanced technique or an invalid set.
+function normTechnique(t: PlannedSetTechnique | null | undefined): PlannedSetTechnique {
+  return t ?? 'NONE'
+}
+
 // Techniques that need block-level expansion (mirrors WorkoutDetailScreen)
-function needsBlockExpansion(t: PlannedSetTechnique) {
-  return t === 'REST_PAUSE' || t === 'CLUSTER_SET' || t === 'MUSCLE_ROUND' || t === 'DROP_SET' || t === 'MYOREP'
+function needsBlockExpansion(t: PlannedSetTechnique | null | undefined) {
+  const tech = normTechnique(t)
+  return tech === 'REST_PAUSE' || tech === 'CLUSTER_SET' || tech === 'MUSCLE_ROUND' || tech === 'DROP_SET' || tech === 'MYOREP'
 }
 
 function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveExercise, onUpdateNotes, onTechniqueTap }: ExerciseCardProps) {
@@ -625,6 +632,14 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
             {idx > 0 && <View style={ex.setSeparator} />}
             {needsBlockExpansion(set.technique) ? (
               <TechSetRow
+                // Remount in place when the user switches between two advanced
+                // techniques (e.g. DROP_SET → REST_PAUSE) so TechSetRow drops the
+                // previous technique's stale block state. The key MUST stay unique
+                // per set — keying on `set.technique` alone let two sets sharing a
+                // technique (or a set toggled back to a repeated value) collide,
+                // which made React drop the row and the set disappeared. Prefixing
+                // the stable set id keeps the remount while guaranteeing uniqueness.
+                key={`${set.id}:${set.technique}`}
                 set={set}
                 index={idx}
                 onChecked={(id, reps, weight, cfg) => onSetChecked(exercise.id, id, reps, weight, cfg)}
