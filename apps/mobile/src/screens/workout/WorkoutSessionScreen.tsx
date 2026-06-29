@@ -521,16 +521,16 @@ const ss = StyleSheet.create({
 
   // ── Executed technique detail (shared rail language) ──
   techDetail: {
-    marginTop: 8,
+    marginTop: 10,
     marginLeft: 1,
     paddingLeft: 12,
     borderLeftWidth: 2,
     borderLeftColor: RAIL,
-    gap: 2,
+    gap: 5,
   },
   blockRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 4, gap: 8,
+    minHeight: 26, paddingVertical: 6, gap: 8,
   },
   blockLabel: { color: '#8A8A9A', fontSize: 12, flexShrink: 1 },
   blockVals: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -538,11 +538,11 @@ const ss = StyleSheet.create({
   blockReps: { color: '#F0F0F5', fontSize: 12, fontWeight: '600' },
   failTag: { color: '#FF5252', fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
 
-  restSep: { paddingVertical: 1 },
+  restSep: { paddingVertical: 3 },
   restSepText: { color: '#4A4A5A', fontSize: 10 },
-  blockSepThin: { height: 2 },
+  blockSepThin: { height: 4 },
 
-  mrWeights: { flexDirection: 'row', gap: 10, marginBottom: 4 },
+  mrWeights: { flexDirection: 'row', gap: 10, marginBottom: 6 },
   mrWeightBox: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
   },
