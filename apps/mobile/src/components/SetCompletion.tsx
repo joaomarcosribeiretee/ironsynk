@@ -21,11 +21,26 @@ export function useCompletedFade(active: boolean) {
   return v
 }
 
-// Subtle completion accent overlay — a thin success border, a faint success tint
-// and a 4px left success indicator bar. No glow, no shadow, no full green fill.
-// Sits above the row background but below content (pointerEvents none) and fades
-// in (opacity 0 → 1, 220ms) when the set is completed. Reused by every set type.
-export function CompletedAccentOverlay({ active, radius = 10 }: { active: boolean; radius?: number }) {
+// Subtle completion accent overlay. Two variants, both fade in (opacity 0 → 1,
+// 220ms), sit above the row background but below content (pointerEvents none),
+// and never use a glow, shadow or full green fill:
+//
+//   default  — a thin success border, a faint tint and a 4px left success bar.
+//              For clean WORKING sets that own no other left indicator.
+//   subtle   — a faint success tint only, no border and no left bar. For sets
+//              that already carry a colored left accent (warmup/feeder/back-off
+//              and advanced techniques). The set type/technique colour stays the
+//              single left identity; completion reads as a secondary tint plus
+//              the filled check button, never a second competing green stripe.
+export function CompletedAccentOverlay({
+  active,
+  radius = 10,
+  subtle = false,
+}: {
+  active: boolean
+  radius?: number
+  subtle?: boolean
+}) {
   const opacity = useSharedValue(active ? 1 : 0)
   useEffect(() => {
     opacity.value = withTiming(active ? 1 : 0, { duration: 220 })
@@ -35,9 +50,9 @@ export function CompletedAccentOverlay({ active, radius = 10 }: { active: boolea
   return (
     <Reanimated.View
       pointerEvents="none"
-      style={[StyleSheet.absoluteFill, ca.overlay, { borderRadius: radius }, fade]}
+      style={[StyleSheet.absoluteFill, subtle ? ca.overlaySubtle : ca.overlay, { borderRadius: radius }, fade]}
     >
-      <View style={ca.bar} />
+      {!subtle && <View style={ca.bar} />}
     </Reanimated.View>
   )
 }
@@ -47,6 +62,11 @@ const ca = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0,230,118,0.30)',
     backgroundColor: 'rgba(0,230,118,0.05)',
+  },
+  // No border or bar — only a faint tint, so the existing colored left accent
+  // remains the set's sole side indicator.
+  overlaySubtle: {
+    backgroundColor: 'rgba(0,230,118,0.07)',
   },
   bar: {
     position: 'absolute',

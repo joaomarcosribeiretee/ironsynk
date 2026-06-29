@@ -121,8 +121,13 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
       { opacity: rowFade },
       hasAccent && { borderLeftWidth: 2, borderLeftColor: ts.borderColor, paddingLeft: 6, marginLeft: 2 },
     ]}>
-      <CompletedAccentOverlay active={set.isChecked} radius={10} />
-      <View style={ex.setRow}>
+      {/* Accented rows already carry a colored left bar (warmup/feeder/back-off) —
+          use the bar-less subtle completion so the two never compete. Clean
+          WORKING sets get the full success bar. */}
+      <CompletedAccentOverlay active={set.isChecked} radius={10} subtle={hasAccent} />
+      {/* Pure WORKING rows: extra left padding so the success bar and the set
+          badge don't feel glued together. */}
+      <View style={[ex.setRow, !hasAccent && { paddingLeft: 14 }]}>
         <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
 
         <View style={ex.inputsGroup}>
@@ -376,7 +381,10 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
       ex.techSetWrap,
       { borderLeftColor: ts.borderColor, opacity: rowFade },
     ]}>
-      <CompletedAccentOverlay active={set.isChecked} radius={10} />
+      {/* Advanced technique rows own a colored left border as their identity.
+          Use the bar-less subtle completion so the green state never overlaps or
+          competes with that technique color. */}
+      <CompletedAccentOverlay active={set.isChecked} radius={10} subtle />
       {/* Header row — badge, set number, weight (RP/CS/MYO), done, remove */}
       <View style={ex.setRow}>
         <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
