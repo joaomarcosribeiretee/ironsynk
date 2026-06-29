@@ -38,7 +38,12 @@ function TabItem({ focused, label, onPress, onLongPress, renderIcon }: TabItemPr
   const [labelWidth, setLabelWidth] = useState(0)
 
   useEffect(() => {
-    progress.value = withSpring(focused ? 1 : 0, SPRING)
+    // Only the activating tab gets the springy pop. The deactivating tab uses a
+    // non-overshooting timing so its icon/capsule settles immediately instead of
+    // bouncing (the underdamped spring let the old active tab keep shaking).
+    progress.value = focused
+      ? withSpring(1, SPRING)
+      : withTiming(0, { duration: 160 })
   }, [focused, progress])
 
   // Gradient capsule fades + scales in behind the active tab.
@@ -156,11 +161,12 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
           borderColor: BORDER,
           paddingHorizontal: 8,
           paddingVertical: 8,
-          // Subtle blue glow — never heavy, per the design system.
-          shadowColor: '#2979FF',
-          shadowOpacity: 0.28,
-          shadowRadius: 20,
-          shadowOffset: { width: 0, height: 8 },
+          // Neutral depth shadow only — a colored glow bled a blue halo behind
+          // and below the bar instead of letting the screen background show.
+          shadowColor: '#000000',
+          shadowOpacity: 0.35,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 6 },
           elevation: 12,
         }}
       >
