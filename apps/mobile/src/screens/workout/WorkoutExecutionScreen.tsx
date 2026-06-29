@@ -18,12 +18,13 @@ import * as Haptics from 'expo-haptics'
 import { api } from '../../lib/api'
 import type {
   ExecutionExerciseRecord, ExecutionSetLogRecord,
-  PlannedSetTechnique, SetType, TechniqueConfig,
+  PlannedSetTechnique, SetType, TechniqueConfig, ExerciseReference,
 } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { SetBadge, getTechStyle } from '../../components/SetBadge'
 import { CompleteSetButton } from '../../components/CompleteSetButton'
 import { CompletedAccentOverlay, useCompletedFade } from '../../components/SetCompletion'
+import { PRBadge, ProgressOverloadHint } from '../../components/PersonalRecord'
 import { WorkoutInput } from '../../components/WorkoutInput'
 import { validateSimpleSet, validateTechniqueSet } from '../../lib/setValidation'
 
@@ -125,6 +126,14 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
           use the bar-less subtle completion so the two never compete. Clean
           WORKING sets get the full success bar. */}
       <CompletedAccentOverlay active={set.isChecked} radius={10} subtle={hasAccent} />
+      {/* PR ribbon — gold trophy shown only when the backend confirmed this set
+          beat historical data. Tap the trophy for the broken record types. */}
+      {set.isChecked && set.isPersonalRecord && (
+        <View style={[ex.prRow, !hasAccent && { paddingLeft: 14 }]}>
+          <PRBadge prTypes={set.prTypes} />
+          <Text style={ex.prRowText}>Recorde pessoal</Text>
+        </View>
+      )}
       {/* Pure WORKING rows: extra left padding so the success bar and the set
           badge don't feel glued together. */}
       <View style={[ex.setRow, !hasAccent && { paddingLeft: 14 }]}>
@@ -571,6 +580,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
 
 type ExerciseCardProps = {
   exercise: ExecutionExerciseRecord
+  reference?: ExerciseReference
   onSetChecked: (execExId: string, setId: string, reps: number | null, weight: number | null, cfg: TechniqueConfig | null) => void
   onAddSet: (execExId: string) => void
   onRemoveSet: (execExId: string, setId: string) => void
@@ -591,7 +601,7 @@ function needsBlockExpansion(t: PlannedSetTechnique | null | undefined) {
   return tech === 'REST_PAUSE' || tech === 'CLUSTER_SET' || tech === 'MUSCLE_ROUND' || tech === 'DROP_SET' || tech === 'MYOREP'
 }
 
-function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveExercise, onUpdateNotes, onTechniqueTap }: ExerciseCardProps) {
+function ExerciseCard({ exercise, reference, onSetChecked, onAddSet, onRemoveSet, onRemoveExercise, onUpdateNotes, onTechniqueTap }: ExerciseCardProps) {
   const [notes, setNotes] = useState(exercise.exerciseNotes ?? '')
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -633,6 +643,12 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
           multiline
         />
       </View>
+
+      {reference && (
+        <View style={ex.hintWrap}>
+          <ProgressOverloadHint reference={reference} />
+        </View>
+      )}
 
       <View style={ex.setsWrap}>
         {exercise.sets.map((set, idx) => (
@@ -694,6 +710,7 @@ export function WorkoutExecutionScreen() {
   const [techniquePicker, setTechniquePicker] = useState<{
     visible: boolean; execExId: string | null; setId: string | null
   }>({ visible: false, execExId: null, setId: null })
+  const [references, setReferences] = useState<Record<string, ExerciseReference>>({})
   const [barRestRemaining, setBarRestRemaining] = useState(0)
   const [restPickerVisible, setRestPickerVisible] = useState(false)
   const [restTimerTipVisible, setRestTimerTipVisible] = useState(false)
@@ -784,6 +801,18 @@ export function WorkoutExecutionScreen() {
     init()
   }, [])
 
+  // Progressive-overload references — previous performance per exercise, computed
+  // by the backend against sessions finished before this one started. Loaded once
+  // the session id is known so the hints reflect history, never current sets.
+  useEffect(() => {
+    if (!sessionId) return
+    let cancelled = false
+    api.sessions.references(sessionId)
+      .then(res => { if (!cancelled) setReferences(res.data.references) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [sessionId])
+
   async function handleSetChecked(execExId: string, setId: string, reps: number | null, weight: number | null, cfg: TechniqueConfig | null) {
     if (!sessionId) return
     const set = session?.exercises.find(e => e.id === execExId)?.sets.find(s => s.id === setId)
@@ -791,9 +820,18 @@ export function WorkoutExecutionScreen() {
     const wasChecked = set.isChecked
     store.updateSet(execExId, setId, { isChecked: !wasChecked, repsCompleted: reps, weightKg: weight })
     try {
-      await api.sessions.updateSet(sessionId, setId, {
+      const res = await api.sessions.updateSet(sessionId, setId, {
         isChecked: !wasChecked, repsCompleted: reps, weightKg: weight, techniqueConfig: cfg,
       })
+      // The backend is the sole authority on PRs (historical comparison only).
+      // Mirror its verdict locally; never infer a PR from current-session state.
+      store.updateSet(execExId, setId, {
+        isPersonalRecord: res.data.isPR,
+        prTypes: res.data.isPR ? res.data.prTypes : undefined,
+      })
+      if (!wasChecked && res.data.isPR) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      }
     } catch {
       store.updateSet(execExId, setId, { isChecked: wasChecked })
       showToast('Erro ao salvar série')
@@ -993,6 +1031,7 @@ export function WorkoutExecutionScreen() {
           <ExerciseCard
             key={exercise.id}
             exercise={exercise}
+            reference={references[exercise.exerciseId]}
             onSetChecked={handleSetChecked}
             onAddSet={handleAddSet}
             onRemoveSet={handleRemoveSet}
@@ -1367,6 +1406,23 @@ const ex = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 12,
   },
+
+  // Progressive-overload hint row — subtle, under the observation, above sets
+  hintWrap: {
+    paddingHorizontal: 12,
+    paddingTop: 2,
+    paddingBottom: 4,
+  },
+
+  // PR ribbon — gold trophy + label above a record-breaking set's inputs
+  prRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 6,
+    paddingBottom: 6,
+  },
+  prRowText: { color: '#FFC14A', fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
 
   setRowOuter: {
     borderRadius: 10,

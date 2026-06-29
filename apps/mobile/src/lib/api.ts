@@ -255,6 +255,31 @@ export type AddSetInput = {
 
 export type UpdateSetInput = AddSetInput
 
+// ─── Personal records ──────────────────────────────────────────────────────────
+
+export type PRType = 'MAX_WEIGHT' | 'MAX_VOLUME' | 'BEST_1RM' | 'BEST_WEIGHT_FOR_REPS'
+
+export type SetPRPrevious = {
+  maxWeightKg: number | null
+  maxVolume: number | null
+  best1RM: number | null
+  bestWeightForReps: number | null
+}
+
+type PrevSetRef = { weightKg: number; reps: number; estimated1RM: number } | null
+
+// Progressive-overload reference for one exercise, from sessions finished before
+// the current one started. Null/empty fields mean no prior history.
+export type ExerciseReference = {
+  exerciseId: string
+  hasHistory: boolean
+  lastSet: PrevSetRef
+  bestSet: PrevSetRef
+  best1RM: number | null
+  maxWeightKg: number | null
+  bestWeightByReps: Record<string, number>
+}
+
 // ─── Execution / Session types ────────────────────────────────────────────────
 
 export type ExecutionSetLogRecord = {
@@ -272,6 +297,9 @@ export type ExecutionSetLogRecord = {
   isChecked: boolean
   checkedAt: string | null
   isPersonalRecord: boolean
+  // Which PR types this set beat (client-side only; populated from the check
+  // response so the UI can label the trophy). Not persisted by the read endpoints.
+  prTypes?: PRType[]
   notes: string | null
   plannedSetId: string | null
 }
@@ -516,8 +544,18 @@ export const api = {
     get: (id: string) =>
       request<{ data: { session: SessionRecord } }>(`/api/v1/sessions/${id}`),
     updateSet: (sessionId: string, setId: string, body: UpdateExecSetInput) =>
-      request<{ data: { set: ExecutionSetLogRecord; isPR: boolean; previousBest?: { weightKg: number; reps: number } } }>(
-        `/api/v1/sessions/${sessionId}/sets/${setId}`, { method: 'PUT', body }),
+      request<{
+        data: {
+          set: ExecutionSetLogRecord
+          isPR: boolean
+          prTypes?: PRType[]
+          previous?: SetPRPrevious
+          previousBest?: { weightKg: number; reps: number }
+        }
+      }>(`/api/v1/sessions/${sessionId}/sets/${setId}`, { method: 'PUT', body }),
+    references: (sessionId: string) =>
+      request<{ data: { references: Record<string, ExerciseReference> } }>(
+        `/api/v1/sessions/${sessionId}/references`),
     addExercise: (sessionId: string, body: { exerciseId: string; setCount?: number }) =>
       request<{ data: { exercise: ExecutionExerciseRecord } }>(`/api/v1/sessions/${sessionId}/exercises`, { method: 'POST', body }),
     removeExercise: (sessionId: string, execExId: string) =>
