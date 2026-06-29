@@ -3,6 +3,13 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
+import {
+  estimate1RM,
+  getExerciseHistory,
+  detectSetPRs,
+  buildExerciseReference,
+  isEligibleForPR,
+} from '../../lib/personal-records.js'
 
 const EXERCISE_SELECT = {
   id: true, name: true, muscleGroup: true, equipment: true, gifUrl: true, videoUrl: true,
@@ -86,10 +93,6 @@ function initExecTechConfig(technique: string, cfg: Record<string, unknown> | nu
     default:
       return null
   }
-}
-
-function calc1RM(weightKg: number, reps: number): number {
-  return weightKg * (1 + reps / 30)
 }
 
 async function ownerCheck(sessionId: string, userId: string) {
@@ -228,6 +231,31 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.send({ data: { session: mapSession(session!) } })
   })
 
+  // GET /api/v1/sessions/:id/references — progressive-overload history per exercise.
+  // Returns, for each exercise in the session, the previous performance the user
+  // should try to beat (computed from sessions finished before this one started).
+  fastify.get('/:id/references', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const check = await ownerCheck(id, request.authUser.id)
+    if (!check.ok) return reply.status(check.status).send({ error: { code: check.status === 404 ? 'NOT_FOUND' : 'FORBIDDEN' } })
+
+    const session = await prisma.trainingLog.findUnique({
+      where: { id },
+      select: { startedAt: true, executionExercises: { select: { exerciseId: true } } },
+    })
+    if (!session) return reply.status(404).send({ error: { code: 'NOT_FOUND' } })
+
+    const exerciseIds = [...new Set(session.executionExercises.map((ee) => ee.exerciseId))]
+    const references: Record<string, Awaited<ReturnType<typeof buildReference>>> = {}
+    await Promise.all(
+      exerciseIds.map(async (exId) => {
+        references[exId] = await buildReference(request.authUser.id, exId, session.startedAt, id)
+      }),
+    )
+
+    return reply.send({ data: { references } })
+  })
+
   // PUT /api/v1/sessions/:id/sets/:setId
   fastify.put('/:id/sets/:setId', { preHandler: authMiddleware }, async (request, reply) => {
     const { id, setId } = request.params as { id: string; setId: string }
@@ -261,31 +289,46 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
       },
     })
 
-    // PR check on check action — use final DB values after update
+    // PR check on check action — compare ONLY against historical data (working
+    // sets from sessions finished before THIS session started). Never against
+    // other sets in this active session, and never the first-ever entry.
     let isPR = false
+    let prTypes: string[] = []
     let previousBest: { weightKg: number; reps: number } | undefined
+    let prDetail: ReturnType<typeof detectSetPRs>['previous'] | undefined
     const reps = updated.repsCompleted
     const weight = updated.weightKg
+    const set = { weightKg: weight ?? 0, repsCompleted: reps ?? 0, setType: updated.setType, technique: updated.technique }
 
-    if (body.isChecked && reps != null && weight != null && reps > 0 && weight > 0) {
-      const new1RM = calc1RM(weight, reps)
-      const existing = await prisma.personalRecord.findUnique({
-        where: { userId_exerciseId: { userId: request.authUser.id, exerciseId: updated.exerciseId } },
-      })
-
-      if (!existing || new1RM > calc1RM(existing.weightKg, existing.reps)) {
-        if (existing) previousBest = { weightKg: existing.weightKg, reps: existing.reps }
-        await prisma.personalRecord.upsert({
-          where: { userId_exerciseId: { userId: request.authUser.id, exerciseId: updated.exerciseId } },
-          create: { userId: request.authUser.id, exerciseId: updated.exerciseId, weightKg: weight, reps, estimated1RM: new1RM },
-          update: { weightKg: weight, reps, estimated1RM: new1RM, achievedAt: new Date() },
-        })
-        await prisma.setLog.update({ where: { id: setId }, data: { isPersonalRecord: true } })
-        isPR = true
+    if (body.isChecked && isEligibleForPR(set)) {
+      const log = await prisma.trainingLog.findUnique({ where: { id }, select: { startedAt: true } })
+      if (log) {
+        const history = await getExerciseHistory(prisma, request.authUser.id, updated.exerciseId, log.startedAt, id)
+        const result = detectSetPRs(set, history)
+        isPR = result.isPR
+        prTypes = result.prTypes
+        prDetail = result.previous
+        if (result.previousBest) previousBest = result.previousBest
+        if (isPR && !updated.isPersonalRecord) {
+          await prisma.setLog.update({ where: { id: setId }, data: { isPersonalRecord: true } })
+          updated.isPersonalRecord = true
+        } else if (!isPR && updated.isPersonalRecord) {
+          // set was edited below its historical PR — clear the stale flag
+          await prisma.setLog.update({ where: { id: setId }, data: { isPersonalRecord: false } })
+          updated.isPersonalRecord = false
+        }
       }
     }
 
-    return reply.send({ data: { set: updated, isPR, ...(previousBest ? { previousBest } : {}) } })
+    return reply.send({
+      data: {
+        set: updated,
+        isPR,
+        prTypes,
+        ...(prDetail ? { previous: prDetail } : {}),
+        ...(previousBest ? { previousBest } : {}),
+      },
+    })
   })
 
   // POST /api/v1/sessions/:id/exercises
@@ -432,6 +475,65 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
       }
     }
 
+    // Authoritative PR pass — compare each checked working set against the frozen
+    // historical baseline (sessions finished before this one started). This is the
+    // source of truth for SetLog.isPersonalRecord and updates the PersonalRecord
+    // cache used as future baselines. Intra-session sets are never compared.
+    const exerciseIds = [...new Set(session.executionExercises.map((ee) => ee.exerciseId))]
+    const histByExercise = new Map<string, Awaited<ReturnType<typeof getExerciseHistory>>>()
+    await Promise.all(
+      exerciseIds.map(async (exId) => {
+        histByExercise.set(exId, await getExerciseHistory(prisma, request.authUser.id, exId, session.startedAt, id))
+      }),
+    )
+
+    const prs: Array<{ setId: string; exerciseId: string; prTypes: string[] }> = []
+    // best e1RM eligible set in this session per exercise, for PersonalRecord cache
+    const sessionBest = new Map<string, { weightKg: number; reps: number; e1rm: number }>()
+
+    for (const ee of session.executionExercises) {
+      const history = histByExercise.get(ee.exerciseId)!
+      for (const s of ee.setLogs) {
+        const set = {
+          weightKg: s.weightKg ?? 0,
+          repsCompleted: s.repsCompleted ?? 0,
+          setType: s.setType,
+          technique: s.technique,
+        }
+        const eligible = s.isChecked && isEligibleForPR(set)
+        const result = eligible ? detectSetPRs(set, history) : null
+
+        if (result?.isPR) prs.push({ setId: s.id, exerciseId: ee.exerciseId, prTypes: result.prTypes })
+
+        // keep SetLog.isPersonalRecord consistent with the authoritative result
+        if (result?.isPR && !s.isPersonalRecord) {
+          await prisma.setLog.update({ where: { id: s.id }, data: { isPersonalRecord: true } })
+        } else if (!result?.isPR && s.isPersonalRecord) {
+          await prisma.setLog.update({ where: { id: s.id }, data: { isPersonalRecord: false } })
+        }
+
+        if (eligible) {
+          const e1rm = estimate1RM(set.weightKg, set.repsCompleted)
+          const prev = sessionBest.get(ee.exerciseId)
+          if (!prev || e1rm > prev.e1rm) {
+            sessionBest.set(ee.exerciseId, { weightKg: set.weightKg, reps: set.repsCompleted, e1rm })
+          }
+        }
+      }
+    }
+
+    // Update the PersonalRecord all-time cache when this session's best beats history.
+    for (const [exId, best] of sessionBest) {
+      const history = histByExercise.get(exId)!
+      if (best.e1rm > history.best1RM) {
+        await prisma.personalRecord.upsert({
+          where: { userId_exerciseId: { userId: request.authUser.id, exerciseId: exId } },
+          create: { userId: request.authUser.id, exerciseId: exId, weightKg: best.weightKg, reps: best.reps, estimated1RM: best.e1rm },
+          update: { weightKg: best.weightKg, reps: best.reps, estimated1RM: best.e1rm, achievedAt: now },
+        })
+      }
+    }
+
     const updated = await prisma.trainingLog.update({
       where: { id },
       data: { finishedAt: now, durationMin, totalVolume, totalSets, totalValidSets },
@@ -447,7 +549,7 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
       await syncWorkoutFromSession(session.workoutId, id)
     }
 
-    return reply.send({ data: { session: mapSession(updated), hasChanges: session.hasChanges } })
+    return reply.send({ data: { session: mapSession(updated), hasChanges: session.hasChanges, prs } })
   })
 
   // DELETE /api/v1/sessions/:id (cancel)
@@ -512,6 +614,13 @@ async function syncWorkoutFromSession(workoutId: string, sessionId: string): Pro
       }
     }
   })
+}
+
+// ─── Progressive overload references ──────────────────────────────────────────
+
+async function buildReference(userId: string, exerciseId: string, beforeStartedAt: Date, excludeLogId: string) {
+  const history = await getExerciseHistory(prisma, userId, exerciseId, beforeStartedAt, excludeLogId)
+  return buildExerciseReference(exerciseId, history)
 }
 
 // ─── Mappers ──────────────────────────────────────────────────────────────────

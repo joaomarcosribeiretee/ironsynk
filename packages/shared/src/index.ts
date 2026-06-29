@@ -143,6 +143,54 @@ export const PostMediaSignedUrlSchema = z.object({
 export type PostMediaSignedUrlInput = z.infer<typeof PostMediaSignedUrlSchema>
 
 // ─────────────────────────────────────────────
+// PERSONAL RECORDS (workout execution)
+// ─────────────────────────────────────────────
+
+export const PRTypeSchema = z.enum([
+  'MAX_WEIGHT',
+  'MAX_VOLUME',
+  'BEST_1RM',
+  'BEST_WEIGHT_FOR_REPS',
+])
+export type PRType = z.infer<typeof PRTypeSchema>
+
+// Result returned when a working set is checked during execution.
+export const SetPRResultSchema = z.object({
+  isPR: z.boolean(),
+  prTypes: z.array(PRTypeSchema),
+  previous: z
+    .object({
+      maxWeightKg: z.number().nullable(),
+      maxVolume: z.number().nullable(),
+      best1RM: z.number().nullable(),
+      bestWeightForReps: z.number().nullable(),
+    })
+    .optional(),
+  previousBest: z.object({ weightKg: z.number(), reps: z.number() }).optional(),
+})
+export type SetPRResult = z.infer<typeof SetPRResultSchema>
+
+// Per-exercise progressive-overload reference for the execution screen.
+const PrevSetRefSchema = z
+  .object({
+    weightKg: z.number(),
+    reps: z.number(),
+    estimated1RM: z.number(),
+  })
+  .nullable()
+
+export const ExerciseReferenceSchema = z.object({
+  exerciseId: z.string(),
+  hasHistory: z.boolean(),
+  lastSet: PrevSetRefSchema,
+  bestSet: PrevSetRefSchema,
+  best1RM: z.number().nullable(),
+  maxWeightKg: z.number().nullable(),
+  bestWeightByReps: z.record(z.string(), z.number()),
+})
+export type ExerciseReference = z.infer<typeof ExerciseReferenceSchema>
+
+// ─────────────────────────────────────────────
 // API RESPONSES
 // ─────────────────────────────────────────────
 
