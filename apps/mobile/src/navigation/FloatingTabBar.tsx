@@ -155,6 +155,9 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
         style={{
           flexDirection: 'row',
           alignItems: 'center',
+          // Float inset from the screen edges instead of spanning full width.
+          alignSelf: 'stretch',
+          marginHorizontal: 20,
           backgroundColor: SURFACE,
           borderRadius: 28,
           borderWidth: 1,
