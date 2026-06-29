@@ -672,6 +672,14 @@ function ExerciseCard({ exercise, reference, onSetChecked, onAddSet, onRemoveSet
               />
             ) : (
               <SimpleSetRow
+                // Stable explicit key so the row slot stays consistently keyed
+                // across every setType/technique transition. Without it, this
+                // branch was unkeyed while the TechSetRow branch is keyed by
+                // `${id}:${technique}`; returning a set to WORKING reconciled the
+                // slot by index against the prior explicit key and dropped the
+                // working row. The `:simple` suffix keeps it distinct from the
+                // technique keys so advanced→WORKING still cleanly swaps.
+                key={`${set.id}:simple`}
                 set={set}
                 index={idx}
                 restSeconds={null}
