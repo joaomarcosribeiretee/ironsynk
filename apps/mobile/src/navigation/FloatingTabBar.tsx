@@ -19,7 +19,9 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs'
 
 const ACTIVE = '#FFFFFF'
 const INACTIVE = '#8A8A9A'
-const SURFACE = 'rgba(30,30,36,0.96)'
+// Sit close to the main app background (#141418) with slight translucency, so
+// the bar reads as part of the page rather than a bright separate card.
+const SURFACE = 'rgba(20,20,24,0.92)'
 const BORDER = '#2A2A35'
 
 const SPRING = { damping: 16, stiffness: 180, mass: 0.7 }
@@ -48,7 +50,9 @@ function TabItem({ focused, label, onPress, onLongPress, renderIcon }: TabItemPr
 
   // Gradient capsule fades + scales in behind the active tab.
   const capsuleStyle = useAnimatedStyle(() => ({
-    opacity: progress.value,
+    // Cap below full opacity so the active gradient stays clearly visible but
+    // feels lighter against the darker bar surface.
+    opacity: progress.value * 0.9,
     transform: [{ scale: interpolate(progress.value, [0, 1], [0.85, 1]) }],
   }))
 
@@ -147,7 +151,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: insets.bottom + (Platform.OS === 'ios' ? 6 : 12),
+        bottom: insets.bottom + (Platform.OS === 'ios' ? 18 : 22),
         alignItems: 'center',
       }}
     >
