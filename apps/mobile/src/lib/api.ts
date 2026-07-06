@@ -472,6 +472,147 @@ export type TrainerDashboardData = {
   }[]
 }
 
+// ─── Nutrition ──────────────────────────────────────────────────────────────
+
+export type MacrosRecord = {
+  calories: number
+  proteinG: number
+  carbsG: number
+  fatG: number
+  fiberG: number | null
+}
+
+export type FoodRecord = {
+  id: string
+  name: string
+  brand: string | null
+  calories: number
+  proteinG: number
+  carbsG: number
+  fatG: number
+  fiberG: number | null
+  isCustom: boolean
+  createdById: string | null
+  sourceId: string | null
+}
+
+// Search result: `source` distinguishes a persisted local food from a live
+// Open Food Facts hit (id = "off:<code>", not yet in our DB).
+export type FoodSearchResult = FoodRecord & { source: 'local' | 'off' }
+
+export type DietGoal = 'BULK' | 'CUT' | 'MAINTENANCE' | 'RECOMP' | 'HEALTH'
+
+export type NutritionPlanRecord = {
+  id: string
+  userId: string
+  name: string
+  goal: DietGoal | null
+  targetCalories: number | null
+  targetProteinG: number | null
+  targetCarbsG: number | null
+  targetFatG: number | null
+  targetWaterMl: number | null
+  notes: string | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type NutritionPlanListItem = NutritionPlanRecord & { mealsCount: number }
+
+export type MealRecord = {
+  id: string
+  nutritionPlanId: string
+  name: string
+  order: number
+  targetTimeHour: number | null
+}
+
+export type MealFoodRecord = {
+  id: string
+  mealId: string
+  foodId: string
+  quantityG: number
+  isCooked: boolean
+  food: FoodRecord
+  macros: MacrosRecord
+}
+
+export type PlanMeal = MealRecord & {
+  foods: MealFoodRecord[]
+  plannedMacros: MacrosRecord
+}
+
+export type NutritionPlanDetail = NutritionPlanRecord & { meals: PlanMeal[] }
+
+export type DailyMeal = {
+  mealId: string
+  name: string
+  order: number
+  targetTimeHour: number | null
+  isCompleted: boolean
+  completedAt: string | null
+  foods: MealFoodRecord[]
+  plannedMacros: MacrosRecord
+}
+
+export type DailyTotals = {
+  targetCalories: number | null
+  consumedCalories: number
+  targetProteinG: number | null
+  consumedProteinG: number
+  targetCarbsG: number | null
+  consumedCarbsG: number
+  targetFatG: number | null
+  consumedFatG: number
+  completedMeals: number
+  totalMeals: number
+  adherencePercent: number
+}
+
+export type DailyExecution = {
+  date: string
+  plan: NutritionPlanRecord | null
+  meals: DailyMeal[]
+  totals: DailyTotals
+}
+
+export type CreateNutritionPlanInput = {
+  name: string
+  goal?: DietGoal
+  targetCalories?: number
+  targetProteinG?: number
+  targetCarbsG?: number
+  targetFatG?: number
+  targetWaterMl?: number
+  notes?: string
+}
+
+export type UpdateNutritionPlanInput = {
+  name?: string
+  goal?: DietGoal | null
+  targetCalories?: number | null
+  targetProteinG?: number | null
+  targetCarbsG?: number | null
+  targetFatG?: number | null
+  targetWaterMl?: number | null
+  notes?: string | null
+}
+
+export type CreateMealInput = { name: string; targetTimeHour?: number }
+export type UpdateMealInput = { name?: string; targetTimeHour?: number | null }
+export type CreateFoodInput = {
+  name: string
+  brand?: string
+  calories: number
+  proteinG: number
+  carbsG: number
+  fatG: number
+  fiberG?: number
+}
+export type AddMealFoodInput = { foodId: string; quantityG: number; isCooked?: boolean }
+export type UpdateMealFoodInput = { quantityG?: number; isCooked?: boolean }
+
 export const api = {
   auth: {
     register: (body: RegisterInput) =>
@@ -622,5 +763,59 @@ export const api = {
         `/api/v1/posts/me${query ? `?${query}` : ''}`
       )
     },
+  },
+  nutrition: {
+    // ── Foods ──
+    searchFoods: (q: string, limit = 20) =>
+      request<{ data: { results: FoodSearchResult[] } }>(
+        `/api/v1/nutrition/foods/search?q=${encodeURIComponent(q)}&limit=${limit}`
+      ),
+    getFood: (id: string) =>
+      request<{ data: { food: FoodSearchResult } }>(`/api/v1/nutrition/foods/${encodeURIComponent(id)}`),
+    createFood: (body: CreateFoodInput) =>
+      request<{ data: { food: FoodSearchResult } }>('/api/v1/nutrition/foods', { method: 'POST', body }),
+    // Persist a selected Open Food Facts product locally so it can be logged.
+    cacheOffFood: (sourceId: string) =>
+      request<{ data: { food: FoodSearchResult } }>('/api/v1/nutrition/foods/cache-off', { method: 'POST', body: { sourceId } }),
+
+    // ── Plans ──
+    listPlans: () =>
+      request<{ data: { plans: NutritionPlanListItem[] } }>('/api/v1/nutrition/plans'),
+    getPlan: (id: string) =>
+      request<{ data: { plan: NutritionPlanDetail } }>(`/api/v1/nutrition/plans/${id}`),
+    createPlan: (body: CreateNutritionPlanInput) =>
+      request<{ data: { plan: NutritionPlanRecord } }>('/api/v1/nutrition/plans', { method: 'POST', body }),
+    updatePlan: (id: string, body: UpdateNutritionPlanInput) =>
+      request<{ data: { plan: NutritionPlanRecord } }>(`/api/v1/nutrition/plans/${id}`, { method: 'PUT', body }),
+    activatePlan: (id: string) =>
+      request<{ data: { plan: NutritionPlanRecord } }>(`/api/v1/nutrition/plans/${id}/activate`, { method: 'POST' }),
+    deletePlan: (id: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/nutrition/plans/${id}`, { method: 'DELETE' }),
+
+    // ── Meals ──
+    createMeal: (planId: string, body: CreateMealInput) =>
+      request<{ data: { meal: MealRecord } }>(`/api/v1/nutrition/plans/${planId}/meals`, { method: 'POST', body }),
+    updateMeal: (mealId: string, body: UpdateMealInput) =>
+      request<{ data: { meal: MealRecord } }>(`/api/v1/nutrition/meals/${mealId}`, { method: 'PUT', body }),
+    reorderMeals: (planId: string, mealIds: string[]) =>
+      request<{ data: { meals: MealRecord[] } }>(`/api/v1/nutrition/plans/${planId}/meals/reorder`, { method: 'PUT', body: { mealIds } }),
+    deleteMeal: (mealId: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/nutrition/meals/${mealId}`, { method: 'DELETE' }),
+
+    // ── Meal foods ──
+    addMealFood: (mealId: string, body: AddMealFoodInput) =>
+      request<{ data: { mealFood: MealFoodRecord } }>(`/api/v1/nutrition/meals/${mealId}/foods`, { method: 'POST', body }),
+    updateMealFood: (id: string, body: UpdateMealFoodInput) =>
+      request<{ data: { mealFood: MealFoodRecord } }>(`/api/v1/nutrition/meal-foods/${id}`, { method: 'PUT', body }),
+    removeMealFood: (id: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/nutrition/meal-foods/${id}`, { method: 'DELETE' }),
+
+    // ── Daily execution ──
+    today: () =>
+      request<{ data: DailyExecution }>('/api/v1/nutrition/today'),
+    completeMeal: (mealId: string) =>
+      request<{ data: { mealLog: unknown } }>(`/api/v1/nutrition/meals/${mealId}/complete`, { method: 'POST' }),
+    uncompleteMeal: (mealId: string) =>
+      request<{ data: { mealLog: unknown } }>(`/api/v1/nutrition/meals/${mealId}/complete`, { method: 'DELETE' }),
   },
 }
