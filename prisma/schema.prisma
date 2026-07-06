@@ -402,6 +402,8 @@ model MealLog {
 
   dailyLog DailyNutritionLog @relation(fields: [dailyNutritionLogId], references: [id])
   meal     Meal              @relation(fields: [mealId], references: [id])
+
+  @@unique([dailyNutritionLogId, mealId])
 }
 
 // ─────────────────────────────────────────────
