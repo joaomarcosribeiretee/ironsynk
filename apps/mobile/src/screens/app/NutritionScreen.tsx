@@ -59,10 +59,6 @@ export function NutritionScreen() {
     mutationFn: (body: PlanFormData) => api.nutrition.createPlan({
       name: body.name,
       ...(body.goal ? { goal: body.goal } : {}),
-      ...(body.targetCalories != null ? { targetCalories: body.targetCalories } : {}),
-      ...(body.targetProteinG != null ? { targetProteinG: body.targetProteinG } : {}),
-      ...(body.targetCarbsG != null ? { targetCarbsG: body.targetCarbsG } : {}),
-      ...(body.targetFatG != null ? { targetFatG: body.targetFatG } : {}),
     }),
     onSuccess: () => invalidate(),
     onError: () => showToast('Falha ao criar plano', 'error'),
