@@ -1,17 +1,43 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  TextInput, Modal, Pressable, ActivityIndicator,
+  TextInput, Modal, Pressable,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import Reanimated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated'
+import * as ImagePicker from 'expo-image-picker'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native'
 import { useQueryClient } from '@tanstack/react-query'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { api } from '../../lib/api'
-import type { ExecutionExerciseRecord } from '../../lib/api'
+import type { ExecutionExerciseRecord, PostMediaItem } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { showToast } from '../../components/Toast'
+import { ActionSheet } from './ActionSheet'
+import { PostMediaPicker, POST_MEDIA_MAX } from '../../components/PostMediaPicker'
+import type { SelectedMedia } from '../../components/PostMediaPicker'
+import { uploadPostMedia } from '../../lib/postMediaUpload'
+import { getFriendlyErrorMessage } from '../../lib/errorMessages'
+
+const MAX_VIDEO_SEC = 60
+
+function makeId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+// Map an expo-image-picker asset to our local media descriptor; null if unusable.
+function assetToMedia(asset: ImagePicker.ImagePickerAsset): SelectedMedia | null {
+  if (!asset.uri) return null
+  const isVideo = asset.type === 'video' || (asset.mimeType?.startsWith('video/') ?? false)
+  const fileName = asset.fileName ?? asset.uri.split(/[\\/]/).pop() ?? (isVideo ? 'video' : 'image')
+  const mime = asset.mimeType ?? (isVideo ? 'video/mp4' : 'image/jpeg')
+  if (isVideo) {
+    const durationSec = (asset.duration ?? 0) / 1000
+    return { id: makeId(), uri: asset.uri, type: 'VIDEO', mime, fileName, durationSec }
+  }
+  return { id: makeId(), uri: asset.uri, type: 'IMAGE', mime, fileName }
+}
 
 type NavProp = NativeStackNavigationProp<AppStackParamList>
 type RouteProps = RouteProp<AppStackParamList, 'WorkoutPost'>
@@ -58,30 +84,188 @@ function ExerciseSummaryRow({ exercise }: { exercise: ExecutionExerciseRecord })
   )
 }
 
+// Expandable list of exercises actually performed in the session (those with at
+// least one completed WORKING set). Collapsed shows the first exercise + a toggle;
+// tapping expands the rest with a 200ms Reanimated height/opacity animation.
+function ExpandableExerciseList({ exercises }: { exercises: ExecutionExerciseRecord[] }) {
+  const performed = exercises.filter(e =>
+    e.sets.some(s => s.isChecked && s.setType === 'WORKING'),
+  )
+  const [expanded, setExpanded] = useState(false)
+  const [restHeight, setRestHeight] = useState(0)
+  const progress = useSharedValue(0)
+
+  useEffect(() => {
+    progress.value = withTiming(expanded ? 1 : 0, { duration: 200 })
+  }, [expanded, progress])
+
+  const restAnimStyle = useAnimatedStyle(() => ({
+    height: progress.value * restHeight,
+    opacity: progress.value,
+  }))
+
+  if (performed.length === 0) return null
+
+  const first = performed[0]
+  const rest = performed.slice(1)
+
+  return (
+    <View style={ps.exerciseList}>
+      {first && <ExerciseSummaryRow exercise={first} />}
+      {rest.length > 0 && (
+        <>
+          <Reanimated.View style={[ps.exerciseCollapse, restAnimStyle]}>
+            {/* Measured at natural height (independent of the clipped parent). */}
+            <View
+              style={ps.exerciseListInner}
+              onLayout={e => setRestHeight(e.nativeEvent.layout.height)}
+            >
+              {rest.map(e => <ExerciseSummaryRow key={e.id} exercise={e} />)}
+            </View>
+          </Reanimated.View>
+          <TouchableOpacity
+            onPress={() => setExpanded(v => !v)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={ps.moreExercises}>
+              {expanded ? 'Ver menos' : `+${rest.length} exercícios`}
+            </Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
+  )
+}
+
 export function WorkoutPostScreen() {
   const navigation = useNavigation<NavProp>()
   const route = useRoute<RouteProps>()
-  const { sessionId, workoutName, durationMin, totalValidSets, totalVolume, exercises } = route.params
+  const { sessionId, workoutName, durationMin, exercises } = route.params
 
   const qc = useQueryClient()
   const [description, setDescription] = useState('')
   const [discardModal, setDiscardModal] = useState(false)
   const [publishing, setPublishing] = useState(false)
+  const [media, setMedia] = useState<SelectedMedia[]>([])
+  const [sheetVisible, setSheetVisible] = useState(false)
+  // Stable per-screen folder id so all media for this draft share a storage path.
+  const postDraftId = useRef(makeId()).current
 
-  const visibleExercises = exercises.slice(0, 5)
-  const extraCount = exercises.length - visibleExercises.length
+  // Stats from executed SetLogs only: completed (checked) WORKING sets.
+  // Warmup/feeder are excluded from volume per product rules; planned-but-not-done
+  // sets are ignored. Works for both program and free workouts.
+  let completedSets = 0
+  let completedVolume = 0
+  for (const e of exercises) {
+    for (const s of e.sets) {
+      if (s.isChecked && s.setType === 'WORKING') {
+        completedSets += 1
+        completedVolume += (s.weightKg ?? 0) * (s.repsCompleted ?? 0)
+      }
+    }
+  }
   const muscles = [...new Set(exercises.map(e => e.exercise.muscleGroup))].slice(0, 6)
 
+  // Publish button opacity transition (200ms) while submitting.
+  const btnOpacity = useSharedValue(1)
+  useEffect(() => {
+    btnOpacity.value = withTiming(publishing ? 0.6 : 1, { duration: 200 })
+  }, [publishing, btnOpacity])
+  const btnAnimStyle = useAnimatedStyle(() => ({ opacity: btnOpacity.value }))
+
+  function addAssets(assets: ImagePicker.ImagePickerAsset[]) {
+    const remaining = POST_MEDIA_MAX - media.length
+    if (remaining <= 0) {
+      showToast(`Máximo de ${POST_MEDIA_MAX} mídias`, 'warning')
+      return
+    }
+
+    const mapped = assets.map(assetToMedia).filter((m): m is SelectedMedia => m !== null)
+    const valid = mapped.filter(m => {
+      if (m.type === 'VIDEO' && (m.durationSec ?? 0) > MAX_VIDEO_SEC) return false
+      return true
+    })
+    const rejectedForDuration = mapped.length - valid.length
+
+    if (rejectedForDuration > 0) {
+      showToast('Vídeos devem ter até 60 segundos.', 'error')
+    }
+
+    const accepted = valid.slice(0, remaining)
+    if (valid.length > remaining) {
+      showToast(`Máximo de ${POST_MEDIA_MAX} mídias`, 'warning')
+    }
+    if (accepted.length > 0) {
+      setMedia(prev => [...prev, ...accepted])
+    }
+  }
+
+  async function pickFromCamera() {
+    const perm = await ImagePicker.requestCameraPermissionsAsync()
+    if (!perm.granted) {
+      showToast('Permita o acesso à câmera para continuar', 'warning')
+      return
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images', 'videos'],
+      videoMaxDuration: MAX_VIDEO_SEC,
+      quality: 0.85,
+    })
+    if (result.canceled) return
+    addAssets(result.assets)
+  }
+
+  async function pickFromLibrary() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!perm.granted) {
+      showToast('Permita o acesso à galeria para continuar', 'warning')
+      return
+    }
+    const remaining = POST_MEDIA_MAX - media.length
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images', 'videos'],
+      allowsMultipleSelection: true,
+      selectionLimit: Math.max(remaining, 1),
+      quality: 0.85,
+    })
+    if (result.canceled) return
+    addAssets(result.assets)
+  }
+
+  function openSheet() {
+    if (media.length >= POST_MEDIA_MAX) {
+      showToast(`Máximo de ${POST_MEDIA_MAX} mídias`, 'warning')
+      return
+    }
+    setSheetVisible(true)
+  }
+
+  function removeMedia(id: string) {
+    setMedia(prev => prev.filter(m => m.id !== id))
+  }
+
   async function handlePublish() {
+    if (publishing) return // prevent double submit
     setPublishing(true)
     try {
-      await api.posts.create({ trainingLogId: sessionId, content: description.trim() || undefined })
+      let uploaded: PostMediaItem[] = []
+      if (media.length > 0) {
+        uploaded = await Promise.all(media.map((m, i) => uploadPostMedia(m, i, postDraftId)))
+      }
+      await api.posts.create({
+        trainingLogId: sessionId,
+        content: description.trim() || undefined,
+        media: uploaded.length > 0 ? uploaded : undefined,
+      })
       qc.invalidateQueries({ queryKey: ['my-workout-posts'] })
       qc.invalidateQueries({ queryKey: ['feed'] })
-      showToast('Treino publicado!')
-      navigation.navigate('AthleteTabs', { screen: 'Workout' })
-    } catch {
-      showToast('Erro ao publicar')
+      showToast('Treino publicado!', 'success')
+      // Terminal screen: reset so the published post leaves a clean root
+      // (no orphan WorkoutPost/Execution to GO_BACK into).
+      navigation.reset({ index: 0, routes: [{ name: 'AthleteTabs', params: { screen: 'Workout' } }] })
+    } catch (err) {
+      showToast(getFriendlyErrorMessage(err, 'Erro ao publicar'), 'error')
       setPublishing(false)
     }
   }
@@ -98,12 +282,11 @@ export function WorkoutPostScreen() {
           <Ionicons name="arrow-back" size={22} color="#8A8A9A" />
         </TouchableOpacity>
         <Text style={ps.headerTitle}>Nova publicação</Text>
-        <TouchableOpacity onPress={handlePublish} disabled={publishing} style={ps.publishPill}>
-          {publishing
-            ? <ActivityIndicator color="#fff" size="small" style={{ width: 56 }} />
-            : <Text style={ps.publishPillText}>Publicar</Text>
-          }
-        </TouchableOpacity>
+        <Reanimated.View style={btnAnimStyle}>
+          <TouchableOpacity onPress={handlePublish} disabled={publishing} style={ps.publishPill}>
+            <Text style={ps.publishPillText}>{publishing ? 'Publicando...' : 'Publicar'}</Text>
+          </TouchableOpacity>
+        </Reanimated.View>
       </View>
 
       <ScrollView
@@ -122,11 +305,8 @@ export function WorkoutPostScreen() {
           textAlignVertical="top"
         />
 
-        {/* Media placeholder */}
-        <TouchableOpacity style={ps.mediaBtn} activeOpacity={0.7}>
-          <Ionicons name="image-outline" size={20} color="#3A3A4A" />
-          <Text style={ps.mediaBtnText}>Adicionar foto ou vídeo</Text>
-        </TouchableOpacity>
+        {/* Media picker carousel */}
+        <PostMediaPicker items={media} onAddPress={openSheet} onRemove={removeMedia} />
 
         {/* Section divider */}
         <View style={ps.sectionDivider}>
@@ -156,12 +336,12 @@ export function WorkoutPostScreen() {
             </View>
             <View style={ps.statDivider} />
             <View style={ps.stat}>
-              <Text style={ps.statValue}>{totalValidSets}</Text>
+              <Text style={ps.statValue}>{completedSets}</Text>
               <Text style={ps.statLabel}>séries</Text>
             </View>
             <View style={ps.statDivider} />
             <View style={ps.stat}>
-              <Text style={ps.statValue}>{totalVolume > 0 ? formatVolume(totalVolume) : '—'}</Text>
+              <Text style={ps.statValue}>{completedVolume > 0 ? formatVolume(completedVolume) : '—'}</Text>
               <Text style={ps.statLabel}>kg total</Text>
             </View>
           </View>
@@ -177,17 +357,21 @@ export function WorkoutPostScreen() {
             </View>
           )}
 
-          {/* Exercise list */}
-          {visibleExercises.length > 0 && (
-            <View style={ps.exerciseList}>
-              {visibleExercises.map(e => <ExerciseSummaryRow key={e.id} exercise={e} />)}
-              {extraCount > 0 && (
-                <Text style={ps.moreExercises}>+{extraCount} exercícios</Text>
-              )}
-            </View>
-          )}
+          {/* Exercise list — expandable, collapsed by default */}
+          <ExpandableExerciseList exercises={exercises} />
         </View>
       </ScrollView>
+
+      {/* Media source action sheet */}
+      <ActionSheet
+        visible={sheetVisible}
+        onClose={() => setSheetVisible(false)}
+        actions={[
+          { label: 'Câmera', onPress: pickFromCamera },
+          { label: 'Galeria', onPress: pickFromLibrary },
+          { label: 'Cancelar', onPress: () => {}, cancel: true },
+        ]}
+      />
 
       {/* Back modal */}
       <Modal visible={discardModal} transparent animationType="fade" onRequestClose={() => setDiscardModal(false)}>
@@ -252,19 +436,6 @@ const ps = StyleSheet.create({
     paddingVertical: 4,
   },
 
-  mediaBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 52,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#252530',
-    borderRadius: 12,
-  },
-  mediaBtnText: { color: '#3A3A4A', fontSize: 13 },
-
   sectionDivider: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sectionLine: { flex: 1, height: 1, backgroundColor: '#1E1E24' },
   sectionLabel: { color: '#3A3A4A', fontSize: 9, fontWeight: '600', letterSpacing: 1.2 },
@@ -311,6 +482,8 @@ const ps = StyleSheet.create({
   musclePillText: { color: 'rgba(79,195,247,0.65)', fontSize: 11 },
 
   exerciseList: { gap: 8 },
+  exerciseCollapse: { overflow: 'hidden' },
+  exerciseListInner: { gap: 8, paddingTop: 8 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#2A2A35', flexShrink: 0 },
   summaryExName: { color: '#8A8A9A', fontSize: 13, flex: 1 },

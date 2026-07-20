@@ -18,12 +18,13 @@ import * as Haptics from 'expo-haptics'
 import { api } from '../../lib/api'
 import type {
   ExecutionExerciseRecord, ExecutionSetLogRecord,
-  PlannedSetTechnique, SetType, TechniqueConfig,
+  PlannedSetTechnique, SetType, TechniqueConfig, ExerciseReference,
 } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { SetBadge, getTechStyle } from '../../components/SetBadge'
 import { CompleteSetButton } from '../../components/CompleteSetButton'
 import { CompletedAccentOverlay, useCompletedFade } from '../../components/SetCompletion'
+import { PRBadge, ProgressOverloadHint } from '../../components/PersonalRecord'
 import { WorkoutInput } from '../../components/WorkoutInput'
 import { validateSimpleSet, validateTechniqueSet } from '../../lib/setValidation'
 
@@ -121,8 +122,21 @@ function SimpleSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: SetRo
       { opacity: rowFade },
       hasAccent && { borderLeftWidth: 2, borderLeftColor: ts.borderColor, paddingLeft: 6, marginLeft: 2 },
     ]}>
-      <CompletedAccentOverlay active={set.isChecked} radius={10} />
-      <View style={ex.setRow}>
+      {/* Accented rows already carry a colored left bar (warmup/feeder/back-off) —
+          use the bar-less subtle completion so the two never compete. Clean
+          WORKING sets get the full success bar. */}
+      <CompletedAccentOverlay active={set.isChecked} radius={10} subtle={hasAccent} />
+      {/* PR ribbon — gold trophy shown only when the backend confirmed this set
+          beat historical data. Tap the trophy for the broken record types. */}
+      {set.isChecked && set.isPersonalRecord && (
+        <View style={[ex.prRow, !hasAccent && { paddingLeft: 14 }]}>
+          <PRBadge prTypes={set.prTypes} />
+          <Text style={ex.prRowText}>Recorde pessoal</Text>
+        </View>
+      )}
+      {/* Pure WORKING rows: extra left padding so the success bar and the set
+          badge don't feel glued together. */}
+      <View style={[ex.setRow, !hasAccent && { paddingLeft: 14 }]}>
         <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
 
         <View style={ex.inputsGroup}>
@@ -376,7 +390,10 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
       ex.techSetWrap,
       { borderLeftColor: ts.borderColor, opacity: rowFade },
     ]}>
-      <CompletedAccentOverlay active={set.isChecked} radius={10} />
+      {/* Advanced technique rows own a colored left border as their identity.
+          Use the bar-less subtle completion so the green state never overlaps or
+          competes with that technique color. */}
+      <CompletedAccentOverlay active={set.isChecked} radius={10} subtle />
       {/* Header row — badge, set number, weight (RP/CS/MYO), done, remove */}
       <View style={ex.setRow}>
         <SetBadge setType={set.setType} technique={set.technique} index={index} onPress={onTechniqueTap} />
@@ -423,7 +440,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
             />
           </View>
           <View style={ex.mrWeightCol}>
-            <Text style={[ex.mrWeightLabel, { color: '#A78BFA' }]}>↓ QUEDA</Text>
+            <Text style={[ex.mrWeightLabel, { color: '#A78BFA' }]}>↓ DROP</Text>
             <WorkoutInput
               flex={1}
               value={dropWeight}
@@ -563,6 +580,7 @@ function TechSetRow({ set, index, onChecked, onRemove, onTechniqueTap }: TechSet
 
 type ExerciseCardProps = {
   exercise: ExecutionExerciseRecord
+  reference?: ExerciseReference
   onSetChecked: (execExId: string, setId: string, reps: number | null, weight: number | null, cfg: TechniqueConfig | null) => void
   onAddSet: (execExId: string) => void
   onRemoveSet: (execExId: string, setId: string) => void
@@ -571,12 +589,19 @@ type ExerciseCardProps = {
   onTechniqueTap: (execExId: string, setId: string) => void
 }
 
-// Techniques that need block-level expansion (mirrors WorkoutDetailScreen)
-function needsBlockExpansion(t: PlannedSetTechnique) {
-  return t === 'REST_PAUSE' || t === 'CLUSTER_SET' || t === 'MUSCLE_ROUND' || t === 'DROP_SET' || t === 'MYOREP'
+// A set with no technique is a normal set. Treat null/undefined/'' as 'NONE' so a
+// missing technique is never mistaken for an advanced technique or an invalid set.
+function normTechnique(t: PlannedSetTechnique | null | undefined): PlannedSetTechnique {
+  return t ?? 'NONE'
 }
 
-function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveExercise, onUpdateNotes, onTechniqueTap }: ExerciseCardProps) {
+// Techniques that need block-level expansion (mirrors WorkoutDetailScreen)
+function needsBlockExpansion(t: PlannedSetTechnique | null | undefined) {
+  const tech = normTechnique(t)
+  return tech === 'REST_PAUSE' || tech === 'CLUSTER_SET' || tech === 'MUSCLE_ROUND' || tech === 'DROP_SET' || tech === 'MYOREP'
+}
+
+function ExerciseCard({ exercise, reference, onSetChecked, onAddSet, onRemoveSet, onRemoveExercise, onUpdateNotes, onTechniqueTap }: ExerciseCardProps) {
   const [notes, setNotes] = useState(exercise.exerciseNotes ?? '')
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -619,12 +644,26 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
         />
       </View>
 
+      {reference && (
+        <View style={ex.hintWrap}>
+          <ProgressOverloadHint reference={reference} />
+        </View>
+      )}
+
       <View style={ex.setsWrap}>
         {exercise.sets.map((set, idx) => (
           <React.Fragment key={set.id}>
             {idx > 0 && <View style={ex.setSeparator} />}
             {needsBlockExpansion(set.technique) ? (
               <TechSetRow
+                // Remount in place when the user switches between two advanced
+                // techniques (e.g. DROP_SET → REST_PAUSE) so TechSetRow drops the
+                // previous technique's stale block state. The key MUST stay unique
+                // per set — keying on `set.technique` alone let two sets sharing a
+                // technique (or a set toggled back to a repeated value) collide,
+                // which made React drop the row and the set disappeared. Prefixing
+                // the stable set id keeps the remount while guaranteeing uniqueness.
+                key={`${set.id}:${set.technique}`}
                 set={set}
                 index={idx}
                 onChecked={(id, reps, weight, cfg) => onSetChecked(exercise.id, id, reps, weight, cfg)}
@@ -633,6 +672,14 @@ function ExerciseCard({ exercise, onSetChecked, onAddSet, onRemoveSet, onRemoveE
               />
             ) : (
               <SimpleSetRow
+                // Stable explicit key so the row slot stays consistently keyed
+                // across every setType/technique transition. Without it, this
+                // branch was unkeyed while the TechSetRow branch is keyed by
+                // `${id}:${technique}`; returning a set to WORKING reconciled the
+                // slot by index against the prior explicit key and dropped the
+                // working row. The `:simple` suffix keeps it distinct from the
+                // technique keys so advanced→WORKING still cleanly swaps.
+                key={`${set.id}:simple`}
                 set={set}
                 index={idx}
                 restSeconds={null}
@@ -671,6 +718,7 @@ export function WorkoutExecutionScreen() {
   const [techniquePicker, setTechniquePicker] = useState<{
     visible: boolean; execExId: string | null; setId: string | null
   }>({ visible: false, execExId: null, setId: null })
+  const [references, setReferences] = useState<Record<string, ExerciseReference>>({})
   const [barRestRemaining, setBarRestRemaining] = useState(0)
   const [restPickerVisible, setRestPickerVisible] = useState(false)
   const [restTimerTipVisible, setRestTimerTipVisible] = useState(false)
@@ -761,6 +809,18 @@ export function WorkoutExecutionScreen() {
     init()
   }, [])
 
+  // Progressive-overload references — previous performance per exercise, computed
+  // by the backend against sessions finished before this one started. Loaded once
+  // the session id is known so the hints reflect history, never current sets.
+  useEffect(() => {
+    if (!sessionId) return
+    let cancelled = false
+    api.sessions.references(sessionId)
+      .then(res => { if (!cancelled) setReferences(res.data.references) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [sessionId])
+
   async function handleSetChecked(execExId: string, setId: string, reps: number | null, weight: number | null, cfg: TechniqueConfig | null) {
     if (!sessionId) return
     const set = session?.exercises.find(e => e.id === execExId)?.sets.find(s => s.id === setId)
@@ -768,9 +828,18 @@ export function WorkoutExecutionScreen() {
     const wasChecked = set.isChecked
     store.updateSet(execExId, setId, { isChecked: !wasChecked, repsCompleted: reps, weightKg: weight })
     try {
-      await api.sessions.updateSet(sessionId, setId, {
+      const res = await api.sessions.updateSet(sessionId, setId, {
         isChecked: !wasChecked, repsCompleted: reps, weightKg: weight, techniqueConfig: cfg,
       })
+      // The backend is the sole authority on PRs (historical comparison only).
+      // Mirror its verdict locally; never infer a PR from current-session state.
+      store.updateSet(execExId, setId, {
+        isPersonalRecord: res.data.isPR,
+        prTypes: res.data.isPR ? res.data.prTypes : undefined,
+      })
+      if (!wasChecked && res.data.isPR) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      }
     } catch {
       store.updateSet(execExId, setId, { isChecked: wasChecked })
       showToast('Erro ao salvar série')
@@ -779,6 +848,16 @@ export function WorkoutExecutionScreen() {
 
   async function handleSetTechniqueChange(execExId: string, setId: string, sel: TechniqueSelection) {
     if (!sessionId) return
+    // Snapshot the exact prior state so a failed save can be restored precisely.
+    // The set is always updated IN PLACE — never added or removed — so a WORKING
+    // set reset to technique NONE stays in the list like any other set.
+    const prev = session?.exercises.find(e => e.id === execExId)?.sets.find(s => s.id === setId)
+    if (!prev) return
+    const prevState: Pick<ExecutionSetLogRecord, 'setType' | 'technique' | 'techniqueConfig'> = {
+      setType: prev.setType,
+      technique: prev.technique,
+      techniqueConfig: prev.techniqueConfig,
+    }
     store.updateSet(execExId, setId, {
       setType: sel.setType,
       technique: sel.technique,
@@ -791,7 +870,10 @@ export function WorkoutExecutionScreen() {
         techniqueConfig: sel.config,
       })
     } catch {
-      store.updateSet(execExId, setId, { setType: 'WORKING', technique: 'NONE' })
+      // Restore the precise previous state instead of force-resetting to
+      // WORKING/NONE, which could corrupt a warmup/feeder set or leave a stale
+      // techniqueConfig behind.
+      store.updateSet(execExId, setId, prevState)
       showToast('Erro ao atualizar técnica')
     }
   }
@@ -957,6 +1039,7 @@ export function WorkoutExecutionScreen() {
           <ExerciseCard
             key={exercise.id}
             exercise={exercise}
+            reference={references[exercise.exerciseId]}
             onSetChecked={handleSetChecked}
             onAddSet={handleAddSet}
             onRemoveSet={handleRemoveSet}
@@ -1331,6 +1414,23 @@ const ex = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 12,
   },
+
+  // Progressive-overload hint row — subtle, under the observation, above sets
+  hintWrap: {
+    paddingHorizontal: 12,
+    paddingTop: 2,
+    paddingBottom: 4,
+  },
+
+  // PR ribbon — gold trophy + label above a record-breaking set's inputs
+  prRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 6,
+    paddingBottom: 6,
+  },
+  prRowText: { color: '#FFC14A', fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
 
   setRowOuter: {
     borderRadius: 10,

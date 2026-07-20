@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../../lib/prisma.js'
 import { supabaseAdmin } from '../../lib/supabase.js'
 import { authMiddleware } from '../../middleware/auth.js'
+import { computeWorkoutAnalytics } from '../../lib/analytics.js'
 
 const UpdateProfileBody = z.object({
   isOnboarding: z.boolean().optional(),
@@ -158,6 +159,13 @@ export async function profileRoutes(fastify: FastifyInstance): Promise<void> {
     await prisma.profile.update({ where: { userId }, data: { avatar: avatarUrl } })
 
     return reply.send({ data: { avatarUrl } })
+  })
+
+  // GET /api/v1/profile/stats — workout analytics dashboard for the current user.
+  // Declared before /:userId so the literal path is matched first.
+  fastify.get('/stats', { preHandler: authMiddleware }, async (request, reply) => {
+    const analytics = await computeWorkoutAnalytics(request.authUser.id)
+    return reply.send({ data: { analytics } })
   })
 
   // GET /api/v1/profile/:userId — public profile

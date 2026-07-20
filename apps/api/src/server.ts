@@ -11,6 +11,8 @@ import { trainingExerciseRoutes } from './routes/training-exercises/index.js'
 import { plannedSetRoutes } from './routes/planned-sets/index.js'
 import { sessionRoutes } from './routes/sessions/index.js'
 import { postRoutes } from './routes/posts/index.js'
+import { nutritionRoutes } from './routes/nutrition/index.js'
+import { uploadRoutes, ensurePostMediaBucket } from './routes/uploads/index.js'
 import { supabaseAdmin } from './lib/supabase.js'
 
 const server = Fastify({ logger: true })
@@ -27,6 +29,11 @@ async function bootstrap(): Promise<void> {
   })
 
   await supabaseAdmin.storage.createBucket('avatars', { public: true }).catch(() => null)
+  // Seed the post-media bucket; log (do not crash) if it can't be created so the
+  // signed-url endpoint can self-heal / report a clear error on first use.
+  await ensurePostMediaBucket(server.log).catch((err) => {
+    server.log.error(err, 'Post media storage bucket seeding failed at startup')
+  })
 
   server.get('/', async () => {
     return { service: 'ironsynk-api', status: 'ok' }
@@ -46,6 +53,8 @@ async function bootstrap(): Promise<void> {
   await server.register(plannedSetRoutes, { prefix: '/api/v1/planned-sets' })
   await server.register(sessionRoutes, { prefix: '/api/v1/sessions' })
   await server.register(postRoutes, { prefix: '/api/v1/posts' })
+  await server.register(nutritionRoutes, { prefix: '/api/v1/nutrition' })
+  await server.register(uploadRoutes, { prefix: '/api/v1/uploads' })
 
   const port = Number(process.env['PORT'] ?? 3333)
   await server.listen({ port, host: '0.0.0.0' })

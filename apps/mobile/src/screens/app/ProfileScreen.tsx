@@ -7,14 +7,14 @@ import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { LinearGradient } from 'expo-linear-gradient'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store/authStore'
 import { api } from '../../lib/api'
-import type { TrainerProfileRecord, ProfileRecord, ProgramRecord, TrainingGoal } from '../../lib/api'
+import type { TrainerProfileRecord, ProfileRecord, ProgramRecord, TrainingGoal, NutritionPlanRecord, DailyTotals } from '../../lib/api'
 import { WorkoutPostCard } from '../../components/WorkoutPostCard'
+import { PerformanceDashboard } from '../../components/PerformanceDashboard'
 
 type AthleteTab = 'historico' | 'desempenho' | 'programa' | 'sobre'
 type TrainerTab = 'alunos' | 'consultas' | 'sobre'
@@ -26,6 +26,10 @@ const GOAL_LABELS: Record<string, string> = {
 const PROGRAM_GOAL_LABELS: Record<string, string> = {
   HYPERTROPHY: 'Hipertrofia', STRENGTH: 'Força', FAT_LOSS: 'Emagrecimento',
   ENDURANCE: 'Resistência', HEALTH: 'Saúde', PERFORMANCE: 'Performance',
+}
+const DIET_GOAL_LABELS: Record<string, string> = {
+  BULK: 'Ganho de massa', CUT: 'Definição', MAINTENANCE: 'Manutenção',
+  RECOMP: 'Recomposição', HEALTH: 'Saúde',
 }
 const SEX_LABELS: Record<string, string> = {
   male: 'Masculino', female: 'Feminino', other: 'Outro',
@@ -117,87 +121,8 @@ function HistoricoTab() {
 
 // ─── Athlete tab: Desempenho ────────────────────────────────────────────
 
-// 8 weeks placeholder — Phase 2 will supply real data
-const WEEKLY_WORKOUTS = [0, 0, 0, 0]
-const WEEK_LABELS = ['S4', 'S3', 'S2', 'S1']
-const MUSCLE_GROUPS = [
-  'Peito', 'Costas', 'Ombros', 'Bíceps', 'Tríceps', 'Pernas',
-]
-
 function DesempenhoTab() {
-  const maxWeekly = Math.max(...WEEKLY_WORKOUTS, 1)
-
-  return (
-    <ScrollView style={s.tabContent} scrollEnabled={false}>
-      {/* Frequência */}
-      <SectionTitle>FREQUÊNCIA — ÚLTIMO MÊS</SectionTitle>
-      <View style={s.chartCard}>
-        <View style={s.freqChart}>
-          {WEEKLY_WORKOUTS.map((val, i) => (
-            <View key={i} style={s.freqBarSlot}>
-              <View style={s.freqBarBg}>
-                <View style={[s.freqBarFill, { height: Math.max((val / maxWeekly) * 52, 2) }]} />
-              </View>
-              <Text style={s.freqBarLbl}>{WEEK_LABELS[i]}</Text>
-            </View>
-          ))}
-        </View>
-        <View style={s.freqPills}>
-          <View style={s.pill}>
-            <Text style={s.pillNum}>{MOCK_WORKOUTS}</Text>
-            <Text style={s.pillLbl}>treinos este mês</Text>
-          </View>
-          <View style={s.pill}>
-            <Text style={s.pillNum}>0 dias</Text>
-            <Text style={s.pillLbl}>sequência atual</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Records pessoais */}
-      <SectionTitle>RECORDS PESSOAIS</SectionTitle>
-      <View style={s.infoCard}>
-        <EmptyState icon="trophy-outline" title="Nenhum record ainda" />
-      </View>
-
-      {/* Volume por grupamento */}
-      <SectionTitle>VOLUME POR GRUPAMENTO — 4 SEMANAS</SectionTitle>
-      <View style={s.infoCard}>
-        {MUSCLE_GROUPS.map((mg) => (
-          <View key={mg} style={s.muscleRow}>
-            <Text style={s.muscleName}>{mg}</Text>
-            <View style={s.muscleBarBg}>
-              <LinearGradient
-                colors={['#4FC3F7', '#2979FF']}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                style={[s.muscleBarFill, { flex: 0.01 }]}
-              />
-            </View>
-            <Text style={s.muscleSets}>0</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Evolução de Carga */}
-      <SectionTitle>EVOLUÇÃO DE CARGA</SectionTitle>
-      <View style={s.infoCard}>
-        <EmptyState
-          icon="trending-up-outline"
-          title="Sem dados suficientes"
-          sub="Complete ao menos 3 sessões com o mesmo exercício para ver a evolução de carga"
-        />
-      </View>
-
-      {/* Aderência à Dieta */}
-      <SectionTitle>ADERÊNCIA À DIETA</SectionTitle>
-      <View style={[s.infoCard, s.adherenceCard]}>
-        <View style={s.adherenceRing}>
-          <Text style={s.adherencePct}>0%</Text>
-        </View>
-        <Text style={s.adherenceLbl}>refeições concluídas esta semana</Text>
-      </View>
-    </ScrollView>
-  )
+  return <PerformanceDashboard />
 }
 
 // ─── Athlete tab: Programa ──────────────────────────────────────────────
@@ -245,6 +170,131 @@ function ProgramSummaryCard({
     </TouchableOpacity>
   )
 }
+
+// ─── Athlete tab: Dieta ativa ───────────────────────────────────────────
+
+function DietaAtivaCard({
+  plan, totals, onPress,
+}: {
+  plan: NutritionPlanRecord
+  totals: DailyTotals
+  onPress: () => void
+}) {
+  const goalLabel = plan.goal ? (DIET_GOAL_LABELS[plan.goal] ?? plan.goal) : null
+  const mealsCount = totals.totalMeals
+  const hasMacros =
+    plan.targetCalories != null ||
+    plan.targetProteinG != null ||
+    plan.targetCarbsG != null ||
+    plan.targetFatG != null
+  const fmt = (n: number | null) => (n != null ? Math.round(n) : null)
+
+  return (
+    <TouchableOpacity style={s.programCard} onPress={onPress} activeOpacity={0.7}>
+      <View style={s.programCardTop}>
+        <Text style={s.programCardName} numberOfLines={1}>{plan.name}</Text>
+        <Ionicons name="chevron-forward" size={18} color="#555560" />
+      </View>
+
+      {!!goalLabel && (
+        <View style={s.programPillsRow}>
+          <View style={s.programPill}>
+            <Text style={s.programPillText}>{goalLabel}</Text>
+          </View>
+        </View>
+      )}
+
+      <View style={s.programMetaRow}>
+        <View style={s.programMeta}>
+          <Ionicons name="restaurant-outline" size={13} color="#8A8A9A" />
+          <Text style={s.programMetaText}>
+            {mealsCount} {mealsCount === 1 ? 'refeição' : 'refeições'}
+          </Text>
+        </View>
+        {plan.targetCalories != null && (
+          <View style={s.programMeta}>
+            <Ionicons name="flame-outline" size={13} color="#8A8A9A" />
+            <Text style={s.programMetaText}>{fmt(plan.targetCalories)} kcal</Text>
+          </View>
+        )}
+      </View>
+
+      {hasMacros && (
+        <View style={s.macroRow}>
+          <View style={s.macroItem}>
+            <Text style={s.macroValue}>{fmt(plan.targetProteinG) ?? '—'}{plan.targetProteinG != null ? 'g' : ''}</Text>
+            <Text style={s.macroLabel}>Proteína</Text>
+          </View>
+          <View style={s.macroDivider} />
+          <View style={s.macroItem}>
+            <Text style={s.macroValue}>{fmt(plan.targetCarbsG) ?? '—'}{plan.targetCarbsG != null ? 'g' : ''}</Text>
+            <Text style={s.macroLabel}>Carbo</Text>
+          </View>
+          <View style={s.macroDivider} />
+          <View style={s.macroItem}>
+            <Text style={s.macroValue}>{fmt(plan.targetFatG) ?? '—'}{plan.targetFatG != null ? 'g' : ''}</Text>
+            <Text style={s.macroLabel}>Gordura</Text>
+          </View>
+        </View>
+      )}
+
+      {mealsCount > 0 && (
+        <View style={s.adherenceRow}>
+          <Ionicons name="checkmark-circle-outline" size={13} color="#00E676" />
+          <Text style={s.adherenceText}>
+            {totals.completedMeals}/{mealsCount} refeições hoje · {totals.adherencePercent}%
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  )
+}
+
+function DietaAtivaSection() {
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['nutrition-today'],
+    queryFn: () => api.nutrition.today(),
+    staleTime: 15_000,
+  })
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch()
+    }, [refetch])
+  )
+
+  const plan = data?.data.plan ?? null
+  const totals = data?.data.totals
+
+  return (
+    <>
+      <SectionTitle>DIETA ATIVA</SectionTitle>
+      {isLoading ? (
+        <View style={[s.infoCard, s.emptyCard, { paddingVertical: 28, alignItems: 'center' }]}>
+          <ActivityIndicator color="#4FC3F7" />
+        </View>
+      ) : plan && totals ? (
+        <DietaAtivaCard
+          plan={plan}
+          totals={totals}
+          onPress={() => navigation.navigate('NutritionToday')}
+        />
+      ) : (
+        <View style={[s.infoCard, s.emptyCard]}>
+          <EmptyState
+            icon="nutrition-outline"
+            title="Nenhuma dieta ativa"
+            sub="Crie ou receba um plano nutricional"
+          />
+        </View>
+      )}
+    </>
+  )
+}
+
+// ─── Athlete tab: Programa ──────────────────────────────────────────────
 
 function ProgramaTab() {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
@@ -300,14 +350,7 @@ function ProgramaTab() {
         </View>
       )}
 
-      <SectionTitle>DIETA ATIVA</SectionTitle>
-      <View style={[s.infoCard, s.emptyCard]}>
-        <EmptyState
-          icon="nutrition-outline"
-          title="Nenhuma dieta ativa"
-          sub="Crie ou receba um plano nutricional"
-        />
-      </View>
+      <DietaAtivaSection />
     </View>
   )
 }
@@ -707,6 +750,19 @@ const s = StyleSheet.create({
   programMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 12 },
   programMeta: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   programMetaText: { color: '#8A8A9A', fontSize: 12 },
+
+  // Diet macros
+  macroRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(41,121,255,0.06)', borderRadius: 10,
+    paddingVertical: 10, marginTop: 12,
+  },
+  macroItem: { flex: 1, alignItems: 'center' },
+  macroValue: { color: '#F0F0F5', fontSize: 14, fontWeight: '600' },
+  macroLabel: { color: '#8A8A9A', fontSize: 10, marginTop: 2 },
+  macroDivider: { width: 1, height: 22, backgroundColor: '#2A2A35' },
+  adherenceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
+  adherenceText: { color: '#8A8A9A', fontSize: 12 },
   infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
   infoRowLabel: { color: '#8A8A9A', fontSize: 14 },
   infoRowValue: { color: '#F0F0F5', fontSize: 14, fontWeight: '500', maxWidth: '60%', textAlign: 'right' },
@@ -749,39 +805,4 @@ const s = StyleSheet.create({
   // Logout
   logoutBtn: { marginTop: 16, marginBottom: 8, paddingVertical: 14, alignItems: 'center' },
   logoutText: { color: '#FF5252', fontSize: 15, fontWeight: '600' },
-
-  // Frequency chart
-  chartCard: {
-    backgroundColor: '#1E1E24', borderRadius: 14,
-    borderWidth: 1, borderColor: '#2A2A35',
-    padding: 16, marginBottom: 4,
-  },
-  freqChart: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginBottom: 12 },
-  freqBarSlot: { flex: 1, alignItems: 'center', gap: 4 },
-  freqBarBg: { width: '100%', height: 60, backgroundColor: '#2A2A35', borderRadius: 6, justifyContent: 'flex-end' },
-  freqBarFill: { width: '100%', backgroundColor: '#2979FF', borderRadius: 6 },
-  freqBarLbl: { color: '#8A8A9A', fontSize: 9 },
-  freqPills: { flexDirection: 'row', gap: 10 },
-  pill: {
-    flex: 1, backgroundColor: '#141418', borderRadius: 10, padding: 10, alignItems: 'center',
-  },
-  pillNum: { color: '#F0F0F5', fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  pillLbl: { color: '#8A8A9A', fontSize: 10, textAlign: 'center' },
-
-  // Muscle volume bars
-  muscleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, gap: 10 },
-  muscleName: { color: '#8A8A9A', fontSize: 13, width: 68 },
-  muscleBarBg: { flex: 1, height: 6, backgroundColor: '#2A2A35', borderRadius: 3, overflow: 'hidden' },
-  muscleBarFill: { height: '100%', borderRadius: 3 },
-  muscleSets: { color: '#F0F0F5', fontSize: 12, fontWeight: '600', width: 24, textAlign: 'right' },
-
-  // Diet adherence
-  adherenceCard: { flexDirection: 'row', alignItems: 'center', padding: 20, gap: 20 },
-  adherenceRing: {
-    width: 64, height: 64, borderRadius: 32,
-    borderWidth: 4, borderColor: '#2A2A35',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  adherencePct: { color: '#F0F0F5', fontSize: 14, fontWeight: '700' },
-  adherenceLbl: { flex: 1, color: '#8A8A9A', fontSize: 13, lineHeight: 18 },
 })

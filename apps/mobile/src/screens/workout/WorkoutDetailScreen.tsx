@@ -733,10 +733,13 @@ export function WorkoutDetailScreen() {
         techniqueConfig: sel.config,
       })
       const updated = res.data.plannedSet
-      setLocalSets(prev => ({
-        ...prev,
-        [teId]: prev[teId]!.map(s => s.id === setId ? updated : s),
-      }))
+      setLocalSets(prev => {
+        // Fall back to the set list from the query if this exercise has not been
+        // seeded into localSets yet, so the set is always updated in place and
+        // never dropped (e.g. switching technique back to NONE keeps it visible).
+        const current = prev[teId] ?? localSets[teId] ?? []
+        return { ...prev, [teId]: current.map(s => s.id === setId ? updated : s) }
+      })
 
       // Reset block data for new technique
       const c = sel.config as Record<string, unknown> | null

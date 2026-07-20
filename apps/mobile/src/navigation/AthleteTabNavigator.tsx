@@ -1,12 +1,11 @@
 import React from 'react'
-import { Platform } from 'react-native'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { FeedScreen } from '../screens/app/FeedScreen'
 import { WorkoutScreen } from '../screens/workout/WorkoutScreen'
 import { NutritionScreen } from '../screens/app/NutritionScreen'
 import { ProfileScreen } from '../screens/app/ProfileScreen'
+import { FloatingTabBar } from './FloatingTabBar'
 
 export type AthleteTabParamList = {
   Feed: undefined
@@ -17,31 +16,14 @@ export type AthleteTabParamList = {
 
 const Tab = createBottomTabNavigator<AthleteTabParamList>()
 
-const CONTENT_HEIGHT = Platform.OS === 'ios' ? 78 : 72
-
 export function AthleteTabNavigator() {
-  const insets = useSafeAreaInsets()
-
   return (
     <Tab.Navigator
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: '#141418',
-          borderTopWidth: 1,
-          borderTopColor: '#2A2A35',
-          height: CONTENT_HEIGHT + insets.bottom,
-          paddingBottom: insets.bottom,
-          paddingTop: 8,
-          paddingHorizontal: 16,
-          elevation: 0,
-          shadowOpacity: 0,
-          shadowColor: 'transparent',
-        },
         tabBarActiveTintColor: '#4FC3F7',
         tabBarInactiveTintColor: '#8A8A9A',
-        tabBarIconStyle: { marginBottom: 0 },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '500', marginTop: 6 },
       }}
     >
       <Tab.Screen

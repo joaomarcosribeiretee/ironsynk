@@ -10,10 +10,20 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import type { ExecutionExerciseRecord, ExecutionSetLogRecord } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
-import { SetBadge, getTechStyle } from '../../components/SetBadge'
+import { SetBadge } from '../../components/SetBadge'
 
 type NavProp = NativeStackNavigationProp<AppStackParamList>
 type RouteProps = RouteProp<AppStackParamList, 'WorkoutSession'>
+
+// Single premium gold identity for every Personal Record indicator on this
+// screen — badge, banner and icons all share these tokens. Never green.
+const GOLD = '#FFCB52'
+const GOLD_SOFT = 'rgba(255,203,82,0.10)'
+const GOLD_LINE = 'rgba(255,203,82,0.32)'
+
+// Neutral rail used by every advanced-technique breakdown so all techniques
+// share one integrated visual language instead of per-type boxes/colors.
+const RAIL = 'rgba(255,255,255,0.09)'
 
 const TECHNIQUE_LABELS: Record<string, string> = {
   DROP_SET: 'Drop Set',
@@ -61,28 +71,28 @@ function formatWeight(kg: number | null) {
 }
 
 // ─── Executed technique detail (read-only, full structure) ──────────────────────
+// Every technique renders into one shared rail + flat-row language: a quiet left
+// guide line, a secondary block label and right-aligned values. No per-block
+// boxes, no competing accent colors — the SetBadge already carries the identity.
 
-function RestSep({ seconds, color }: { seconds: number; color?: string }) {
+function RestSep({ seconds }: { seconds: number }) {
   if (!seconds) return <View style={ss.blockSepThin} />
   return (
     <View style={ss.restSep}>
-      <View style={[ss.restSepLine, color ? { backgroundColor: color } : null]} />
-      <Text style={[ss.restSepText, color ? { color } : null]}>{seconds}s</Text>
-      <View style={[ss.restSepLine, color ? { backgroundColor: color } : null]} />
+      <Text style={ss.restSepText}>descanso {seconds}s</Text>
     </View>
   )
 }
 
-function BlockRow({ label, reps, weight, failed, accent }: {
+function BlockRow({ label, reps, weight, failed }: {
   label: string
   reps: number | null | undefined
   weight?: number | null
   failed?: boolean
-  accent?: string
 }) {
   return (
-    <View style={[ss.blockRow, failed && ss.blockRowFailed]}>
-      <Text style={[ss.blockLabel, accent ? { color: accent } : null]}>{label}</Text>
+    <View style={ss.blockRow}>
+      <Text style={ss.blockLabel} numberOfLines={1}>{label}</Text>
       <View style={ss.blockVals}>
         {weight != null && weight > 0 && <Text style={ss.blockWeight}>{formatWeight(weight)}</Text>}
         <Text style={ss.blockReps}>{reps != null ? `${reps} reps` : '—'}</Text>
@@ -96,7 +106,6 @@ function TechniqueDetail({ set }: { set: ExecutionSetLogRecord }) {
   const cfg = set.techniqueConfig as Record<string, unknown> | null
   if (!cfg) return null
   const rest = Number(cfg['restBetweenSeconds'] ?? 0)
-  const pink = 'rgba(244,114,182,0.25)'
 
   switch (set.technique) {
     case 'REST_PAUSE': {
@@ -140,11 +149,11 @@ function TechniqueDetail({ set }: { set: ExecutionSetLogRecord }) {
         <View style={ss.techDetail}>
           <View style={ss.mrWeights}>
             <View style={ss.mrWeightBox}>
-              <Text style={ss.mrWeightLabel}>PRINCIPAL</Text>
+              <Text style={ss.mrWeightLabel}>Principal</Text>
               <Text style={ss.mrWeightVal}>{formatWeight(mainW ?? null)}</Text>
             </View>
-            <View style={[ss.mrWeightBox, ss.mrWeightBoxDrop]}>
-              <Text style={[ss.mrWeightLabel, { color: '#A78BFA' }]}>↓ QUEDA</Text>
+            <View style={ss.mrWeightBox}>
+              <Text style={ss.mrWeightLabel}>↓ Drop</Text>
               <Text style={ss.mrWeightVal}>{formatWeight(dropW ?? null)}</Text>
             </View>
           </View>
@@ -154,11 +163,10 @@ function TechniqueDetail({ set }: { set: ExecutionSetLogRecord }) {
               <React.Fragment key={i}>
                 {i > 0 && <RestSep seconds={rest} />}
                 <BlockRow
-                  label={`Bloco ${i + 1}`}
+                  label={isDrop ? `Bloco ${i + 1} · drop` : `Bloco ${i + 1}`}
                   reps={b.reps}
                   weight={isDrop ? dropW : mainW}
                   failed={!!b.failed}
-                  accent={isDrop ? '#A78BFA' : undefined}
                 />
               </React.Fragment>
             )
@@ -173,13 +181,7 @@ function TechniqueDetail({ set }: { set: ExecutionSetLogRecord }) {
         <View style={ss.techDetail}>
           {drops.map((d, i) => (
             <React.Fragment key={i}>
-              {i > 0 && (
-                <View style={ss.dropSep}>
-                  <View style={[ss.restSepLine, { backgroundColor: 'rgba(239,68,68,0.2)' }]} />
-                  <Text style={ss.dropSepText}>↓ drop</Text>
-                  <View style={[ss.restSepLine, { backgroundColor: 'rgba(239,68,68,0.2)' }]} />
-                </View>
-              )}
+              {i > 0 && <View style={ss.restSep}><Text style={ss.restSepText}>↓ drop</Text></View>}
               <BlockRow label={i === 0 ? 'Série Principal' : `Drop ${i}`} reps={d.reps} weight={d.weightKg} />
             </React.Fragment>
           ))}
@@ -194,11 +196,11 @@ function TechniqueDetail({ set }: { set: ExecutionSetLogRecord }) {
       if (act == null && minis.length === 0) return null
       return (
         <View style={ss.techDetail}>
-          <BlockRow label="Ativação" reps={act} weight={mainW} accent="#F472B6" />
+          <BlockRow label="Ativação" reps={act} weight={mainW} />
           {minis.map((m, i) => (
             <React.Fragment key={i}>
-              <RestSep seconds={i === 0 ? actRest : rest} color={pink} />
-              <BlockRow label={`Mini ${i + 1}`} reps={m.reps} weight={mainW} failed={!!m.failed} accent="#F472B6" />
+              <RestSep seconds={i === 0 ? actRest : rest} />
+              <BlockRow label={`Mini ${i + 1}`} reps={m.reps} weight={mainW} failed={!!m.failed} />
             </React.Fragment>
           ))}
         </View>
@@ -209,20 +211,24 @@ function TechniqueDetail({ set }: { set: ExecutionSetLogRecord }) {
   }
 }
 
-function SetDetailRow({ set, index }: { set: ExecutionSetLogRecord; index: number }) {
+function PRBadge() {
   return (
-    <View style={ss.setRow}>
+    <View style={ss.prPill}>
+      <Ionicons name="trophy" size={9} color={GOLD} />
+      <Text style={ss.prText}>PR</Text>
+    </View>
+  )
+}
+
+function SetDetailRow({ set, index, isFirst }: { set: ExecutionSetLogRecord; index: number; isFirst: boolean }) {
+  return (
+    <View style={[ss.setRow, !isFirst && ss.setRowDivider]}>
       <SetBadge setType={set.setType} technique={set.technique} index={index} />
       <View style={ss.setInfo}>
         <View style={ss.setMainRow}>
           <Text style={ss.setReps}>{set.repsCompleted ?? 0} reps</Text>
           <Text style={ss.setWeight}>{formatWeight(set.weightKg)}</Text>
-          {set.isPersonalRecord && (
-            <View style={ss.prPill}>
-              <Ionicons name="trophy" size={9} color="#00E676" />
-              <Text style={ss.prText}>PR</Text>
-            </View>
-          )}
+          {set.isPersonalRecord && <PRBadge />}
         </View>
         <TechniqueDetail set={set} />
       </View>
@@ -235,12 +241,16 @@ function ExerciseSection({ exercise }: { exercise: ExecutionExerciseRecord }) {
   if (checkedSets.length === 0) return null
 
   const muscleLabel = MUSCLE_LABELS[exercise.exercise.muscleGroup] ?? exercise.exercise.muscleGroup
+  const hasPR = checkedSets.some(s => s.isPersonalRecord)
 
   return (
     <View style={ss.exerciseSection}>
       <View style={ss.exerciseHeader}>
-        <Text style={ss.exerciseName}>{exercise.exercise.name}</Text>
-        <Text style={ss.exerciseMuscle}>{muscleLabel}</Text>
+        <View style={ss.exerciseHeaderText}>
+          <Text style={ss.exerciseName} numberOfLines={2}>{exercise.exercise.name}</Text>
+          <Text style={ss.exerciseMuscle}>{muscleLabel.toUpperCase()}</Text>
+        </View>
+        {hasPR && <Ionicons name="trophy" size={15} color={GOLD} />}
       </View>
       {!!exercise.exerciseNotes && (
         <View style={ss.exerciseNotesRow}>
@@ -250,7 +260,7 @@ function ExerciseSection({ exercise }: { exercise: ExecutionExerciseRecord }) {
       )}
       <View style={ss.setsContainer}>
         {checkedSets.map((set, i) => (
-          <SetDetailRow key={set.id} set={set} index={i} />
+          <SetDetailRow key={set.id} set={set} index={i} isFirst={i === 0} />
         ))}
       </View>
     </View>
@@ -316,62 +326,63 @@ export function WorkoutSessionScreen() {
           contentContainerStyle={ss.scroll}
           showsVerticalScrollIndicator={false}
         >
-          {/* Date */}
-          <Text style={ss.date}>{formatDateTime(session.startedAt)}</Text>
+          {/* ── Summary ── */}
+          <View style={ss.summary}>
+            <Text style={ss.workoutName}>{session.workoutName ?? 'Treino'}</Text>
+            <Text style={ss.date}>{formatDateTime(session.startedAt)}</Text>
 
-          {/* Stats */}
-          <View style={ss.statsRow}>
-            <View style={ss.stat}>
-              <Text style={ss.statValue}>{formatDuration(session.durationMin)}</Text>
-              <Text style={ss.statLabel}>duração</Text>
+            <View style={ss.statsRow}>
+              <View style={ss.stat}>
+                <Text style={ss.statValue}>{formatDuration(session.durationMin)}</Text>
+                <Text style={ss.statLabel}>duração</Text>
+              </View>
+              <View style={ss.statDivider} />
+              <View style={ss.stat}>
+                <Text style={ss.statValue}>{session.totalValidSets ?? 0}</Text>
+                <Text style={ss.statLabel}>séries</Text>
+              </View>
+              <View style={ss.statDivider} />
+              <View style={ss.stat}>
+                <Text style={ss.statValue}>{formatVolume(session.totalVolume)}</Text>
+                <Text style={ss.statLabel}>kg total</Text>
+              </View>
             </View>
-            <View style={ss.statDivider} />
-            <View style={ss.stat}>
-              <Text style={ss.statValue}>{session.totalValidSets ?? 0}</Text>
-              <Text style={ss.statLabel}>séries</Text>
-            </View>
-            <View style={ss.statDivider} />
-            <View style={ss.stat}>
-              <Text style={ss.statValue}>{formatVolume(session.totalVolume)}</Text>
-              <Text style={ss.statLabel}>kg total</Text>
-            </View>
+
+            {totalPRs > 0 && (
+              <View style={ss.prHighlight}>
+                <Ionicons name="trophy" size={14} color={GOLD} />
+                <Text style={ss.prHighlightText}>
+                  {totalPRs} {totalPRs === 1 ? 'recorde pessoal' : 'recordes pessoais'} nessa sessão
+                </Text>
+              </View>
+            )}
+
+            {techniques.length > 0 && (
+              <View style={ss.techRow}>
+                {techniques.map(t => (
+                  <View key={t} style={ss.techPill}>
+                    <Text style={ss.techPillText}>{TECHNIQUE_LABELS[t] ?? t}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {!!session.notes && (
+              <View style={ss.notesBox}>
+                <Ionicons name="document-text-outline" size={14} color="#4FC3F7" />
+                <Text style={ss.notesText}>{session.notes}</Text>
+              </View>
+            )}
           </View>
 
-          {/* PR highlight */}
-          {totalPRs > 0 && (
-            <View style={ss.prHighlight}>
-              <Ionicons name="trophy" size={14} color="#00E676" />
-              <Text style={ss.prHighlightText}>
-                {totalPRs} {totalPRs === 1 ? 'record pessoal' : 'records pessoais'} nessa sessão
-              </Text>
+          {/* ── Exercises ── */}
+          {completedExercises.length > 0 && (
+            <View style={ss.sectionHeaderRow}>
+              <Text style={ss.sectionTitle}>Exercícios</Text>
+              <Text style={ss.sectionCount}>{completedExercises.length}</Text>
             </View>
           )}
 
-          {/* Techniques */}
-          {techniques.length > 0 && (
-            <View style={ss.techRow}>
-              {techniques.map(t => {
-                const ts = getTechStyle('WORKING', t)
-                return (
-                  <View key={t} style={[ss.techPill, { backgroundColor: ts.badgeBg, borderColor: ts.borderColor }]}>
-                    <Text style={[ss.techPillText, { color: ts.badgeText }]}>
-                      {TECHNIQUE_LABELS[t] ?? t}
-                    </Text>
-                  </View>
-                )
-              })}
-            </View>
-          )}
-
-          {/* Session notes */}
-          {!!session.notes && (
-            <View style={ss.notesBox}>
-              <Ionicons name="document-text-outline" size={14} color="#4FC3F7" />
-              <Text style={ss.notesText}>{session.notes}</Text>
-            </View>
-          )}
-
-          {/* Exercise sections */}
           <View style={ss.exerciseList}>
             {completedExercises.map(e => (
               <ExerciseSection key={e.id} exercise={e} />
@@ -407,40 +418,41 @@ const ss = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
   errorText: { color: '#8A8A9A', fontSize: 14 },
 
-  scroll: { padding: 16, paddingBottom: 56, gap: 14 },
+  scroll: { padding: 16, paddingBottom: 56, gap: 22 },
 
-  date: { color: '#555560', fontSize: 12 },
+  // ── Summary ──
+  summary: { gap: 14 },
+  workoutName: { color: '#F0F0F5', fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+  date: { color: '#555560', fontSize: 12, marginTop: -8 },
 
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1E1E24',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#2A2A35',
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingVertical: 16,
   },
-  stat: { flex: 1, alignItems: 'center', gap: 3 },
-  statValue: { color: '#F0F0F5', fontSize: 18, fontWeight: '700' },
-  statLabel: { color: '#555560', fontSize: 10 },
-  statDivider: { width: 1, height: 28, backgroundColor: '#2A2A35' },
+  stat: { flex: 1, alignItems: 'center', gap: 4 },
+  statValue: { color: '#F0F0F5', fontSize: 19, fontWeight: '700' },
+  statLabel: { color: '#555560', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4 },
+  statDivider: { width: 1, height: 26, backgroundColor: '#2A2A35' },
 
   prHighlight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    backgroundColor: 'rgba(0,230,118,0.07)',
-    borderRadius: 10,
+    gap: 8,
+    backgroundColor: GOLD_SOFT,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0,230,118,0.18)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderColor: GOLD_LINE,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
   },
-  prHighlightText: { color: '#00E676', fontSize: 13, fontWeight: '600' },
+  prHighlightText: { color: GOLD, fontSize: 13, fontWeight: '700' },
 
   techRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  techPill: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3 },
-  techPillText: { fontSize: 10, fontWeight: '600' },
+  techPill: { backgroundColor: '#20202A', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  techPillText: { color: '#9A9AAA', fontSize: 11, fontWeight: '600' },
 
   notesBox: {
     flexDirection: 'row',
@@ -448,84 +460,94 @@ const ss = StyleSheet.create({
     gap: 8,
     backgroundColor: '#1E1E24',
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2A2A35',
-    padding: 12,
+    padding: 13,
   },
   notesText: { color: '#8A8A9A', fontSize: 13, lineHeight: 18, flex: 1 },
 
-  exerciseList: { gap: 2 },
+  // ── Section header ──
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+    marginBottom: -10,
+  },
+  sectionTitle: { color: '#F0F0F5', fontSize: 16, fontWeight: '700' },
+  sectionCount: { color: '#555560', fontSize: 13, fontWeight: '600' },
+
+  exerciseList: { gap: 12 },
 
   exerciseSection: {
     backgroundColor: '#1E1E24',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#2A2A35',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 10,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 12,
   },
 
   exerciseHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 10,
   },
-  exerciseName: { color: '#F0F0F5', fontSize: 14, fontWeight: '700', flex: 1 },
-  exerciseMuscle: { color: '#555560', fontSize: 11 },
+  exerciseHeaderText: { flex: 1, gap: 3 },
+  exerciseName: { color: '#F0F0F5', fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
+  exerciseMuscle: { color: '#8A8A9A', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 },
 
   exerciseNotesRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
-  exerciseNotes: { color: '#555560', fontSize: 12, lineHeight: 16, flex: 1, fontStyle: 'italic' },
+  exerciseNotes: { color: '#8A8A9A', fontSize: 12, lineHeight: 16, flex: 1, fontStyle: 'italic' },
 
-  setsContainer: { gap: 8 },
+  setsContainer: { },
 
-  setRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  setInfo: { flex: 1, gap: 3 },
-  setMainRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  setReps: { color: '#F0F0F5', fontSize: 13, width: 62 },
-  setWeight: { color: '#8A8A9A', fontSize: 13, flex: 1 },
+  setRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 10 },
+  setRowDivider: { borderTopWidth: 1, borderTopColor: '#23232C' },
+  setInfo: { flex: 1, gap: 2 },
+  setMainRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 22 },
+  setReps: { color: '#F0F0F5', fontSize: 15, fontWeight: '600', minWidth: 72 },
+  setWeight: { color: '#8A8A9A', fontSize: 15, flex: 1 },
   prPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: 'rgba(0,230,118,0.10)',
+    backgroundColor: GOLD_SOFT,
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
     borderRadius: 8,
     paddingHorizontal: 7,
     paddingVertical: 2,
   },
-  prText: { color: '#00E676', fontSize: 9, fontWeight: '700' },
+  prText: { color: GOLD, fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
 
-  // Executed technique detail
-  techDetail: { marginTop: 8, gap: 4 },
+  // ── Executed technique detail (shared rail language) ──
+  techDetail: {
+    marginTop: 10,
+    marginLeft: 1,
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: RAIL,
+    gap: 5,
+  },
   blockRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: 6,
-    paddingHorizontal: 10, paddingVertical: 6, gap: 8,
+    minHeight: 26, paddingVertical: 6, gap: 8,
   },
-  blockRowFailed: { backgroundColor: 'rgba(239,68,68,0.10)' },
   blockLabel: { color: '#8A8A9A', fontSize: 12, flexShrink: 1 },
-  blockVals: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  blockVals: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   blockWeight: { color: '#8A8A9A', fontSize: 12 },
-  blockReps: { color: '#F0F0F5', fontSize: 12, fontWeight: '500' },
+  blockReps: { color: '#F0F0F5', fontSize: 12, fontWeight: '600' },
   failTag: { color: '#FF5252', fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
 
-  restSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 1 },
-  restSepLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
-  restSepText: { color: '#4A4A5A', fontSize: 10, marginHorizontal: 8 },
+  restSep: { paddingVertical: 3 },
+  restSepText: { color: '#4A4A5A', fontSize: 10 },
   blockSepThin: { height: 4 },
 
-  dropSep: { flexDirection: 'row', alignItems: 'center', marginVertical: 1 },
-  dropSepText: { color: '#EF4444', fontSize: 10, marginHorizontal: 8, opacity: 0.75 },
-
-  mrWeights: { flexDirection: 'row', gap: 8, marginBottom: 2 },
+  mrWeights: { flexDirection: 'row', gap: 10, marginBottom: 6 },
   mrWeightBox: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
   },
-  mrWeightBoxDrop: { backgroundColor: 'rgba(123,97,255,0.10)' },
-  mrWeightLabel: { color: '#8A8A9A', fontSize: 10, fontWeight: '600' },
-  mrWeightVal: { color: '#F0F0F5', fontSize: 12, fontWeight: '500' },
+  mrWeightLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '600' },
+  mrWeightVal: { color: '#F0F0F5', fontSize: 12, fontWeight: '600' },
 
   emptyExercises: { alignItems: 'center', paddingVertical: 24 },
   emptyText: { color: '#4A4A5A', fontSize: 13 },

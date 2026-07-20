@@ -1,54 +1,80 @@
 import { useEffect, useRef } from 'react'
-import { Animated, StyleSheet } from 'react-native'
+import { Animated as RNAnimated, StyleSheet, View } from 'react-native'
+import Reanimated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated'
 
 // Shared completion visuals for every set type in Workout Execution (normal,
 // warmup, feeder, back-off and all advanced techniques). Keeps the completed
-// state premium and subtle: a thin success border, a soft glow and a faint tint
-// — never a strong green fill or a large success area. All animations use the
-// native driver (opacity / scale only) so they stay smooth on every screen size.
+// state premium and subtle: a thin success border, a faint success tint and a
+// left success indicator bar — never a strong green fill, glow or shadow. The
+// completed set stays nearly identical to a pending one; the filled completion
+// check plus the left bar are the primary signals.
 
 export const SUCCESS = '#00E676'
 
-// Animated 0 → 1 value driven by `active`. Native-driver safe.
-export function useCompletionPulse(active: boolean) {
-  const v = useRef(new Animated.Value(active ? 1 : 0)).current
-  useEffect(() => {
-    Animated.timing(v, { toValue: active ? 1 : 0, duration: 260, useNativeDriver: true }).start()
-  }, [active])
-  return v
-}
-
 // Settled opacity for a completed row — recedes slightly while staying readable.
+// Native-driver safe (RN Animated, opacity only).
 export function useCompletedFade(active: boolean) {
-  const v = useRef(new Animated.Value(active ? 0.88 : 1)).current
+  const v = useRef(new RNAnimated.Value(active ? 0.88 : 1)).current
   useEffect(() => {
-    Animated.timing(v, { toValue: active ? 0.88 : 1, duration: 250, useNativeDriver: true }).start()
+    RNAnimated.timing(v, { toValue: active ? 0.88 : 1, duration: 250, useNativeDriver: true }).start()
   }, [active])
   return v
 }
 
-// Subtle completion accent overlay — a thin border emphasis and a soft shadow,
-// no success fill or tint. Sits above the row background but below content
-// (pointerEvents none) and fades in when the set is completed. A completed set
-// stays nearly identical to a pending one; the filled completion check is the
-// primary signal. Reused by every set type (simple and technique alike).
-export function CompletedAccentOverlay({ active, radius = 10 }: { active: boolean; radius?: number }) {
-  const opacity = useCompletionPulse(active)
+// Subtle completion accent overlay. Two variants, both fade in (opacity 0 → 1,
+// 220ms), sit above the row background but below content (pointerEvents none),
+// and never use a glow, shadow or full green fill:
+//
+//   default  — a thin success border, a faint tint and a 4px left success bar.
+//              For clean WORKING sets that own no other left indicator.
+//   subtle   — a faint success tint only, no border and no left bar. For sets
+//              that already carry a colored left accent (warmup/feeder/back-off
+//              and advanced techniques). The set type/technique colour stays the
+//              single left identity; completion reads as a secondary tint plus
+//              the filled check button, never a second competing green stripe.
+export function CompletedAccentOverlay({
+  active,
+  radius = 10,
+  subtle = false,
+}: {
+  active: boolean
+  radius?: number
+  subtle?: boolean
+}) {
+  const opacity = useSharedValue(active ? 1 : 0)
+  useEffect(() => {
+    opacity.value = withTiming(active ? 1 : 0, { duration: 220 })
+  }, [active])
+  const fade = useAnimatedStyle(() => ({ opacity: opacity.value }))
+
   return (
-    <Animated.View
+    <Reanimated.View
       pointerEvents="none"
-      style={[StyleSheet.absoluteFill, ca.overlay, { borderRadius: radius, opacity }]}
-    />
+      style={[StyleSheet.absoluteFill, subtle ? ca.overlaySubtle : ca.overlay, { borderRadius: radius }, fade]}
+    >
+      {!subtle && <View style={ca.bar} />}
+    </Reanimated.View>
   )
 }
 
 const ca = StyleSheet.create({
   overlay: {
     borderWidth: 1,
-    borderColor: 'rgba(0,230,118,0.16)',
-    shadowColor: SUCCESS,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.10,
-    shadowRadius: 5,
+    borderColor: 'rgba(0,230,118,0.30)',
+    backgroundColor: 'rgba(0,230,118,0.05)',
+  },
+  // No border or bar — only a faint tint, so the existing colored left accent
+  // remains the set's sole side indicator.
+  overlaySubtle: {
+    backgroundColor: 'rgba(0,230,118,0.07)',
+  },
+  bar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderRadius: 4,
+    backgroundColor: SUCCESS,
   },
 })

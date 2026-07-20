@@ -1,5 +1,6 @@
-import React, { useRef } from 'react'
-import { View, TouchableOpacity, Animated } from 'react-native'
+import React from 'react'
+import { View, TouchableOpacity } from 'react-native'
+import Reanimated, { useSharedValue, useAnimatedStyle, withSequence, withSpring, withTiming } from 'react-native-reanimated'
 import { Ionicons } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 
@@ -13,9 +14,7 @@ type CompleteSetButtonProps = {
 }
 
 export function CompleteSetButton({ checked, onPress, size = 38 }: CompleteSetButtonProps) {
-  const scale = useRef(new Animated.Value(1)).current
-  // Start at 1 (opacity=0, scale max) so the ring is invisible until first check press
-  const ring = useRef(new Animated.Value(1)).current
+  const scale = useSharedValue(1)
 
   function handlePress() {
     if (!checked) {
@@ -23,49 +22,37 @@ export function CompleteSetButton({ checked, onPress, size = 38 }: CompleteSetBu
       const result = onPress()
       if (result === false) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-        Animated.sequence([
-          Animated.timing(scale, { toValue: 0.92, duration: 50, useNativeDriver: true }),
-          Animated.spring(scale, { toValue: 1, friction: 4, tension: 300, useNativeDriver: true }),
-        ]).start()
+        scale.value = withSequence(
+          withTiming(0.92, { duration: 50 }),
+          withSpring(1, { duration: 220, dampingRatio: 0.6 }),
+        )
         return
       }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-      Animated.sequence([
-        Animated.timing(scale, { toValue: 0.75, duration: 55, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1.0, friction: 3, tension: 280, useNativeDriver: true }),
-      ]).start()
-      ring.setValue(0)
-      Animated.timing(ring, { toValue: 1, duration: 450, useNativeDriver: true }).start()
+      // Confirm completion: dip to 0.97 then spring back to 1.0 (~220ms perceived)
+      scale.value = withSequence(
+        withTiming(0.97, { duration: 60 }),
+        withSpring(1, { duration: 220, dampingRatio: 0.6 }),
+      )
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-      Animated.sequence([
-        Animated.timing(scale, { toValue: 0.88, duration: 70, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1, friction: 6, tension: 200, useNativeDriver: true }),
-      ]).start()
+      scale.value = withSequence(
+        withTiming(0.97, { duration: 60 }),
+        withSpring(1, { duration: 220, dampingRatio: 0.7 }),
+      )
       onPress()
     }
   }
 
-  const ringScale = ring.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.9] })
-  const ringOpacity = ring.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0.35, 0.15, 0] })
+  const boxStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }))
 
   return (
     <TouchableOpacity onPress={handlePress} activeOpacity={0.8} hitSlop={{ top: 8, bottom: 8, left: 6, right: 8 }}>
       <View style={{ width: size, height: size }}>
-        <Animated.View
-          style={{
-            position: 'absolute',
-            width: size, height: size, borderRadius: 9,
-            backgroundColor: '#00E676',
-            transform: [{ scale: ringScale }],
-            opacity: ringOpacity,
-          }}
-        />
-        <Animated.View style={[
+        <Reanimated.View style={[
           {
             width: size, height: size, borderRadius: 9, borderWidth: 1,
             justifyContent: 'center', alignItems: 'center',
-            transform: [{ scale }],
           },
           checked ? {
             backgroundColor: 'rgba(0,230,118,0.14)',
@@ -74,13 +61,14 @@ export function CompleteSetButton({ checked, onPress, size = 38 }: CompleteSetBu
             backgroundColor: '#2A2A35',
             borderColor: '#3A3A45',
           },
+          boxStyle,
         ]}>
           <Ionicons
             name="checkmark"
             size={Math.round(size * 0.52)}
             color={checked ? '#00E676' : '#8A8A9A'}
           />
-        </Animated.View>
+        </Reanimated.View>
       </View>
     </TouchableOpacity>
   )

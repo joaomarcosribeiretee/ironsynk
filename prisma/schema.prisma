@@ -402,6 +402,8 @@ model MealLog {
 
   dailyLog DailyNutritionLog @relation(fields: [dailyNutritionLogId], references: [id])
   meal     Meal              @relation(fields: [mealId], references: [id])
+
+  @@unique([dailyNutritionLogId, mealId])
 }
 
 // ─────────────────────────────────────────────
@@ -477,6 +479,9 @@ model Post {
   content       String?
   imageUrls     String[]
   videoUrl      String?
+  // Ordered carousel media: [{ type, url, thumbnailUrl?, durationSec?, order }]
+  // imageUrls/videoUrl kept in sync for backward-compatible reads.
+  media         Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

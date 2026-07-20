@@ -31,7 +31,14 @@
     },
     "plugins": [
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permite escolher fotos e vídeos para publicar seus treinos.",
+          "cameraPermission": "Permite capturar fotos e vídeos para publicar seus treinos."
+        }
+      ]
     ],
     "extra": {
       "eas": {

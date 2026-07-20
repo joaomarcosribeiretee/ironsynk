@@ -20,7 +20,7 @@ export const WORKOUT_INPUT = {
   border: '#2A2A35',
   borderFocus: '#2979FF',
   text: '#F0F0F5',
-  textDone: '#C2C2CC',
+  textDone: '#B9FFD8',
   placeholder: '#4A4A5A',
   fontSize: 15,
 } as const
