@@ -12,7 +12,7 @@ import { plannedSetRoutes } from './routes/planned-sets/index.js'
 import { sessionRoutes } from './routes/sessions/index.js'
 import { postRoutes } from './routes/posts/index.js'
 import { nutritionRoutes } from './routes/nutrition/index.js'
-import { uploadRoutes, POST_MEDIA_BUCKET } from './routes/uploads/index.js'
+import { uploadRoutes, ensurePostMediaBucket } from './routes/uploads/index.js'
 import { supabaseAdmin } from './lib/supabase.js'
 
 const server = Fastify({ logger: true })
@@ -29,13 +29,11 @@ async function bootstrap(): Promise<void> {
   })
 
   await supabaseAdmin.storage.createBucket('avatars', { public: true }).catch(() => null)
-  await supabaseAdmin.storage
-    .createBucket(POST_MEDIA_BUCKET, {
-      public: true,
-      fileSizeLimit: '120MB',
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'],
-    })
-    .catch(() => null)
+  // Seed the post-media bucket; log (do not crash) if it can't be created so the
+  // signed-url endpoint can self-heal / report a clear error on first use.
+  await ensurePostMediaBucket(server.log).catch((err) => {
+    server.log.error(err, 'Post media storage bucket seeding failed at startup')
+  })
 
   server.get('/', async () => {
     return { service: 'ironsynk-api', status: 'ok' }

@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator,
-  LayoutAnimation, Platform, UIManager,
+  LayoutAnimation,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -12,10 +12,6 @@ import { api } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import type { TrainingGoal, WorkoutRecord } from '../../lib/api'
 import { ReadonlyExerciseCard } from '../../components/ReadonlyExerciseCard'
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true)
-}
 
 const GOAL_LABELS: Record<TrainingGoal, string> = {
   HYPERTROPHY: 'Hipertrofia',

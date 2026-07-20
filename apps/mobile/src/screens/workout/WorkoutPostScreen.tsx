@@ -84,10 +84,64 @@ function ExerciseSummaryRow({ exercise }: { exercise: ExecutionExerciseRecord })
   )
 }
 
+// Expandable list of exercises actually performed in the session (those with at
+// least one completed WORKING set). Collapsed shows the first exercise + a toggle;
+// tapping expands the rest with a 200ms Reanimated height/opacity animation.
+function ExpandableExerciseList({ exercises }: { exercises: ExecutionExerciseRecord[] }) {
+  const performed = exercises.filter(e =>
+    e.sets.some(s => s.isChecked && s.setType === 'WORKING'),
+  )
+  const [expanded, setExpanded] = useState(false)
+  const [restHeight, setRestHeight] = useState(0)
+  const progress = useSharedValue(0)
+
+  useEffect(() => {
+    progress.value = withTiming(expanded ? 1 : 0, { duration: 200 })
+  }, [expanded, progress])
+
+  const restAnimStyle = useAnimatedStyle(() => ({
+    height: progress.value * restHeight,
+    opacity: progress.value,
+  }))
+
+  if (performed.length === 0) return null
+
+  const first = performed[0]
+  const rest = performed.slice(1)
+
+  return (
+    <View style={ps.exerciseList}>
+      {first && <ExerciseSummaryRow exercise={first} />}
+      {rest.length > 0 && (
+        <>
+          <Reanimated.View style={[ps.exerciseCollapse, restAnimStyle]}>
+            {/* Measured at natural height (independent of the clipped parent). */}
+            <View
+              style={ps.exerciseListInner}
+              onLayout={e => setRestHeight(e.nativeEvent.layout.height)}
+            >
+              {rest.map(e => <ExerciseSummaryRow key={e.id} exercise={e} />)}
+            </View>
+          </Reanimated.View>
+          <TouchableOpacity
+            onPress={() => setExpanded(v => !v)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={ps.moreExercises}>
+              {expanded ? 'Ver menos' : `+${rest.length} exercícios`}
+            </Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
+  )
+}
+
 export function WorkoutPostScreen() {
   const navigation = useNavigation<NavProp>()
   const route = useRoute<RouteProps>()
-  const { sessionId, workoutName, durationMin, totalValidSets, totalVolume, exercises } = route.params
+  const { sessionId, workoutName, durationMin, exercises } = route.params
 
   const qc = useQueryClient()
   const [description, setDescription] = useState('')
@@ -98,8 +152,19 @@ export function WorkoutPostScreen() {
   // Stable per-screen folder id so all media for this draft share a storage path.
   const postDraftId = useRef(makeId()).current
 
-  const visibleExercises = exercises.slice(0, 5)
-  const extraCount = exercises.length - visibleExercises.length
+  // Stats from executed SetLogs only: completed (checked) WORKING sets.
+  // Warmup/feeder are excluded from volume per product rules; planned-but-not-done
+  // sets are ignored. Works for both program and free workouts.
+  let completedSets = 0
+  let completedVolume = 0
+  for (const e of exercises) {
+    for (const s of e.sets) {
+      if (s.isChecked && s.setType === 'WORKING') {
+        completedSets += 1
+        completedVolume += (s.weightKg ?? 0) * (s.repsCompleted ?? 0)
+      }
+    }
+  }
   const muscles = [...new Set(exercises.map(e => e.exercise.muscleGroup))].slice(0, 6)
 
   // Publish button opacity transition (200ms) while submitting.
@@ -196,7 +261,9 @@ export function WorkoutPostScreen() {
       qc.invalidateQueries({ queryKey: ['my-workout-posts'] })
       qc.invalidateQueries({ queryKey: ['feed'] })
       showToast('Treino publicado!', 'success')
-      navigation.navigate('AthleteTabs', { screen: 'Workout' })
+      // Terminal screen: reset so the published post leaves a clean root
+      // (no orphan WorkoutPost/Execution to GO_BACK into).
+      navigation.reset({ index: 0, routes: [{ name: 'AthleteTabs', params: { screen: 'Workout' } }] })
     } catch (err) {
       showToast(getFriendlyErrorMessage(err, 'Erro ao publicar'), 'error')
       setPublishing(false)
@@ -269,12 +336,12 @@ export function WorkoutPostScreen() {
             </View>
             <View style={ps.statDivider} />
             <View style={ps.stat}>
-              <Text style={ps.statValue}>{totalValidSets}</Text>
+              <Text style={ps.statValue}>{completedSets}</Text>
               <Text style={ps.statLabel}>séries</Text>
             </View>
             <View style={ps.statDivider} />
             <View style={ps.stat}>
-              <Text style={ps.statValue}>{totalVolume > 0 ? formatVolume(totalVolume) : '—'}</Text>
+              <Text style={ps.statValue}>{completedVolume > 0 ? formatVolume(completedVolume) : '—'}</Text>
               <Text style={ps.statLabel}>kg total</Text>
             </View>
           </View>
@@ -290,15 +357,8 @@ export function WorkoutPostScreen() {
             </View>
           )}
 
-          {/* Exercise list */}
-          {visibleExercises.length > 0 && (
-            <View style={ps.exerciseList}>
-              {visibleExercises.map(e => <ExerciseSummaryRow key={e.id} exercise={e} />)}
-              {extraCount > 0 && (
-                <Text style={ps.moreExercises}>+{extraCount} exercícios</Text>
-              )}
-            </View>
-          )}
+          {/* Exercise list — expandable, collapsed by default */}
+          <ExpandableExerciseList exercises={exercises} />
         </View>
       </ScrollView>
 
@@ -422,6 +482,8 @@ const ps = StyleSheet.create({
   musclePillText: { color: 'rgba(79,195,247,0.65)', fontSize: 11 },
 
   exerciseList: { gap: 8 },
+  exerciseCollapse: { overflow: 'hidden' },
+  exerciseListInner: { gap: 8, paddingTop: 8 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#2A2A35', flexShrink: 0 },
   summaryExName: { color: '#8A8A9A', fontSize: 13, flex: 1 },
