@@ -38,7 +38,8 @@
           "photosPermission": "Permite escolher fotos e vídeos para publicar seus treinos.",
           "cameraPermission": "Permite capturar fotos e vídeos para publicar seus treinos."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "eas": {

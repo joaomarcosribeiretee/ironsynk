@@ -2,21 +2,28 @@ import React, { useEffect, useRef, useState } from 'react'
 import {
   View, Text, Modal, TouchableOpacity, TextInput, StyleSheet,
   KeyboardAvoidingView, Platform, Pressable, ActivityIndicator,
-  Animated, Dimensions, ScrollView, Keyboard,
+  Animated, Dimensions, Keyboard,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker'
+import type { DateTimePickerEvent } from '@react-native-community/datetimepicker'
 import type { MealRecord } from '../../lib/api'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
-// The plan stores an hour slot (0–23), so the picker offers exactly those
-// values — no free text, nothing to validate on save.
-const HOURS = Array.from({ length: 24 }, (_, i) => i)
-const CHIP_W = 64
-const CHIP_GAP = 8
-
 const fmtHour = (h: number) => `${String(h).padStart(2, '0')}:00`
+
+// The plan stores an hour slot (0–23), so a picked time snaps to its nearest
+// hour. 23:30+ wraps to 00:00, which is the same instant on the clock.
+const snapToHour = (d: Date) => (d.getHours() + (d.getMinutes() >= 30 ? 1 : 0)) % 24
+
+// Seed the picker with the current selection, or a neutral 08:00 when empty.
+const hourToDate = (h: number | null) => {
+  const d = new Date()
+  d.setHours(h ?? 8, 0, 0, 0)
+  return d
+}
 
 export type MealFormData = { name: string; targetTimeHour?: number | null }
 
@@ -32,17 +39,19 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
 
   const [name, setName] = useState('')
   const [hour, setHour] = useState<number | null>(null)
-  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)   // iOS only — Android uses a native dialog
+  const [draftTime, setDraftTime] = useState<Date>(() => hourToDate(null))
   const [saving, setSaving] = useState(false)
 
   const scale = useRef(new Animated.Value(0.92)).current
-  const hourScroll = useRef<ScrollView>(null)
 
   useEffect(() => {
     if (visible) {
       setName(editing?.name ?? '')
       const h = editing?.targetTimeHour
-      setHour(typeof h === 'number' && h >= 0 && h <= 23 ? h : null)
+      const valid = typeof h === 'number' && h >= 0 && h <= 23 ? h : null
+      setHour(valid)
+      setDraftTime(hourToDate(valid))
       setPickerOpen(false)
       setSaving(false)
       scale.setValue(0.92)
@@ -54,15 +63,27 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
 
   const canSave = name.trim().length > 0
 
-  function togglePicker() {
+  // Android opens the platform clock dialog, which carries its own OK/Cancel.
+  // iOS has no such dialog, so the native wheel is revealed inline and
+  // confirmed with the buttons below it.
+  function openPicker() {
     if (pickerOpen) { setPickerOpen(false); return }
     Keyboard.dismiss()
+    const current = hourToDate(hour)
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: current,
+        mode: 'time',
+        is24Hour: true,
+        onChange: (event: DateTimePickerEvent, date?: Date) => {
+          if (event.type !== 'set' || !date) return
+          setHour(snapToHour(date))
+        },
+      })
+      return
+    }
+    setDraftTime(current)
     setPickerOpen(true)
-    // Bring the current selection into view once the list is mounted.
-    const idx = hour ?? 0
-    requestAnimationFrame(() => {
-      hourScroll.current?.scrollTo({ x: Math.max(0, idx * (CHIP_W + CHIP_GAP) - CHIP_W), animated: false })
-    })
   }
 
   async function handleSave() {
@@ -101,7 +122,7 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
             <Text style={s.label}>Horário (opcional)</Text>
             <TouchableOpacity
               style={[s.input, s.timeField, pickerOpen && s.timeFieldOpen]}
-              onPress={togglePicker}
+              onPress={openPicker}
               activeOpacity={0.7}
             >
               <Ionicons name="time-outline" size={18} color={hour != null ? '#4FC3F7' : '#4A4A5A'} />
@@ -120,29 +141,30 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
               )}
             </TouchableOpacity>
 
-            {pickerOpen && (
+            {pickerOpen && Platform.OS === 'ios' && (
               <View style={s.pickerPanel}>
-                <ScrollView
-                  ref={hourScroll}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={s.pickerRow}
-                  keyboardShouldPersistTaps="handled"
-                >
-                  {HOURS.map((h) => {
-                    const active = hour === h
-                    return (
-                      <TouchableOpacity
-                        key={h}
-                        style={[s.hourChip, active && s.hourChipActive]}
-                        onPress={() => { setHour(h); setPickerOpen(false) }}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[s.hourChipText, active && s.hourChipTextActive]}>{fmtHour(h)}</Text>
-                      </TouchableOpacity>
-                    )
-                  })}
-                </ScrollView>
+                <DateTimePicker
+                  value={draftTime}
+                  mode="time"
+                  display="spinner"
+                  is24Hour
+                  themeVariant="dark"
+                  textColor="#F0F0F5"
+                  style={s.iosPicker}
+                  onChange={(_e: DateTimePickerEvent, date?: Date) => { if (date) setDraftTime(date) }}
+                />
+                <View style={s.pickerActions}>
+                  <TouchableOpacity onPress={() => setPickerOpen(false)} activeOpacity={0.7} style={s.pickerActionBtn}>
+                    <Text style={s.pickerCancel}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => { setHour(snapToHour(draftTime)); setPickerOpen(false) }}
+                    activeOpacity={0.7}
+                    style={s.pickerActionBtn}
+                  >
+                    <Text style={s.pickerConfirm}>Confirmar</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
@@ -211,17 +233,17 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2A2A35',
     borderRadius: 12,
-    paddingVertical: 10,
+    paddingTop: 4,
+    overflow: 'hidden',
   },
-  pickerRow: { flexDirection: 'row', gap: CHIP_GAP, paddingHorizontal: 10 },
-  hourChip: {
-    width: CHIP_W, height: 38, borderRadius: 19,
-    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
-    alignItems: 'center', justifyContent: 'center',
+  iosPicker: { height: 160 },
+  pickerActions: {
+    flexDirection: 'row', justifyContent: 'flex-end', gap: 4,
+    borderTopWidth: 1, borderTopColor: '#2A2A35',
   },
-  hourChipActive: { backgroundColor: 'rgba(41,121,255,0.15)', borderColor: '#2979FF' },
-  hourChipText: { color: '#8A8A9A', fontSize: 13, fontWeight: '500' },
-  hourChipTextActive: { color: '#4FC3F7', fontWeight: '600' },
+  pickerActionBtn: { paddingHorizontal: 16, paddingVertical: 12 },
+  pickerCancel: { color: '#8A8A9A', fontSize: 14, fontWeight: '500' },
+  pickerConfirm: { color: '#4FC3F7', fontSize: 14, fontWeight: '600' },
 
   btnWrap: { borderRadius: 14, overflow: 'hidden' },
   btnDisabled: { opacity: 0.35 },
