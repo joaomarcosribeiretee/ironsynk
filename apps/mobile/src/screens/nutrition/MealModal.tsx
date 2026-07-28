@@ -2,13 +2,21 @@ import React, { useEffect, useRef, useState } from 'react'
 import {
   View, Text, Modal, TouchableOpacity, TextInput, StyleSheet,
   KeyboardAvoidingView, Platform, Pressable, ActivityIndicator,
-  Animated, Dimensions,
+  Animated, Dimensions, ScrollView, Keyboard,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import type { MealRecord } from '../../lib/api'
 
 const { width: SCREEN_W } = Dimensions.get('window')
+
+// The plan stores an hour slot (0–23), so the picker offers exactly those
+// values — no free text, nothing to validate on save.
+const HOURS = Array.from({ length: 24 }, (_, i) => i)
+const CHIP_W = 64
+const CHIP_GAP = 8
+
+const fmtHour = (h: number) => `${String(h).padStart(2, '0')}:00`
 
 export type MealFormData = { name: string; targetTimeHour?: number | null }
 
@@ -23,15 +31,19 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
   const isEdit = !!editing
 
   const [name, setName] = useState('')
-  const [hour, setHour] = useState('')
+  const [hour, setHour] = useState<number | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const scale = useRef(new Animated.Value(0.92)).current
+  const hourScroll = useRef<ScrollView>(null)
 
   useEffect(() => {
     if (visible) {
       setName(editing?.name ?? '')
-      setHour(editing?.targetTimeHour != null ? String(editing.targetTimeHour) : '')
+      const h = editing?.targetTimeHour
+      setHour(typeof h === 'number' && h >= 0 && h <= 23 ? h : null)
+      setPickerOpen(false)
       setSaving(false)
       scale.setValue(0.92)
       Animated.spring(scale, {
@@ -42,15 +54,22 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
 
   const canSave = name.trim().length > 0
 
+  function togglePicker() {
+    if (pickerOpen) { setPickerOpen(false); return }
+    Keyboard.dismiss()
+    setPickerOpen(true)
+    // Bring the current selection into view once the list is mounted.
+    const idx = hour ?? 0
+    requestAnimationFrame(() => {
+      hourScroll.current?.scrollTo({ x: Math.max(0, idx * (CHIP_W + CHIP_GAP) - CHIP_W), animated: false })
+    })
+  }
+
   async function handleSave() {
     if (!canSave || saving) return
     setSaving(true)
     try {
-      const h = parseInt(hour, 10)
-      await onSave({
-        name: name.trim(),
-        targetTimeHour: Number.isInteger(h) && h >= 0 && h <= 23 ? h : null,
-      })
+      await onSave({ name: name.trim(), targetTimeHour: hour })
       onClose()
     } catch {
       setSaving(false)
@@ -79,16 +98,53 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
               placeholderTextColor="#4A4A5A"
               autoFocus
             />
-            <Text style={s.label}>Horário (opcional, 0–23)</Text>
-            <TextInput
-              style={s.input}
-              value={hour}
-              onChangeText={setHour}
-              keyboardType="numeric"
-              placeholder="Ex: 8"
-              placeholderTextColor="#4A4A5A"
-              maxLength={2}
-            />
+            <Text style={s.label}>Horário (opcional)</Text>
+            <TouchableOpacity
+              style={[s.input, s.timeField, pickerOpen && s.timeFieldOpen]}
+              onPress={togglePicker}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="time-outline" size={18} color={hour != null ? '#4FC3F7' : '#4A4A5A'} />
+              <Text style={[s.timeValue, hour == null && s.timePlaceholder]}>
+                {hour != null ? fmtHour(hour) : 'Selecionar horário'}
+              </Text>
+              {hour != null ? (
+                <TouchableOpacity
+                  onPress={() => { setHour(null); setPickerOpen(false) }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="close-circle" size={18} color="#555560" />
+                </TouchableOpacity>
+              ) : (
+                <Ionicons name={pickerOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#555560" />
+              )}
+            </TouchableOpacity>
+
+            {pickerOpen && (
+              <View style={s.pickerPanel}>
+                <ScrollView
+                  ref={hourScroll}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={s.pickerRow}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {HOURS.map((h) => {
+                    const active = hour === h
+                    return (
+                      <TouchableOpacity
+                        key={h}
+                        style={[s.hourChip, active && s.hourChipActive]}
+                        onPress={() => { setHour(h); setPickerOpen(false) }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[s.hourChipText, active && s.hourChipTextActive]}>{fmtHour(h)}</Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </ScrollView>
+              </View>
+            )}
 
             <View style={{ height: 20 }} />
             <TouchableOpacity style={[s.btnWrap, !canSave && s.btnDisabled]} onPress={handleSave} activeOpacity={0.85}>
@@ -143,6 +199,29 @@ const s = StyleSheet.create({
     color: '#F0F0F5',
     fontSize: 15,
   },
+
+  timeField: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  timeFieldOpen: { borderColor: '#2979FF' },
+  timeValue: { flex: 1, color: '#F0F0F5', fontSize: 15 },
+  timePlaceholder: { color: '#4A4A5A' },
+
+  pickerPanel: {
+    marginTop: 8,
+    backgroundColor: '#141418',
+    borderWidth: 1,
+    borderColor: '#2A2A35',
+    borderRadius: 12,
+    paddingVertical: 10,
+  },
+  pickerRow: { flexDirection: 'row', gap: CHIP_GAP, paddingHorizontal: 10 },
+  hourChip: {
+    width: CHIP_W, height: 38, borderRadius: 19,
+    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  hourChipActive: { backgroundColor: 'rgba(41,121,255,0.15)', borderColor: '#2979FF' },
+  hourChipText: { color: '#8A8A9A', fontSize: 13, fontWeight: '500' },
+  hourChipTextActive: { color: '#4FC3F7', fontWeight: '600' },
 
   btnWrap: { borderRadius: 14, overflow: 'hidden' },
   btnDisabled: { opacity: 0.35 },
