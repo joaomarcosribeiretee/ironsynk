@@ -37,6 +37,7 @@ export function NutritionPlanCard({
 }: Props) {
   const qc = useQueryClient()
   const [isOpen, setIsOpen] = useState(false)
+  const [showMacros, setShowMacros] = useState(false)
   const [contentH, setContentH] = useState(0)
   const [localMeals, setLocalMeals] = useState<PlanMeal[]>([])
   const [sheet, setSheet] = useState<{ visible: boolean; title: string; actions: SheetAction[] }>({
@@ -148,7 +149,7 @@ export function NutritionPlanCard({
           <Text style={s.mealName} numberOfLines={1}>
             {meal.targetTimeHour != null ? `${String(meal.targetTimeHour).padStart(2, '0')}:00  ` : ''}{meal.name}
           </Text>
-          <Text style={s.mealMeta}>
+          <Text style={s.mealMeta} numberOfLines={1}>
             {meal.foods.length} {meal.foods.length === 1 ? 'alimento' : 'alimentos'} · {fmt(meal.plannedMacros.calories)} kcal
           </Text>
         </TouchableOpacity>
@@ -164,6 +165,10 @@ export function NutritionPlanCard({
   }
 
   const planMacros = sumMacros(meals.map(m => m.plannedMacros))
+  const goalLabel = plan.goal ? GOAL_LABELS[plan.goal] : null
+  // A plan literally named after its goal ("Cutting") makes the goal pill pure
+  // repetition — drop it and let the name carry the information.
+  const showGoalPill = goalLabel !== null && goalLabel.toLowerCase() !== plan.name.trim().toLowerCase()
 
   return (
     <View style={isDragging ? s.cardDragging : undefined}>
@@ -176,10 +181,15 @@ export function NutritionPlanCard({
           <View style={s.nameBlock}>
             <View style={s.nameRow}>
               <Text style={s.planName} numberOfLines={1}>{plan.name}</Text>
-              {plan.isActive && <View style={s.activeBadge}><Text style={s.activeText}>ATIVO</Text></View>}
+              {plan.isActive && (
+                <View style={s.activeBadge}>
+                  <View style={s.activeDot} />
+                  <Text style={s.activeText}>ATIVO</Text>
+                </View>
+              )}
             </View>
             <View style={s.pillsRow}>
-              {plan.goal && <View style={s.pill}><Text style={s.pillText}>{GOAL_LABELS[plan.goal]}</Text></View>}
+              {showGoalPill && <View style={s.pill}><Text style={s.pillText}>{goalLabel}</Text></View>}
               {plan.targetCalories != null && <Text style={s.kcalHint}>{fmt(plan.targetCalories)} kcal</Text>}
             </View>
           </View>
@@ -201,11 +211,32 @@ export function NutritionPlanCard({
             ) : (
               <>
                 {meals.length > 0 && (
-                  <View style={s.macroLine}>
-                    <Text style={s.macroLineText}>Total do plano</Text>
-                    <Text style={s.macroLineVals}>
-                      {fmt(planMacros.calories)} kcal · <Text style={{ color: MACRO_COLORS.protein }}>P {fmt(planMacros.proteinG)}</Text> · <Text style={{ color: MACRO_COLORS.carbs }}>C {fmt(planMacros.carbsG)}</Text> · <Text style={{ color: MACRO_COLORS.fat }}>G {fmt(planMacros.fatG)}</Text>
-                    </Text>
+                  <View style={s.totalBlock}>
+                    {/* Calories carry the summary; macros stay one tap away so
+                        the list itself keeps a single number per plan. */}
+                    <TouchableOpacity
+                      style={s.totalLine}
+                      onPress={() => setShowMacros(v => !v)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 6, bottom: 6, left: 0, right: 0 }}
+                    >
+                      <Text style={s.totalLabel}>Total do plano</Text>
+                      <View style={s.totalRight}>
+                        <Text style={s.totalValue}>{fmt(planMacros.calories)} kcal</Text>
+                        <Ionicons
+                          name={showMacros ? 'chevron-up' : 'chevron-down'}
+                          size={13}
+                          color="#555560"
+                        />
+                      </View>
+                    </TouchableOpacity>
+                    {showMacros && (
+                      <View style={s.macroDetail}>
+                        <MacroDot label="Proteína" value={planMacros.proteinG} color={MACRO_COLORS.protein} />
+                        <MacroDot label="Carbo" value={planMacros.carbsG} color={MACRO_COLORS.carbs} />
+                        <MacroDot label="Gordura" value={planMacros.fatG} color={MACRO_COLORS.fat} />
+                      </View>
+                    )}
                   </View>
                 )}
                 <DragSortableList
@@ -215,7 +246,7 @@ export function NutritionPlanCard({
                   onReorder={(data) => { setLocalMeals(data); reorderMeals.mutate(data.map(m => m.id)) }}
                   onDragStart={onMealDragStart}
                   onDragEnd={onMealDragEnd}
-                  itemHeight={64}
+                  itemHeight={68}
                   itemGap={8}
                 />
                 <TouchableOpacity style={s.addRow} onPress={() => onAddMeal(plan.id)} activeOpacity={0.7}>
@@ -247,6 +278,17 @@ export function NutritionPlanCard({
   )
 }
 
+// Revealed macro breakdown: the color survives as a small dot only, so the
+// numbers read as one calm row instead of three competing highlights.
+function MacroDot({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <View style={s.macroDotItem}>
+      <View style={[s.macroDotMark, { backgroundColor: color }]} />
+      <Text style={s.macroDotText}>{label} {fmt(value)}g</Text>
+    </View>
+  )
+}
+
 const s = StyleSheet.create({
   cardDragging: { opacity: 0.9, backgroundColor: '#1E1E28', borderRadius: 12 },
 
@@ -256,11 +298,13 @@ const s = StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: '#2A2A35',
   },
   rowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12, minWidth: 0 },
-  nameBlock: { flex: 1, minWidth: 0, gap: 5 },
+  nameBlock: { flex: 1, minWidth: 0, gap: 6 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   planName: { color: '#F0F0F5', fontSize: 17, fontWeight: '500', flexShrink: 1 },
-  activeBadge: { backgroundColor: 'rgba(0,230,118,0.12)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  activeText: { color: '#00E676', fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
+  // Status marker, not a highlight: a dot plus muted label instead of a chip.
+  activeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
+  activeDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(0,230,118,0.75)' },
+  activeText: { color: 'rgba(0,230,118,0.65)', fontSize: 9, fontWeight: '600', letterSpacing: 0.6 },
   pillsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   pill: {
     backgroundColor: 'rgba(41,121,255,0.06)', borderWidth: 1, borderColor: 'rgba(41,121,255,0.15)',
@@ -268,19 +312,25 @@ const s = StyleSheet.create({
   },
   pillText: { color: 'rgba(79,195,247,0.7)', fontSize: 10 },
   kcalHint: { color: '#8A8A9A', fontSize: 11 },
-  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
-  countText: { color: '#8A8A9A', fontSize: 13 },
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 0 },
+  countText: { color: '#6A6A7A', fontSize: 11 },
 
   measureWrap: { position: 'absolute', left: 0, right: 0, top: 0 },
-  mealsWrap: { paddingVertical: 10 },
+  mealsWrap: { paddingTop: 14, paddingBottom: 10 },
   loadingRow: { height: 68, justifyContent: 'center', alignItems: 'center' },
 
-  macroLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 2, paddingBottom: 10 },
-  macroLineText: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase' },
-  macroLineVals: { color: '#B8B8C4', fontSize: 12 },
+  totalBlock: { paddingHorizontal: 2, paddingBottom: 14 },
+  totalLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  totalLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase' },
+  totalRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  totalValue: { color: '#B8B8C4', fontSize: 12, fontVariant: ['tabular-nums'] },
+  macroDetail: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 10 },
+  macroDotItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  macroDotMark: { width: 5, height: 5, borderRadius: 2.5 },
+  macroDotText: { color: '#8A8A9A', fontSize: 11, fontVariant: ['tabular-nums'] },
 
   mealRow: {
-    flexDirection: 'row', alignItems: 'center', height: 64,
+    flexDirection: 'row', alignItems: 'center', height: 68,
     backgroundColor: '#1A1A22', borderRadius: 12, borderWidth: 1, borderColor: '#252530',
     marginBottom: 8, overflow: 'hidden',
   },
@@ -295,7 +345,7 @@ const s = StyleSheet.create({
 
   addRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    height: 50, marginBottom: 16,
+    height: 50, marginTop: 8, marginBottom: 18,
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#2A2A35', borderRadius: 12,
   },
   addText: { color: '#4FC3F7', fontSize: 14 },
