@@ -1,6 +1,6 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, RefreshControl,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Animated,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -13,7 +13,7 @@ import { api } from '../../lib/api'
 import type { DailyExecution, DailyMeal } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { MacroSummary } from '../../components/MacroSummary'
-import { MACRO_COLORS, fmt, sumMacros } from '../../lib/nutrition'
+import { fmt, sumMacros } from '../../lib/nutrition'
 import { showToast } from '../../components/Toast'
 
 type Nav = NativeStackNavigationProp<AppStackParamList>
@@ -165,6 +165,8 @@ export function NutritionTodayScreen() {
                   consumedFatG={totals.consumedFatG}
                   targetFatG={totals.targetFatG}
                   showRemaining
+                  subdueMacros
+                  collapsibleMacros
                 />
               </View>
             )}
@@ -274,57 +276,85 @@ function MealCheck({ checked, onPress }: { checked: boolean; onPress: () => void
   )
 }
 
-function MacroChip({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <View style={[s.chip, { backgroundColor: `${color}1A` }]}>
-      <Text style={[s.chipText, { color }]}>{label} {fmt(value)}g</Text>
-    </View>
-  )
-}
-
+// Collapsed, a card carries only what the athlete needs to act: state, time,
+// name and calories. Foods and the macro breakdown live one tap away so the
+// list stays scannable no matter how many meals the plan has.
 function MealExecCard({ meal, isNext, onToggle }: { meal: DailyMeal; isNext: boolean; onToggle: () => void }) {
   const done = meal.isCompleted
   const macros = meal.plannedMacros
+  const foods = meal.foods
   const time = meal.targetTimeHour !== null ? `${String(meal.targetTimeHour).padStart(2, '0')}:00` : null
+
+  // The meal that is up next opens by itself — that is the one being eaten.
+  const [open, setOpen] = useState(isNext && !done)
+  const [contentH, setContentH] = useState(0)
+  const progress = useRef(new Animated.Value(isNext && !done ? 1 : 0)).current
+
+  const bodyHeight = progress.interpolate({ inputRange: [0, 1], outputRange: [0, contentH] })
+  const bodyOpacity = progress.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0, 1] })
+  const chevronRotate = progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] })
+
+  function toggleOpen() {
+    Animated.spring(progress, {
+      toValue: open ? 0 : 1, damping: 20, stiffness: 200, mass: 0.8, useNativeDriver: false,
+    }).start()
+    setOpen((value) => !value)
+  }
 
   return (
     <View style={[s.mealCard, done && s.mealCardDone, !done && isNext && s.mealCardNext]}>
-      {/* Whole header row toggles — a checklist wants a big, forgiving target. */}
-      <TouchableOpacity style={s.mealTop} onPress={onToggle} activeOpacity={0.7}>
+      <View style={s.mealTop}>
         <MealCheck checked={done} onPress={onToggle} />
-        <View style={s.mealInfo}>
+        {/* Tapping the meal itself still completes it — a checklist wants a
+            big, forgiving target. Details are on the chevron. */}
+        <TouchableOpacity style={s.mealInfo} onPress={onToggle} activeOpacity={0.7}>
           <View style={s.mealMetaRow}>
             {time !== null && (
               <Text style={[s.mealTime, done && s.mealTimeDone]}>{time}</Text>
             )}
-            {done ? (
-              <Text style={s.statusDone}>CONCLUÍDA</Text>
-            ) : isNext ? (
-              <Text style={s.statusNext}>PRÓXIMA</Text>
-            ) : null}
+            {!done && isNext && <Text style={s.statusNext}>PRÓXIMA</Text>}
           </View>
           <Text style={[s.mealName, done && s.mealNameDone]} numberOfLines={1}>{meal.name}</Text>
-          <View style={s.chipRow}>
-            <View style={[s.chip, s.chipCal]}>
-              <Text style={[s.chipText, { color: MACRO_COLORS.calories }]}>{fmt(macros.calories)} kcal</Text>
-            </View>
-            <MacroChip label="P" value={macros.proteinG} color={MACRO_COLORS.protein} />
-            <MacroChip label="C" value={macros.carbsG} color={MACRO_COLORS.carbs} />
-            <MacroChip label="G" value={macros.fatG} color={MACRO_COLORS.fat} />
-          </View>
-        </View>
-      </TouchableOpacity>
+          <Text style={[s.mealKcal, done && s.mealKcalDone]}>{fmt(macros.calories)} kcal</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={s.expandBtn}
+          onPress={toggleOpen}
+          activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+            <Ionicons name="chevron-down" size={16} color="#555560" />
+          </Animated.View>
+        </TouchableOpacity>
+      </View>
 
-      {meal.foods.length > 0 && (
-        <View style={s.foodList}>
-          {meal.foods.map((mealFood) => (
-            <View key={mealFood.id} style={s.foodLine}>
-              <Text style={[s.foodName, done && s.foodNameDone]} numberOfLines={1}>{mealFood.food.name}</Text>
-              <Text style={[s.foodQty, done && s.foodNameDone]}>{fmt(mealFood.quantityG)}g</Text>
+      <Animated.View style={{ height: bodyHeight, overflow: 'hidden' }}>
+        <View style={s.mealMeasure} onLayout={(e) => setContentH(e.nativeEvent.layout.height)}>
+          <Animated.View style={[s.mealBody, { opacity: bodyOpacity }]}>
+            {foods.length === 0 ? (
+              <Text style={s.foodEmpty}>Nenhum alimento nesta refeição</Text>
+            ) : (
+              foods.map((mealFood) => (
+                <View key={mealFood.id} style={s.foodLine}>
+                  <Text style={s.foodName} numberOfLines={1}>{mealFood.food.name}</Text>
+                  <Text style={s.foodQty}>{fmt(mealFood.quantityG)}g</Text>
+                </View>
+              ))
+            )}
+
+            {/* Macros read as one quiet line here, never as competing chips. */}
+            <View style={s.mealFooter}>
+              <Text style={s.mealFooterLabel}>
+                {foods.length} {foods.length === 1 ? 'alimento' : 'alimentos'}
+              </Text>
+              <Text style={s.mealFooterMacros}>
+                P {fmt(macros.proteinG)}g · C {fmt(macros.carbsG)}g · G {fmt(macros.fatG)}g
+              </Text>
             </View>
-          ))}
+          </Animated.View>
         </View>
-      )}
+      </Animated.View>
     </View>
   )
 }
@@ -377,12 +407,14 @@ const s = StyleSheet.create({
   sectionCount: { color: '#8A8A9A', fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] },
   noMeals: { alignItems: 'center', gap: 10, paddingVertical: 32 },
 
-  // Meal card
-  mealCard: { backgroundColor: '#1E1E24', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A35', padding: 14, marginBottom: 12 },
-  mealCardDone: { borderColor: 'rgba(0,230,118,0.35)', backgroundColor: 'rgba(0,230,118,0.05)' },
-  mealCardNext: { borderColor: 'rgba(79,195,247,0.35)' },
+  // Meal card — the primary object on this screen.
+  mealCard: { backgroundColor: '#1E1E24', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A35', padding: 16, marginBottom: 10 },
+  // Completion reads from the check and a quiet border, never a painted card.
+  mealCardDone: { borderColor: 'rgba(0,230,118,0.22)' },
+  mealCardNext: { borderColor: 'rgba(79,195,247,0.22)' },
   mealTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   mealInfo: { flex: 1 },
+  expandBtn: { paddingLeft: 8, paddingTop: 8 },
   check: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, marginTop: 2 },
   checkEmpty: { backgroundColor: 'transparent', borderColor: '#3A3A45' },
   checkDone: { backgroundColor: '#00E676', borderColor: '#00E676' },
@@ -390,19 +422,25 @@ const s = StyleSheet.create({
   mealMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 14 },
   mealTime: { color: '#8A8A9A', fontSize: 11, fontWeight: '600', letterSpacing: 0.4, fontVariant: ['tabular-nums'] },
   mealTimeDone: { color: '#6A6A7A' },
-  statusDone: { color: '#00E676', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  statusNext: { color: '#4FC3F7', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
+  statusNext: { color: 'rgba(79,195,247,0.75)', fontSize: 10, fontWeight: '600', letterSpacing: 0.4 },
   mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '600', marginTop: 2 },
-  mealNameDone: { color: '#B8B8C4' },
+  mealNameDone: { color: '#8A8A9A' },
+  mealKcal: { color: '#B8B8C4', fontSize: 13, marginTop: 4, fontVariant: ['tabular-nums'] },
+  mealKcalDone: { color: '#6A6A7A' },
 
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  chip: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  chipCal: { backgroundColor: 'rgba(79,195,247,0.1)' },
-  chipText: { fontSize: 11, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  mealMeasure: { position: 'absolute', left: 0, right: 0, top: 0 },
+  mealBody: { paddingTop: 14, gap: 8 },
 
-  foodList: { marginTop: 14, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2A2A35', gap: 8 },
   foodLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  foodName: { color: '#B8B8C4', fontSize: 13, flex: 1, marginRight: 8 },
-  foodQty: { color: '#8A8A9A', fontSize: 12, fontVariant: ['tabular-nums'] },
-  foodNameDone: { color: '#6A6A7A' },
+  foodName: { color: '#8A8A9A', fontSize: 13, flex: 1, marginRight: 8 },
+  foodQty: { color: '#6A6A7A', fontSize: 12, fontVariant: ['tabular-nums'] },
+  foodEmpty: { color: '#4A4A5A', fontSize: 12, fontStyle: 'italic' },
+
+  mealFooter: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 4, paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2A2A35',
+  },
+  mealFooterLabel: { color: '#6A6A7A', fontSize: 11 },
+  mealFooterMacros: { color: '#8A8A9A', fontSize: 11, fontVariant: ['tabular-nums'] },
 })

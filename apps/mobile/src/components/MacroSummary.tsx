@@ -1,5 +1,6 @@
-import React from 'react'
-import { View, Text, StyleSheet } from 'react-native'
+import React, { useState } from 'react'
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import { MACRO_COLORS, fmt, clampPct } from '../lib/nutrition'
 
 type Row = { label: string; color: string; consumed: number; target: number | null; unit: string }
@@ -19,6 +20,9 @@ type Props = {
   // Browsing mode: calories become the headline and the macro block steps back
   // to a supporting role instead of reading as three parallel metrics.
   subdueMacros?: boolean
+  // Execution mode: macros collapse into a single quiet line so calories own
+  // the card, and the bars are one tap away for whoever wants the detail.
+  collapsibleMacros?: boolean
 }
 
 // Remaining amount toward a target. Null target = nothing to count down to.
@@ -40,6 +44,9 @@ export function MacroSummary(p: Props) {
   const calLeft = remaining(p.consumedCalories, p.targetCalories)
   const calDone = calLeft === 0
   const subdued = p.subdueMacros === true
+  const collapsible = p.collapsibleMacros === true
+  const [macrosOpen, setMacrosOpen] = useState(false)
+  const showBars = !collapsible || macrosOpen
 
   return (
     <View style={s.card}>
@@ -72,7 +79,21 @@ export function MacroSummary(p: Props) {
         </Text>
       )}
 
-      <View style={[s.macroRow, subdued && s.macroRowSubdued]}>
+      {collapsible && (
+        <TouchableOpacity
+          style={s.macroToggle}
+          onPress={() => setMacrosOpen((open) => !open)}
+          activeOpacity={0.7}
+        >
+          <Text style={s.macroToggleText}>
+            P {fmt(p.consumedProteinG)}g · C {fmt(p.consumedCarbsG)}g · G {fmt(p.consumedFatG)}g
+          </Text>
+          <Ionicons name={macrosOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#555560" />
+        </TouchableOpacity>
+      )}
+
+      {showBars && (
+      <View style={[s.macroRow, subdued && s.macroRowSubdued, collapsible && s.macroRowCollapsible]}>
         {rows.map((r) => {
           const pct = clampPct(r.consumed, r.target)
           const left = remaining(r.consumed, r.target)
@@ -99,6 +120,7 @@ export function MacroSummary(p: Props) {
           )
         })}
       </View>
+      )}
     </View>
   )
 }
@@ -134,8 +156,16 @@ const s = StyleSheet.create({
   remainingCal: { fontSize: 12 },
   remainingDone: { color: '#00E676' },
 
+  macroToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 14, paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2A2A35',
+  },
+  macroToggleText: { color: '#8A8A9A', fontSize: 12, fontVariant: ['tabular-nums'] },
+
   macroRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
   macroRowSubdued: { marginTop: 18 },
+  macroRowCollapsible: { marginTop: 14 },
   macroCol: { flex: 1 },
   macroLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500' },
   macroValue: { color: '#F0F0F5', fontSize: 14, fontWeight: '600', marginTop: 3, fontVariant: ['tabular-nums'] },
