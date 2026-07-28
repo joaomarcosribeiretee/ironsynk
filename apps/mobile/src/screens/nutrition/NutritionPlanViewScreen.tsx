@@ -43,6 +43,9 @@ export function NutritionPlanViewScreen() {
   const planMacros = sumMacros(meals.map(m => m.plannedMacros))
   const foodsCount = meals.reduce((acc, m) => acc + m.foods.length, 0)
   const goalLabel = plan?.goal ? GOAL_LABELS[plan.goal] : null
+  // The goal pill is pure repetition when the plan is named after its goal.
+  const planTitle = plan?.name ?? planName ?? ''
+  const showGoalPill = goalLabel !== null && goalLabel.toLowerCase() !== planTitle.trim().toLowerCase()
 
   return (
     <SafeAreaView style={s.safe}>
@@ -51,7 +54,7 @@ export function NutritionPlanViewScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <Ionicons name="chevron-back" size={22} color="#F0F0F5" />
         </TouchableOpacity>
-        <Text style={s.headerTitle} numberOfLines={1}>{plan?.name ?? planName ?? ''}</Text>
+        <Text style={s.headerTitle} numberOfLines={1}>{planTitle}</Text>
         <View style={s.backBtn} />
       </View>
 
@@ -69,11 +72,14 @@ export function NutritionPlanViewScreen() {
       ) : (
         <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
           {/* Goal / status pills */}
-          {(goalLabel || plan?.isActive) && (
+          {(showGoalPill || plan?.isActive) && (
             <View style={s.pillsRow}>
-              {goalLabel && <View style={s.pill}><Text style={s.pillText}>{goalLabel}</Text></View>}
+              {showGoalPill && <View style={s.pill}><Text style={s.pillText}>{goalLabel}</Text></View>}
               {plan?.isActive && (
-                <View style={s.activeBadge}><Text style={s.activeText}>ATIVO</Text></View>
+                <View style={s.activeBadge}>
+                  <View style={s.activeDot} />
+                  <Text style={s.activeText}>ATIVO</Text>
+                </View>
               )}
             </View>
           )}
@@ -96,25 +102,15 @@ export function NutritionPlanViewScreen() {
             targetCarbsG={plan?.targetCarbsG ?? null}
             consumedFatG={planMacros.fatG}
             targetFatG={plan?.targetFatG ?? null}
+            subdueMacros
           />
 
-          {/* Stats row */}
-          <View style={s.statsRow}>
-            <View style={s.statCard}>
-              <Text style={s.statLabel}>Refeições</Text>
-              <Text style={s.statValue}>{meals.length > 0 ? String(meals.length) : '—'}</Text>
-            </View>
-            <View style={s.statCard}>
-              <Text style={s.statLabel}>Alimentos</Text>
-              <Text style={s.statValue}>{foodsCount > 0 ? String(foodsCount) : '—'}</Text>
-            </View>
-            {plan?.targetWaterMl != null && (
-              <View style={s.statCard}>
-                <Text style={s.statLabel}>Água</Text>
-                <Text style={s.statValue}>{fmt(plan.targetWaterMl / 1000)}L</Text>
-              </View>
-            )}
-          </View>
+          {/* Plan counts — one quiet line instead of competing stat cards. */}
+          <Text style={s.statsLine}>
+            {meals.length} {meals.length === 1 ? 'refeição' : 'refeições'}
+            {'  ·  '}{foodsCount} {foodsCount === 1 ? 'alimento' : 'alimentos'}
+            {plan?.targetWaterMl != null ? `  ·  ${fmt(plan.targetWaterMl / 1000)}L de água` : ''}
+          </Text>
 
           {/* Meals */}
           {meals.length > 0 ? (
@@ -163,21 +159,15 @@ const s = StyleSheet.create({
     borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3,
   },
   pillText: { color: 'rgba(79,195,247,0.8)', fontSize: 11 },
-  activeBadge: {
-    backgroundColor: 'rgba(0,230,118,0.12)', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3,
-  },
-  activeText: { color: '#00E676', fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
+  // Status marker, not a highlight: dot plus muted label, no chip.
+  activeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  activeDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(0,230,118,0.75)' },
+  activeText: { color: 'rgba(0,230,118,0.65)', fontSize: 9, fontWeight: '600', letterSpacing: 0.6 },
 
   description: { color: '#8A8A9A', fontSize: 14, fontStyle: 'italic', lineHeight: 20, paddingBottom: 14 },
   divider: { height: 1, backgroundColor: '#2A2A35', marginBottom: 16 },
 
-  statsRow: { flexDirection: 'row', gap: 10, marginTop: 12, marginBottom: 20 },
-  statCard: {
-    flex: 1, backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14,
-  },
-  statLabel: { color: '#8A8A9A', fontSize: 11, marginBottom: 4 },
-  statValue: { color: '#F0F0F5', fontSize: 20, fontWeight: '600' },
+  statsLine: { color: '#8A8A9A', fontSize: 12, marginTop: 12, marginBottom: 24, fontVariant: ['tabular-nums'] },
 
   sectionLabel: {
     color: '#8A8A9A', fontSize: 11, fontWeight: '600', letterSpacing: 0.8,

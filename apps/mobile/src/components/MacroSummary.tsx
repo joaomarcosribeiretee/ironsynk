@@ -16,6 +16,9 @@ type Props = {
   // Daily-execution mode: adds "how much is left" under every bar so the card
   // answers "what do I still have to eat?" without any mental math.
   showRemaining?: boolean
+  // Browsing mode: calories become the headline and the macro block steps back
+  // to a supporting role instead of reading as three parallel metrics.
+  subdueMacros?: boolean
 }
 
 // Remaining amount toward a target. Null target = nothing to count down to.
@@ -36,6 +39,7 @@ export function MacroSummary(p: Props) {
   const calPct = clampPct(p.consumedCalories, p.targetCalories)
   const calLeft = remaining(p.consumedCalories, p.targetCalories)
   const calDone = calLeft === 0
+  const subdued = p.subdueMacros === true
 
   return (
     <View style={s.card}>
@@ -43,7 +47,7 @@ export function MacroSummary(p: Props) {
         <View>
           <Text style={s.calLabel}>CALORIAS</Text>
           <View style={s.calValueRow}>
-            <Text style={s.calValue}>{fmt(p.consumedCalories)}</Text>
+            <Text style={[s.calValue, subdued && s.calValueLead]}>{fmt(p.consumedCalories)}</Text>
             <Text style={s.calTarget}>
               {p.targetCalories !== null ? ` / ${fmt(p.targetCalories)} kcal` : ' kcal'}
             </Text>
@@ -68,19 +72,23 @@ export function MacroSummary(p: Props) {
         </Text>
       )}
 
-      <View style={s.macroRow}>
+      <View style={[s.macroRow, subdued && s.macroRowSubdued]}>
         {rows.map((r) => {
           const pct = clampPct(r.consumed, r.target)
           const left = remaining(r.consumed, r.target)
           return (
             <View key={r.label} style={s.macroCol}>
               <Text style={s.macroLabel}>{r.label}</Text>
-              <Text style={s.macroValue}>
+              <Text style={[s.macroValue, subdued && s.macroValueSubdued]}>
                 {fmt(r.consumed)}
                 <Text style={s.macroTarget}>{r.target !== null ? `/${fmt(r.target)}${r.unit}` : r.unit}</Text>
               </Text>
-              <View style={s.macroTrack}>
-                <View style={[s.macroFill, { width: `${r.target !== null ? pct : 0}%`, backgroundColor: r.color }]} />
+              <View style={[s.macroTrack, subdued && s.macroTrackSubdued]}>
+                <View style={[
+                  s.macroFill,
+                  subdued && s.macroFillSubdued,
+                  { width: `${r.target !== null ? pct : 0}%`, backgroundColor: r.color },
+                ]} />
               </View>
               {p.showRemaining === true && left !== null && (
                 <Text style={[s.remaining, left === 0 && s.remainingDone]}>
@@ -107,6 +115,7 @@ const s = StyleSheet.create({
   calLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 1.2 },
   calValueRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4 },
   calValue: { color: '#F0F0F5', fontSize: 28, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  calValueLead: { fontSize: 32 },
   calTarget: { color: '#8A8A9A', fontSize: 14, fontWeight: '400', fontVariant: ['tabular-nums'] },
   pctBadge: {
     backgroundColor: 'rgba(79,195,247,0.1)',
@@ -126,10 +135,14 @@ const s = StyleSheet.create({
   remainingDone: { color: '#00E676' },
 
   macroRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  macroRowSubdued: { marginTop: 18 },
   macroCol: { flex: 1 },
   macroLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500' },
   macroValue: { color: '#F0F0F5', fontSize: 14, fontWeight: '600', marginTop: 3, fontVariant: ['tabular-nums'] },
+  macroValueSubdued: { color: '#B8B8C4', fontSize: 13, fontWeight: '500' },
   macroTarget: { color: '#8A8A9A', fontSize: 11, fontWeight: '400' },
   macroTrack: { height: 4, borderRadius: 2, backgroundColor: '#141418', marginTop: 6, overflow: 'hidden' },
+  macroTrackSubdued: { height: 3, borderRadius: 1.5, marginTop: 7 },
   macroFill: { height: 4, borderRadius: 2 },
+  macroFillSubdued: { height: 3, borderRadius: 1.5, opacity: 0.65 },
 })

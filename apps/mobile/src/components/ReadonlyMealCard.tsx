@@ -42,15 +42,11 @@ export function ReadonlyMealCard({ meal, index }: Props) {
           <View style={s.info}>
             <View style={s.nameRow}>
               <Text style={s.mealName} numberOfLines={1}>{meal.name}</Text>
-              {timeLabel && (
-                <View style={s.timePill}><Text style={s.timePillText}>{timeLabel}</Text></View>
-              )}
+              {timeLabel && <Text style={s.timeText}>{timeLabel}</Text>}
             </View>
-            <Text style={s.macroLine} numberOfLines={1}>
-              {fmt(m.calories)} kcal · <Text style={{ color: MACRO_COLORS.protein }}>P {fmt(m.proteinG)}</Text>
-              {' · '}<Text style={{ color: MACRO_COLORS.carbs }}>C {fmt(m.carbsG)}</Text>
-              {' · '}<Text style={{ color: MACRO_COLORS.fat }}>G {fmt(m.fatG)}</Text>
-            </Text>
+            {/* Collapsed state carries calories only — the macro breakdown
+                lives in the expanded body. */}
+            <Text style={s.kcalLine} numberOfLines={1}>{fmt(m.calories)} kcal</Text>
           </View>
 
           <Animated.View style={{ transform: [{ rotate: chevronRotate }], flexShrink: 0 }}>
@@ -108,7 +104,7 @@ const s = StyleSheet.create({
 
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 12, paddingVertical: 12,
+    paddingHorizontal: 14, paddingVertical: 14,
     backgroundColor: '#23232D',
   },
   orderBox: {
@@ -120,15 +116,11 @@ const s = StyleSheet.create({
   info: { flex: 1, minWidth: 0, gap: 4 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   mealName: { color: '#F0F0F5', fontSize: 14, fontWeight: '600', lineHeight: 18, flexShrink: 1 },
-  timePill: {
-    backgroundColor: '#141418', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2,
-  },
-  timePillText: { color: '#8A8A9A', fontSize: 11 },
-  macroLine: { color: '#8A8A9A', fontSize: 12 },
+  timeText: { color: '#6A6A7A', fontSize: 10, flexShrink: 0, fontVariant: ['tabular-nums'] },
+  kcalLine: { color: '#8A8A9A', fontSize: 12, fontVariant: ['tabular-nums'] },
 
   measureWrap: { position: 'absolute', left: 0, right: 0, top: 0 },
-  body: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12 },
+  body: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 },
 
   emptyText: { color: '#4A4A5A', fontSize: 12, fontStyle: 'italic', paddingVertical: 6 },
 
