@@ -279,7 +279,7 @@ function DietaAtivaSection() {
         <DietaAtivaCard
           plan={plan}
           totals={totals}
-          onPress={() => navigation.navigate('NutritionToday')}
+          onPress={() => navigation.navigate('NutritionPlanView', { planId: plan.id, planName: plan.name })}
         />
       ) : (
         <View style={[s.infoCard, s.emptyCard]}>
