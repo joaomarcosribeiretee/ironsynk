@@ -127,8 +127,8 @@ export function NutritionPlanCard({
     })
   }
 
-  // Time, name, calories — nothing else. The time carries the brand accent and
-  // leads the row, the way the blue play button leads a workout card.
+  // Name first, time as a quiet suffix, calories last. Nothing here is colored:
+  // the card is identified by what the meal is called.
   function renderMealItem(meal: PlanMeal) {
     const timed = meal.targetTimeHour != null
     return (
@@ -139,10 +139,13 @@ export function NutritionPlanCard({
           activeOpacity={0.7}
         >
           <View style={s.mealHead}>
-            <Text style={[s.mealTime, !timed && s.mealTimeEmpty]}>
-              {timed ? `${String(meal.targetTimeHour).padStart(2, '0')}:00` : '--:--'}
-            </Text>
             <Text style={s.mealName} numberOfLines={1}>{meal.name}</Text>
+            {timed && (
+              <>
+                <Text style={s.mealDot}>·</Text>
+                <Text style={s.mealTime}>{String(meal.targetTimeHour).padStart(2, '0')}:00</Text>
+              </>
+            )}
           </View>
           <Text style={s.mealMeta} numberOfLines={1}>{fmt(meal.plannedMacros.calories)} kcal</Text>
         </TouchableOpacity>
@@ -317,11 +320,10 @@ const s = StyleSheet.create({
     marginBottom: 10, overflow: 'hidden',
   },
   mealInfo: { flex: 1, minWidth: 0, paddingLeft: 16, paddingVertical: 12, paddingRight: 4 },
-  mealHead: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
-  // The accent lives in the time itself — no chip, no fill, no extra weight.
-  mealTime: { color: '#4FC3F7', fontSize: 13, fontWeight: '600', letterSpacing: 0.3, fontVariant: ['tabular-nums'], flexShrink: 0 },
-  mealTimeEmpty: { color: '#4A4A5A', fontWeight: '500' },
+  mealHead: { flexDirection: 'row', alignItems: 'center', gap: 7, minWidth: 0 },
   mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '500', flexShrink: 1 },
+  mealDot: { color: '#4A4A5A', fontSize: 12, flexShrink: 0 },
+  mealTime: { color: '#8A8A9A', fontSize: 12, fontVariant: ['tabular-nums'], flexShrink: 0 },
   mealMeta: { color: '#6A6A7A', fontSize: 12, marginTop: 6, fontVariant: ['tabular-nums'] },
   menuBtn: { paddingRight: 14, paddingLeft: 8 },
 
