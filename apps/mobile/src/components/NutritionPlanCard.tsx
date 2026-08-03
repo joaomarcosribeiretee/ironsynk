@@ -8,6 +8,7 @@ import { api } from '../lib/api'
 import type { NutritionPlanListItem, PlanMeal, DietGoal } from '../lib/api'
 import { ActionSheet, type SheetAction } from '../screens/workout/ActionSheet'
 import { ConfirmModal } from './ConfirmModal'
+import { NutritionSummarySheet } from './NutritionSummarySheet'
 import { showToast } from './Toast'
 import { fmt, sumMacros, sortMealsByTime } from '../lib/nutrition'
 
@@ -37,6 +38,7 @@ export function NutritionPlanCard({
   // stays a manual choice.
   const [isOpen, setIsOpen] = useState(true)
   const [contentH, setContentH] = useState(0)
+  const [summaryOpen, setSummaryOpen] = useState(false)
   const [sheet, setSheet] = useState<{ visible: boolean; title: string; actions: SheetAction[] }>({
     visible: false, title: '', actions: [],
   })
@@ -199,11 +201,18 @@ export function NutritionPlanCard({
               <View style={s.loadingRow}><ActivityIndicator size="small" color="#4FC3F7" /></View>
             ) : (
               <>
-                {/* One quiet line: the plan's calories, nothing else. Macros
-                    live where they are acted on — Acompanhar Hoje and the plan
-                    detail screen. */}
+                {/* One quiet line: the plan's calories. The full breakdown is a
+                    tap away in the sheet, so Home stays uncluttered. */}
                 {meals.length > 0 && (
-                  <Text style={s.totalLine}>Total planejado · {fmt(planMacros.calories)} kcal</Text>
+                  <TouchableOpacity
+                    style={s.totalRow}
+                    onPress={() => setSummaryOpen(true)}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
+                  >
+                    <Text style={s.totalLine}>Total planejado · {fmt(planMacros.calories)} kcal</Text>
+                    <Ionicons name="stats-chart-outline" size={13} color="#555560" />
+                  </TouchableOpacity>
                 )}
                 {meals.map(renderMealItem)}
                 <TouchableOpacity style={s.addRow} onPress={() => onAddMeal(plan.id)} activeOpacity={0.7}>
@@ -221,6 +230,14 @@ export function NutritionPlanCard({
         title={sheet.title}
         actions={sheet.actions}
         onClose={() => setSheet(s => ({ ...s, visible: false }))}
+      />
+      <NutritionSummarySheet
+        visible={summaryOpen}
+        planName={plan.name}
+        macros={planMacros}
+        mealsCount={meals.length}
+        foodsCount={meals.reduce((n, m) => n + m.foods.length, 0)}
+        onClose={() => setSummaryOpen(false)}
       />
       <ConfirmModal
         visible={confirm.visible}
@@ -264,10 +281,11 @@ const s = StyleSheet.create({
   mealsWrap: { paddingTop: 16, paddingBottom: 12 },
   loadingRow: { height: 74, justifyContent: 'center', alignItems: 'center' },
 
-  totalLine: {
-    color: '#6A6A7A', fontSize: 11, letterSpacing: 0.2, fontVariant: ['tabular-nums'],
+  totalRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
     paddingHorizontal: 2, marginBottom: 16,
   },
+  totalLine: { color: '#6A6A7A', fontSize: 11, letterSpacing: 0.2, fontVariant: ['tabular-nums'] },
 
   mealRow: {
     flexDirection: 'row', alignItems: 'center', height: 74,
