@@ -8,7 +8,7 @@ import { api } from '../lib/api'
 import type { NutritionPlanListItem, PlanMeal, DietGoal } from '../lib/api'
 import { ActionSheet, type SheetAction } from '../screens/workout/ActionSheet'
 import { ConfirmModal } from './ConfirmModal'
-import { NutritionSummarySheet } from './NutritionSummarySheet'
+import { NutritionSummaryModal } from './NutritionSummaryModal'
 import { showToast } from './Toast'
 import { fmt, sumMacros, sortMealsByTime } from '../lib/nutrition'
 
@@ -201,18 +201,21 @@ export function NutritionPlanCard({
               <View style={s.loadingRow}><ActivityIndicator size="small" color="#4FC3F7" /></View>
             ) : (
               <>
-                {/* One quiet line: the plan's calories. The full breakdown is a
-                    tap away in the sheet, so Home stays uncluttered. */}
+                {/* One quiet line: the plan's calories, plus a labelled action
+                    so the full breakdown reads as reachable, not decorative. */}
                 {meals.length > 0 && (
-                  <TouchableOpacity
-                    style={s.totalRow}
-                    onPress={() => setSummaryOpen(true)}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
-                  >
+                  <View style={s.totalRow}>
                     <Text style={s.totalLine}>Total planejado · {fmt(planMacros.calories)} kcal</Text>
-                    <Ionicons name="stats-chart-outline" size={13} color="#555560" />
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.summaryBtn}
+                      onPress={() => setSummaryOpen(true)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="stats-chart-outline" size={12} color="#4FC3F7" />
+                      <Text style={s.summaryBtnText}>Resumo</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
                 {meals.map(renderMealItem)}
                 <TouchableOpacity style={s.addRow} onPress={() => onAddMeal(plan.id)} activeOpacity={0.7}>
@@ -231,7 +234,7 @@ export function NutritionPlanCard({
         actions={sheet.actions}
         onClose={() => setSheet(s => ({ ...s, visible: false }))}
       />
-      <NutritionSummarySheet
+      <NutritionSummaryModal
         visible={summaryOpen}
         planName={plan.name}
         macros={planMacros}
@@ -282,10 +285,18 @@ const s = StyleSheet.create({
   loadingRow: { height: 74, justifyContent: 'center', alignItems: 'center' },
 
   totalRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
     paddingHorizontal: 2, marginBottom: 16,
   },
-  totalLine: { color: '#6A6A7A', fontSize: 11, letterSpacing: 0.2, fontVariant: ['tabular-nums'] },
+  totalLine: { color: '#6A6A7A', fontSize: 11, letterSpacing: 0.2, fontVariant: ['tabular-nums'], flexShrink: 1 },
+  // Labelled, tinted and bordered: small enough to stay out of the way, clear
+  // enough to read as a button.
+  summaryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0,
+    paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10,
+    backgroundColor: 'rgba(41,121,255,0.08)', borderWidth: 1, borderColor: 'rgba(41,121,255,0.22)',
+  },
+  summaryBtnText: { color: '#4FC3F7', fontSize: 11, fontWeight: '500' },
 
   mealRow: {
     flexDirection: 'row', alignItems: 'center', height: 74,
