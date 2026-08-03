@@ -204,16 +204,11 @@ export function NutritionPlanCard({
                     {/* Calories lead; the macro line reads as their caption, in
                         one neutral tone so nothing competes with the number. */}
                     <Text style={s.totalValue}>{fmt(planMacros.calories)} kcal</Text>
-                    <View style={s.macroLine}>
-                      <Text style={[s.macroItem, { color: MACRO_COLORS_SOFT.protein }]}>
-                        Proteína {fmt(planMacros.proteinG)}g
-                      </Text>
-                      <Text style={[s.macroItem, { color: MACRO_COLORS_SOFT.carbs }]}>
-                        Carboidratos {fmt(planMacros.carbsG)}g
-                      </Text>
-                      <Text style={[s.macroItem, { color: MACRO_COLORS_SOFT.fat }]}>
-                        Gorduras {fmt(planMacros.fatG)}g
-                      </Text>
+                    <View style={s.macroDivider} />
+                    <View style={s.macroRow}>
+                      <MacroColumn label="Proteína" grams={planMacros.proteinG} color={MACRO_COLORS_SOFT.protein} />
+                      <MacroColumn label="Carboidratos" grams={planMacros.carbsG} color={MACRO_COLORS_SOFT.carbs} />
+                      <MacroColumn label="Gorduras" grams={planMacros.fatG} color={MACRO_COLORS_SOFT.fat} />
                     </View>
                   </View>
                 )}
@@ -247,6 +242,17 @@ export function NutritionPlanCard({
   )
 }
 
+// One macro per column: the hue rides on the caption, the gram value stays
+// neutral so the three numbers read as one set.
+function MacroColumn({ label, grams, color }: { label: string; grams: number; color: string }) {
+  return (
+    <View style={s.macroCol}>
+      <Text style={[s.macroLabel, { color }]} numberOfLines={1}>{label}</Text>
+      <Text style={s.macroValue}>{Math.round(grams)}g</Text>
+    </View>
+  )
+}
+
 const s = StyleSheet.create({
   cardDragging: { opacity: 0.9, backgroundColor: '#1E1E28', borderRadius: 12 },
 
@@ -276,10 +282,16 @@ const s = StyleSheet.create({
   mealsWrap: { paddingTop: 16, paddingBottom: 12 },
   loadingRow: { height: 74, justifyContent: 'center', alignItems: 'center' },
 
-  totalBlock: { paddingHorizontal: 2, paddingBottom: 22 },
-  totalValue: { color: '#F0F0F5', fontSize: 18, fontWeight: '500', fontVariant: ['tabular-nums'] },
-  macroLine: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 7 },
-  macroItem: { fontSize: 11, letterSpacing: 0.2, fontVariant: ['tabular-nums'] },
+  totalBlock: {
+    backgroundColor: '#1A1A22', borderRadius: 12, borderWidth: 1, borderColor: '#252530',
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14, marginBottom: 20,
+  },
+  totalValue: { color: '#F0F0F5', fontSize: 22, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  macroDivider: { height: 1, backgroundColor: '#252530', marginTop: 13, marginBottom: 13 },
+  macroRow: { flexDirection: 'row' },
+  macroCol: { flex: 1, gap: 4 },
+  macroLabel: { fontSize: 10, fontWeight: '500', letterSpacing: 0.4, textTransform: 'uppercase' },
+  macroValue: { color: '#F0F0F5', fontSize: 15, fontWeight: '500', fontVariant: ['tabular-nums'] },
 
   mealRow: {
     flexDirection: 'row', alignItems: 'center', height: 74,
