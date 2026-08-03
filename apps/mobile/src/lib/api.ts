@@ -577,6 +577,71 @@ export type DailyExecution = {
   totals: DailyTotals
 }
 
+// ── Free logging ──
+// A day tracked without a plan. Separate from DailyExecution on purpose: that
+// one measures adherence to a plan, this one only answers what was eaten.
+export type LoggedMealSource = 'MANUAL' | 'FROM_PLAN' | 'BARCODE' | 'SUGGESTION'
+
+export type LoggedMealFoodRecord = {
+  id: string
+  loggedMealId: string
+  foodId: string
+  quantityG: number
+  isCooked: boolean
+  food: FoodRecord
+  macros: MacrosRecord
+}
+
+export type LoggedMealRecord = {
+  id: string
+  name: string
+  order: number
+  timeMinutes: number | null
+  source: LoggedMealSource
+  sourceMealId: string | null
+  isCheat: boolean
+  notes: string | null
+  foods: LoggedMealFoodRecord[]
+  macros: MacrosRecord
+}
+
+export type FreeLogTotals = MacrosRecord & {
+  totalMeals: number
+  totalFoods: number
+}
+
+export type DailyFreeLog = {
+  date: string
+  meals: LoggedMealRecord[]
+  totals: FreeLogTotals
+}
+
+export type CreateLoggedMealInput = {
+  date?: string // YYYY-MM-DD, defaults to today
+  name: string
+  timeMinutes?: number
+  isCheat?: boolean
+  notes?: string
+}
+
+export type UpdateLoggedMealInput = {
+  name?: string
+  timeMinutes?: number | null
+  isCheat?: boolean
+  notes?: string | null
+}
+
+export type AddLoggedMealFoodInput = {
+  foodId: string
+  quantityG: number
+  isCooked?: boolean
+}
+
+export type UpdateLoggedMealFoodInput = {
+  quantityG?: number
+  isCooked?: boolean
+}
+
 export type CreateNutritionPlanInput = {
   name: string
   goal?: DietGoal
@@ -817,5 +882,25 @@ export const api = {
       request<{ data: { mealLog: unknown } }>(`/api/v1/nutrition/meals/${mealId}/complete`, { method: 'POST' }),
     uncompleteMeal: (mealId: string) =>
       request<{ data: { mealLog: unknown } }>(`/api/v1/nutrition/meals/${mealId}/complete`, { method: 'DELETE' }),
+
+    // ── Free logging ──
+    // Parallel track to the planned flow above: no plan required, and none of
+    // these calls touch adherence.
+    log: {
+      day: (date?: string) =>
+        request<{ data: DailyFreeLog }>(`/api/v1/nutrition/log${date ? `?date=${date}` : ''}`),
+      createMeal: (body: CreateLoggedMealInput) =>
+        request<{ data: { meal: LoggedMealRecord } }>('/api/v1/nutrition/log/meals', { method: 'POST', body }),
+      updateMeal: (id: string, body: UpdateLoggedMealInput) =>
+        request<{ data: { meal: LoggedMealRecord } }>(`/api/v1/nutrition/log/meals/${id}`, { method: 'PUT', body }),
+      deleteMeal: (id: string) =>
+        request<{ data: { success: boolean } }>(`/api/v1/nutrition/log/meals/${id}`, { method: 'DELETE' }),
+      addFood: (mealId: string, body: AddLoggedMealFoodInput) =>
+        request<{ data: { loggedMealFood: LoggedMealFoodRecord } }>(`/api/v1/nutrition/log/meals/${mealId}/foods`, { method: 'POST', body }),
+      updateFood: (id: string, body: UpdateLoggedMealFoodInput) =>
+        request<{ data: { loggedMealFood: LoggedMealFoodRecord } }>(`/api/v1/nutrition/log/meal-foods/${id}`, { method: 'PUT', body }),
+      removeFood: (id: string) =>
+        request<{ data: { success: boolean } }>(`/api/v1/nutrition/log/meal-foods/${id}`, { method: 'DELETE' }),
+    },
   },
 }

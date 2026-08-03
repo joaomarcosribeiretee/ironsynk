@@ -78,26 +78,26 @@ model User {
   email     String   @unique
   role      Role     @default(ATHLETE)
   isActive  Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   profile        Profile?
   trainerProfile TrainerProfile?
 
-  createdPrograms    Program[]
-  trainingLogs       TrainingLog[]
+  createdPrograms Program[]
+  trainingLogs    TrainingLog[]
 
   nutritionPlans     NutritionPlan[]
   dailyNutritionLogs DailyNutritionLog[]
 
-  asTrainer  Consultation[] @relation("TrainerConsultations")
-  asAthlete  Consultation[] @relation("AthleteConsultations")
+  asTrainer Consultation[] @relation("TrainerConsultations")
+  asAthlete Consultation[] @relation("AthleteConsultations")
 
   posts         Post[]
   likes         Like[]
   comments      Comment[]
-  following     Follow[] @relation("Follower")
-  followers     Follow[] @relation("Following")
+  following     Follow[]       @relation("Follower")
+  followers     Follow[]       @relation("Following")
   notifications Notification[]
 
   gameProfile     GameProfile?
@@ -109,8 +109,8 @@ model User {
 }
 
 model Profile {
-  id          String    @id @default(uuid())
-  userId      String    @unique
+  id          String        @id @default(uuid())
+  userId      String        @unique
   name        String
   avatar      String?
   bio         String?
@@ -121,10 +121,10 @@ model Profile {
   goal        TrainingGoal?
   experience  String?
   daysPerWeek Int?
-  isPrivate   Boolean   @default(false)
+  isPrivate   Boolean       @default(false)
   gymName     String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   user User @relation(fields: [userId], references: [id])
 }
@@ -156,8 +156,8 @@ model Exercise {
   createdById String?
   sourceId    String?
 
-  trainingExercises   TrainingExercise[]
-  executionExercises  ExecutionExercise[]
+  trainingExercises  TrainingExercise[]
+  executionExercises ExecutionExercise[]
 }
 
 model Program {
@@ -166,23 +166,23 @@ model Program {
   description String?
   goals       TrainingGoal[]
   isTemplate  Boolean        @default(false)
-  isPublic    Boolean       @default(false)
+  isPublic    Boolean        @default(false)
   createdById String
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
-  createdBy     User               @relation(fields: [createdById], references: [id])
+  createdBy     User                @relation(fields: [createdById], references: [id])
   workouts      Workout[]
   prescriptions PrescribedProgram[]
 }
 
 model Workout {
-  id        String    @id @default(uuid())
+  id        String   @id @default(uuid())
   programId String?
   name      String
   order     Int?
   notes     String?
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   program   Program?           @relation(fields: [programId], references: [id])
   exercises TrainingExercise[]
@@ -288,9 +288,9 @@ model SetLog {
   notes               String?
   plannedSetId        String?
 
-  trainingLog        TrainingLog        @relation(fields: [trainingLogId], references: [id])
-  executionExercise  ExecutionExercise? @relation(fields: [executionExerciseId], references: [id])
-  trainingExercise   TrainingExercise?  @relation(fields: [trainingExerciseId], references: [id])
+  trainingLog       TrainingLog        @relation(fields: [trainingLogId], references: [id])
+  executionExercise ExecutionExercise? @relation(fields: [executionExerciseId], references: [id])
+  trainingExercise  TrainingExercise?  @relation(fields: [trainingExerciseId], references: [id])
 }
 
 model PersonalRecord {
@@ -322,7 +322,8 @@ model Food {
   createdById String?
   sourceId    String?
 
-  mealFoods MealFood[]
+  mealFoods       MealFood[]
+  loggedMealFoods LoggedMealFood[]
 }
 
 model NutritionPlan {
@@ -353,9 +354,10 @@ model Meal {
   order           Int
   targetTimeHour  Int?
 
-  plan  NutritionPlan @relation(fields: [nutritionPlanId], references: [id])
-  foods MealFood[]
-  logs  MealLog[]
+  plan         NutritionPlan @relation(fields: [nutritionPlanId], references: [id])
+  foods        MealFood[]
+  logs         MealLog[]
+  loggedCopies LoggedMeal[]
 }
 
 model MealFood {
@@ -387,8 +389,9 @@ model DailyNutritionLog {
   waterMl Int      @default(0)
   notes   String?
 
-  user     User      @relation(fields: [userId], references: [id])
-  mealLogs MealLog[]
+  user        User         @relation(fields: [userId], references: [id])
+  mealLogs    MealLog[]
+  loggedMeals LoggedMeal[]
 
   @@unique([userId, date])
 }
@@ -404,6 +407,56 @@ model MealLog {
   meal     Meal              @relation(fields: [mealId], references: [id])
 
   @@unique([dailyNutritionLogId, mealId])
+}
+
+// ── Free logging ──────────────────────────────
+// A meal the user actually ate, attached to a day rather than to a plan.
+// Deliberately separate from Meal/MealLog: Meal is a plan's blueprint and
+// MealLog is adherence against it. A LoggedMeal asserts nothing about a plan,
+// so free logging can never move an adherence number.
+//
+// `source` and `sourceMealId` leave room for logging that starts elsewhere
+// (a plan meal eaten off-schedule, a barcode scan, an AI suggestion) without
+// another table, and `isCheat` tags a meal without changing how it is summed.
+
+enum LoggedMealSource {
+  MANUAL
+  FROM_PLAN
+  BARCODE
+  SUGGESTION
+}
+
+model LoggedMeal {
+  id                  String           @id @default(uuid())
+  dailyNutritionLogId String
+  name                String
+  order               Int
+  timeMinutes         Int? // minutes from midnight (0–1439); null = untimed
+  source              LoggedMealSource @default(MANUAL)
+  sourceMealId        String? // plan meal this was copied from, if any
+  isCheat             Boolean          @default(false)
+  notes               String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  dailyLog   DailyNutritionLog @relation(fields: [dailyNutritionLogId], references: [id])
+  sourceMeal Meal?             @relation(fields: [sourceMealId], references: [id], onDelete: SetNull)
+  foods      LoggedMealFood[]
+
+  @@index([dailyNutritionLogId])
+}
+
+model LoggedMealFood {
+  id           String  @id @default(uuid())
+  loggedMealId String
+  foodId       String
+  quantityG    Float
+  isCooked     Boolean @default(false)
+
+  loggedMeal LoggedMeal @relation(fields: [loggedMealId], references: [id], onDelete: Cascade)
+  food       Food       @relation(fields: [foodId], references: [id])
+
+  @@index([loggedMealId])
 }
 
 // ─────────────────────────────────────────────
@@ -556,12 +609,12 @@ model GameProfile {
 }
 
 model Achievement {
-  id          String @id @default(uuid())
-  key         String @unique
+  id          String  @id @default(uuid())
+  key         String  @unique
   name        String
   description String
   iconUrl     String?
-  xpReward    Int    @default(0)
+  xpReward    Int     @default(0)
   category    String
 
   users UserAchievement[]
@@ -579,8 +632,8 @@ model UserAchievement {
 }
 
 model Mission {
-  id          String  @id @default(uuid())
-  key         String  @unique
+  id          String @id @default(uuid())
+  key         String @unique
   title       String
   description String
   type        String

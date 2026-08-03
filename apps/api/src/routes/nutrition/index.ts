@@ -18,6 +18,7 @@ import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
 import { macrosForQuantity, sumMacros } from '../../lib/nutrition.js'
 import { searchOpenFoodFacts, getOpenFoodFactsProduct } from '../../lib/open-food-facts.js'
+import { freeLogRoutes } from './free-log.js'
 
 // ── helpers ───────────────────────────────────
 
@@ -80,6 +81,10 @@ async function loadOwnedMeal(mealId: string, userId: string, reply: FastifyReply
 }
 
 export async function nutritionRoutes(fastify: FastifyInstance): Promise<void> {
+  // Free logging shares the /nutrition prefix but keeps its own file: it is a
+  // parallel way to track a day, not part of the planned-diet flow.
+  await fastify.register(freeLogRoutes)
+
   // ═══════════════════════════════════════════
   // FOODS
   // ═══════════════════════════════════════════

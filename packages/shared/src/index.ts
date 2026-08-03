@@ -378,6 +378,92 @@ export const DailyExecutionSchema = z.object({
 })
 export type DailyExecution = z.infer<typeof DailyExecutionSchema>
 
+// ── Free logging ──────────────────────────────
+// Meals logged straight onto a day, with no plan behind them. These never
+// touch adherence: DailyTotals above answers "did I follow the plan", the
+// totals below answer "what did I eat".
+
+export const LoggedMealSourceSchema = z.enum(['MANUAL', 'FROM_PLAN', 'BARCODE', 'SUGGESTION'])
+export type LoggedMealSource = z.infer<typeof LoggedMealSourceSchema>
+
+// YYYY-MM-DD. Day selection is explicit everywhere so back-filling yesterday
+// is the same call as logging today.
+export const DateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD')
+
+export const CreateLoggedMealSchema = z.object({
+  date: DateOnlySchema.optional(), // defaults to today
+  name: z.string().min(1).max(80),
+  timeMinutes: z.number().int().min(0).max(1439).optional(),
+  isCheat: z.boolean().optional(),
+  notes: z.string().max(1000).optional(),
+})
+export type CreateLoggedMealInput = z.infer<typeof CreateLoggedMealSchema>
+
+export const UpdateLoggedMealSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  timeMinutes: z.number().int().min(0).max(1439).nullable().optional(),
+  isCheat: z.boolean().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+})
+export type UpdateLoggedMealInput = z.infer<typeof UpdateLoggedMealSchema>
+
+export const AddLoggedMealFoodSchema = z.object({
+  foodId: z.string().min(1),
+  quantityG: z.number().positive(),
+  isCooked: z.boolean().optional(),
+})
+export type AddLoggedMealFoodInput = z.infer<typeof AddLoggedMealFoodSchema>
+
+export const UpdateLoggedMealFoodSchema = z.object({
+  quantityG: z.number().positive().optional(),
+  isCooked: z.boolean().optional(),
+})
+export type UpdateLoggedMealFoodInput = z.infer<typeof UpdateLoggedMealFoodSchema>
+
+export const LoggedMealFoodSchema = z.object({
+  id: z.string(),
+  loggedMealId: z.string(),
+  foodId: z.string(),
+  quantityG: z.number(),
+  isCooked: z.boolean(),
+  food: FoodSchema,
+  macros: MacrosSchema,
+})
+export type LoggedMealFood = z.infer<typeof LoggedMealFoodSchema>
+
+export const LoggedMealSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  order: z.number().int(),
+  timeMinutes: z.number().int().nullable(),
+  source: LoggedMealSourceSchema,
+  sourceMealId: z.string().nullable(),
+  isCheat: z.boolean(),
+  notes: z.string().nullable(),
+  foods: z.array(LoggedMealFoodSchema),
+  macros: MacrosSchema,
+})
+export type LoggedMeal = z.infer<typeof LoggedMealSchema>
+
+// What was eaten on a day, independent of any plan.
+export const FreeLogTotalsSchema = z.object({
+  calories: z.number(),
+  proteinG: z.number(),
+  carbsG: z.number(),
+  fatG: z.number(),
+  fiberG: z.number().nullable(),
+  totalMeals: z.number().int(),
+  totalFoods: z.number().int(),
+})
+export type FreeLogTotals = z.infer<typeof FreeLogTotalsSchema>
+
+export const DailyFreeLogSchema = z.object({
+  date: z.string(), // YYYY-MM-DD
+  meals: z.array(LoggedMealSchema),
+  totals: FreeLogTotalsSchema,
+})
+export type DailyFreeLog = z.infer<typeof DailyFreeLogSchema>
+
 // ─────────────────────────────────────────────
 // API RESPONSES
 // ─────────────────────────────────────────────
