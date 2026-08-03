@@ -20,6 +20,8 @@ import type { PlanFormData } from '../nutrition/PlanModal'
 import { MealModal } from '../nutrition/MealModal'
 import type { MealFormData } from '../nutrition/MealModal'
 import { showToast } from '../../components/Toast'
+import { ConfirmModal } from '../../components/ConfirmModal'
+import { ActionSheet, type SheetAction } from '../workout/ActionSheet'
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<AthleteTabParamList, 'Nutrition'>,
@@ -32,6 +34,8 @@ export function NutritionScreen() {
 
   const [planModal, setPlanModal] = useState<{ open: boolean; editing: NutritionPlanListItem | null }>({ open: false, editing: null })
   const [mealModal, setMealModal] = useState<{ open: boolean; planId: string | null; editing: PlanMeal | null }>({ open: false, planId: null, editing: null })
+  const [noPlanDialog, setNoPlanDialog] = useState(false)
+  const [activateSheet, setActivateSheet] = useState<{ visible: boolean; actions: SheetAction[] }>({ visible: false, actions: [] })
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['nutrition-plans'],
@@ -84,7 +88,33 @@ export function NutritionScreen() {
     onError: () => showToast('Falha ao atualizar refeição', 'error'),
   })
 
+  const activatePlan = useMutation({
+    mutationFn: (id: string) => api.nutrition.activatePlan(id),
+    onSuccess: () => { invalidate(); showToast('Plano ativado', 'success'); navigation.navigate('NutritionToday') },
+    onError: () => showToast('Erro ao ativar plano', 'error'),
+  })
+
   const openCreatePlan = useCallback(() => setPlanModal({ open: true, editing: null }), [])
+
+  // "Acompanhar Hoje" is the module's primary action, so the card is always on
+  // screen. Without an active plan the tap explains what is missing instead of
+  // opening an empty day.
+  function handleFollowToday() {
+    if (today?.plan) { navigation.navigate('NutritionToday'); return }
+    setNoPlanDialog(true)
+  }
+
+  function handleNoPlanConfirm() {
+    setNoPlanDialog(false)
+    if (plans.length === 0) { openCreatePlan(); return }
+    setActivateSheet({
+      visible: true,
+      actions: [
+        ...plans.map(p => ({ label: p.name, onPress: () => activatePlan.mutate(p.id) })),
+        { label: 'Cancelar', cancel: true, onPress: () => {} },
+      ],
+    })
+  }
 
   async function handleSavePlan(form: PlanFormData) {
     if (planModal.editing) await updatePlan.mutateAsync({ id: planModal.editing.id, body: form })
@@ -97,21 +127,21 @@ export function NutritionScreen() {
 
   const ListHeader = (
     <View>
-      {today?.plan && today.totals && (
-        <>
-          <TouchableOpacity onPress={() => navigation.navigate('NutritionToday')} activeOpacity={0.85}>
-            <LinearGradient colors={['#2979FF', '#1A237E']} style={s.todayBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-              <Ionicons name="today-outline" size={20} color="#fff" />
-              <View style={{ flex: 1 }}>
-                <Text style={s.todayBtnText}>Acompanhar Hoje</Text>
-                <Text style={s.todayBtnSub}>{today.plan.name} · {today.totals.adherencePercent}% concluído</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-          <View style={s.spacer} />
-        </>
-      )}
+      <TouchableOpacity onPress={handleFollowToday} activeOpacity={0.85}>
+        <LinearGradient colors={['#2979FF', '#1A237E']} style={s.todayBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+          <Ionicons name="today-outline" size={20} color="#fff" />
+          <View style={{ flex: 1 }}>
+            <Text style={s.todayBtnText}>Acompanhar Hoje</Text>
+            <Text style={s.todayBtnSub}>
+              {today?.plan
+                ? `${today.plan.name}${today.totals ? ` · ${today.totals.adherencePercent}% concluído` : ''}`
+                : 'Nenhum plano ativo'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+        </LinearGradient>
+      </TouchableOpacity>
+      <View style={s.spacer} />
       <View style={s.sectionRow}>
         <Text style={s.sectionLabel}>PLANOS</Text>
         <TouchableOpacity onPress={openCreatePlan} activeOpacity={0.7}>
@@ -187,6 +217,22 @@ export function NutritionScreen() {
         editing={mealModal.editing}
         onClose={() => setMealModal({ open: false, planId: null, editing: null })}
         onSave={handleSaveMeal}
+      />
+      <ConfirmModal
+        visible={noPlanDialog}
+        title="Nenhum plano ativo"
+        message={plans.length === 0
+          ? 'Crie um plano alimentar para acompanhar suas refeições de hoje.'
+          : 'Ative um dos seus planos para acompanhar as refeições de hoje.'}
+        confirmText={plans.length === 0 ? 'Criar plano' : 'Ativar plano'}
+        onConfirm={handleNoPlanConfirm}
+        onCancel={() => setNoPlanDialog(false)}
+      />
+      <ActionSheet
+        visible={activateSheet.visible}
+        title="Ativar plano"
+        actions={activateSheet.actions}
+        onClose={() => setActivateSheet({ visible: false, actions: [] })}
       />
     </SafeAreaView>
   )

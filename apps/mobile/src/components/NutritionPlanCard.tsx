@@ -1,16 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Animated,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { DragSortableList, DragRenderParams } from './DragSortableList'
 import { api } from '../lib/api'
 import type { NutritionPlanListItem, PlanMeal, DietGoal } from '../lib/api'
 import { ActionSheet, type SheetAction } from '../screens/workout/ActionSheet'
 import { ConfirmModal } from './ConfirmModal'
 import { showToast } from './Toast'
-import { MACRO_COLORS, fmt, sumMacros } from '../lib/nutrition'
+import { MACRO_COLORS, fmt, sumMacros, sortMealsByTime } from '../lib/nutrition'
 
 const GOAL_LABELS: Record<DietGoal, string> = {
   BULK: 'Bulk',
@@ -28,18 +27,15 @@ type Props = {
   onOpenMeal: (meal: PlanMeal, planId: string) => void
   onDrag?: () => void
   isDragging?: boolean
-  onMealDragStart?: () => void
-  onMealDragEnd?: () => void
 }
 
 export function NutritionPlanCard({
-  plan, onEditPlan, onAddMeal, onEditMeal, onOpenMeal, onDrag, isDragging, onMealDragStart, onMealDragEnd,
+  plan, onEditPlan, onAddMeal, onEditMeal, onOpenMeal, onDrag, isDragging,
 }: Props) {
   const qc = useQueryClient()
   const [isOpen, setIsOpen] = useState(false)
   const [showMacros, setShowMacros] = useState(false)
   const [contentH, setContentH] = useState(0)
-  const [localMeals, setLocalMeals] = useState<PlanMeal[]>([])
   const [sheet, setSheet] = useState<{ visible: boolean; title: string; actions: SheetAction[] }>({
     visible: false, title: '', actions: [],
   })
@@ -67,8 +63,7 @@ export function NutritionPlanCard({
     staleTime: 30_000,
   })
 
-  const meals = planData?.data.plan.meals ?? []
-  useEffect(() => { setLocalMeals(meals) }, [planData])
+  const meals = sortMealsByTime(planData?.data.plan.meals ?? [])
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: ['nutrition-plans'] })
@@ -91,12 +86,6 @@ export function NutritionPlanCard({
     onSuccess: () => { invalidate(); showToast('Refeição apagada') },
     onError: () => showToast('Erro ao apagar refeição', 'error'),
   })
-  const reorderMeals = useMutation({
-    mutationFn: (ids: string[]) => api.nutrition.reorderMeals(plan.id, ids),
-    onSuccess: () => invalidate(),
-    onError: () => showToast('Erro ao reordenar', 'error'),
-  })
-
   function showPlanMenu() {
     setSheet({
       visible: true,
@@ -136,22 +125,24 @@ export function NutritionPlanCard({
     })
   }
 
-  function renderMealItem({ item: meal, drag, isActive }: DragRenderParams<PlanMeal>) {
+  // Time, name, calories — nothing else. The food count lived here before and
+  // only repeated what the meal detail already shows.
+  function renderMealItem(meal: PlanMeal) {
+    const timed = meal.targetTimeHour != null
     return (
-      <View style={[s.mealRow, isActive && s.mealRowActive]}>
+      <View key={meal.id} style={s.mealRow}>
+        <View style={s.mealTimeCol}>
+          <Text style={[s.mealTime, !timed && s.mealTimeEmpty]}>
+            {timed ? `${String(meal.targetTimeHour).padStart(2, '0')}:00` : '--:--'}
+          </Text>
+        </View>
         <TouchableOpacity
           style={s.mealInfo}
           onPress={() => onOpenMeal(meal, plan.id)}
-          onLongPress={drag}
-          delayLongPress={250}
           activeOpacity={0.7}
         >
-          <Text style={s.mealName} numberOfLines={1}>
-            {meal.targetTimeHour != null ? `${String(meal.targetTimeHour).padStart(2, '0')}:00  ` : ''}{meal.name}
-          </Text>
-          <Text style={s.mealMeta} numberOfLines={1}>
-            {meal.foods.length} {meal.foods.length === 1 ? 'alimento' : 'alimentos'} · {fmt(meal.plannedMacros.calories)} kcal
-          </Text>
+          <Text style={s.mealName} numberOfLines={1}>{meal.name}</Text>
+          <Text style={s.mealMeta} numberOfLines={1}>{fmt(meal.plannedMacros.calories)} kcal</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => showMealMenu(meal)}
@@ -195,7 +186,6 @@ export function NutritionPlanCard({
           </View>
         </View>
         <View style={s.rowRight}>
-          <Text style={s.countText}>{plan.mealsCount} ref.</Text>
           <TouchableOpacity onPress={showPlanMenu} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Ionicons name="ellipsis-horizontal" size={22} color="#8A8A9A" />
           </TouchableOpacity>
@@ -239,16 +229,7 @@ export function NutritionPlanCard({
                     )}
                   </View>
                 )}
-                <DragSortableList
-                  data={localMeals}
-                  keyExtractor={m => m.id}
-                  renderItem={renderMealItem}
-                  onReorder={(data) => { setLocalMeals(data); reorderMeals.mutate(data.map(m => m.id)) }}
-                  onDragStart={onMealDragStart}
-                  onDragEnd={onMealDragEnd}
-                  itemHeight={68}
-                  itemGap={8}
-                />
+                {meals.map(renderMealItem)}
                 <TouchableOpacity style={s.addRow} onPress={() => onAddMeal(plan.id)} activeOpacity={0.7}>
                   <Ionicons name="add-circle-outline" size={16} color="#4FC3F7" />
                   <Text style={s.addText}>Adicionar refeição</Text>
@@ -313,13 +294,12 @@ const s = StyleSheet.create({
   pillText: { color: 'rgba(79,195,247,0.7)', fontSize: 10 },
   kcalHint: { color: '#8A8A9A', fontSize: 11 },
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 0 },
-  countText: { color: '#6A6A7A', fontSize: 11 },
 
   measureWrap: { position: 'absolute', left: 0, right: 0, top: 0 },
   mealsWrap: { paddingTop: 14, paddingBottom: 10 },
-  loadingRow: { height: 68, justifyContent: 'center', alignItems: 'center' },
+  loadingRow: { height: 74, justifyContent: 'center', alignItems: 'center' },
 
-  totalBlock: { paddingHorizontal: 2, paddingBottom: 14 },
+  totalBlock: { paddingHorizontal: 2, paddingBottom: 20 },
   totalLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase' },
   totalRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -330,17 +310,18 @@ const s = StyleSheet.create({
   macroDotText: { color: '#8A8A9A', fontSize: 11, fontVariant: ['tabular-nums'] },
 
   mealRow: {
-    flexDirection: 'row', alignItems: 'center', height: 68,
+    flexDirection: 'row', alignItems: 'center', height: 74,
     backgroundColor: '#1A1A22', borderRadius: 12, borderWidth: 1, borderColor: '#252530',
-    marginBottom: 8, overflow: 'hidden',
+    marginBottom: 10, overflow: 'hidden',
   },
-  mealRowActive: {
-    backgroundColor: '#1E2030', borderColor: '#2979FF44',
-    shadowColor: '#2979FF', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 4,
-  },
-  mealInfo: { flex: 1, minWidth: 0, paddingLeft: 14, paddingVertical: 10 },
+  // Left column mirrors the play button slot of a workout row, so meal and
+  // workout lists share the same rhythm.
+  mealTimeCol: { width: 62, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
+  mealTime: { color: '#8A8A9A', fontSize: 13, fontVariant: ['tabular-nums'] },
+  mealTimeEmpty: { color: '#4A4A5A' },
+  mealInfo: { flex: 1, minWidth: 0, paddingVertical: 12, paddingRight: 4 },
   mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '500' },
-  mealMeta: { color: '#8A8A9A', fontSize: 13, marginTop: 3 },
+  mealMeta: { color: '#8A8A9A', fontSize: 13, marginTop: 5, fontVariant: ['tabular-nums'] },
   menuBtn: { paddingRight: 14, paddingLeft: 8 },
 
   addRow: {

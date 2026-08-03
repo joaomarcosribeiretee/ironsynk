@@ -57,6 +57,16 @@ export function macrosForQuantity(
   }
 }
 
+// Meals always read in clock order. Untimed meals have no place on the clock,
+// so they settle at the end keeping their stored order between themselves.
+export function sortMealsByTime<T extends { targetTimeHour: number | null; order: number }>(meals: T[]): T[] {
+  return [...meals].sort((a, b) => {
+    const ta = a.targetTimeHour ?? Infinity
+    const tb = b.targetTimeHour ?? Infinity
+    return ta === tb ? a.order - b.order : ta - tb
+  })
+}
+
 export function clampPct(consumed: number, target: number | null): number {
   if (!target || target <= 0) return 0
   return Math.min(100, Math.round((consumed / target) * 100))
