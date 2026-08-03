@@ -60,10 +60,8 @@ export function NutritionScreen() {
   }
 
   const createPlan = useMutation({
-    mutationFn: (body: PlanFormData) => api.nutrition.createPlan({
-      name: body.name,
-      ...(body.goal ? { goal: body.goal } : {}),
-    }),
+    // Creation is name-only; goal and targets are set later when editing.
+    mutationFn: (body: PlanFormData) => api.nutrition.createPlan({ name: body.name }),
     onSuccess: () => invalidate(),
     onError: () => showToast('Falha ao criar plano', 'error'),
   })

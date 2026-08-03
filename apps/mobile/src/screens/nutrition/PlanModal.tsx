@@ -18,8 +18,9 @@ const GOALS: { key: DietGoal; label: string }[] = [
   { key: 'HEALTH', label: 'Saúde' },
 ]
 
-// Structure-first plan form: name + goal only. Macro totals are calculated
-// automatically from the foods added to meals — no manual macro inputs here.
+// Creating a plan asks for a name and nothing else — meals, foods and goal are
+// all configured afterwards, so the goal selector only shows when editing.
+// Macro totals stay derived from the foods added to meals.
 export type PlanFormData = { name: string; goal?: DietGoal | null }
 
 type Props = {
@@ -56,7 +57,7 @@ export function PlanModal({ visible, editing, onClose, onSave }: Props) {
     if (!canSave || saving) return
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), goal })
+      await onSave(isEdit ? { name: name.trim(), goal } : { name: name.trim() })
       onClose()
     } catch {
       setSaving(false)
@@ -65,9 +66,9 @@ export function PlanModal({ visible, editing, onClose, onSave }: Props) {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={s.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <View style={s.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
           <Animated.View style={[s.card, { transform: [{ scale }] }]}>
             <View style={s.cardHeader}>
               <Text style={s.cardTitle}>{isEdit ? 'Editar Plano' : 'Novo Plano'}</Text>
@@ -76,34 +77,38 @@ export function PlanModal({ visible, editing, onClose, onSave }: Props) {
               </TouchableOpacity>
             </View>
 
-            <Text style={[s.label, { marginTop: 0 }]}>Nome *</Text>
+            <Text style={[s.label, { marginTop: 0 }]}>Nome</Text>
             <TextInput
               style={s.input}
               value={name}
               onChangeText={setName}
-              placeholder="Ex: Cutting, Bulking, Manutenção..."
+              placeholder="Nome do plano"
               placeholderTextColor="#4A4A5A"
               autoFocus
             />
 
-            <Text style={s.label}>Objetivo (opcional)</Text>
-            <View style={s.goalRow}>
-              {GOALS.map((g) => {
-                const active = goal === g.key
-                return (
-                  <TouchableOpacity
-                    key={g.key}
-                    onPress={() => setGoal(active ? null : g.key)}
-                    style={[s.goalChip, active && s.goalChipActive]}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[s.goalChipText, active && s.goalChipTextActive]}>{g.label}</Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </View>
+            {isEdit && (
+              <>
+                <Text style={s.label}>Objetivo (opcional)</Text>
+                <View style={s.goalRow}>
+                  {GOALS.map((g) => {
+                    const active = goal === g.key
+                    return (
+                      <TouchableOpacity
+                        key={g.key}
+                        onPress={() => setGoal(active ? null : g.key)}
+                        style={[s.goalChip, active && s.goalChipActive]}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[s.goalChipText, active && s.goalChipTextActive]}>{g.label}</Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+              </>
+            )}
 
-            <View style={{ height: 20 }} />
+            <View style={s.btnSpacer} />
             <TouchableOpacity style={[s.btnWrap, !canSave && s.btnDisabled]} onPress={handleSave} activeOpacity={0.85}>
               <LinearGradient
                 colors={canSave ? ['#2979FF', '#1565C0'] : ['#2A2A35', '#2A2A35']}
@@ -111,12 +116,12 @@ export function PlanModal({ visible, editing, onClose, onSave }: Props) {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
               >
-                {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>{isEdit ? 'Salvar' : 'Criar Plano'}</Text>}
+                {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>{isEdit ? 'Salvar alterações' : 'Criar Plano'}</Text>}
               </LinearGradient>
             </TouchableOpacity>
           </Animated.View>
-        </KeyboardAvoidingView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
@@ -135,19 +140,21 @@ const s = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#2A2A35',
-    padding: 24,
+    padding: 20,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 14,
   },
   cardTitle: { color: '#F0F0F5', fontSize: 18, fontWeight: '500' },
 
-  label: { color: '#8A8A9A', fontSize: 12, fontWeight: '400', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8, marginTop: 20 },
+  btnSpacer: { height: 14 },
+
+  label: { color: '#8A8A9A', fontSize: 12, fontWeight: '400', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8, marginTop: 14 },
   input: {
-    height: 52,
+    height: 48,
     backgroundColor: '#141418',
     borderWidth: 1,
     borderColor: '#2A2A35',
@@ -167,7 +174,7 @@ const s = StyleSheet.create({
   goalChipTextActive: { color: '#4FC3F7' },
 
   btnWrap: { borderRadius: 14, overflow: 'hidden' },
-  btnDisabled: { opacity: 0.35 },
-  btn: { height: 52, alignItems: 'center', justifyContent: 'center' },
+  btnDisabled: { opacity: 0.4 },
+  btn: { height: 48, alignItems: 'center', justifyContent: 'center' },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '500' },
 })
