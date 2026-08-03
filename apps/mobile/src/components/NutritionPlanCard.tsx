@@ -9,7 +9,7 @@ import type { NutritionPlanListItem, PlanMeal, DietGoal } from '../lib/api'
 import { ActionSheet, type SheetAction } from '../screens/workout/ActionSheet'
 import { ConfirmModal } from './ConfirmModal'
 import { showToast } from './Toast'
-import { MACRO_COLORS, fmt, sumMacros, sortMealsByTime } from '../lib/nutrition'
+import { fmt, sumMacros, sortMealsByTime } from '../lib/nutrition'
 
 const GOAL_LABELS: Record<DietGoal, string> = {
   BULK: 'Bulk',
@@ -36,7 +36,6 @@ export function NutritionPlanCard({
   // Meals are what the screen is for, so every plan opens expanded. Collapsing
   // stays a manual choice.
   const [isOpen, setIsOpen] = useState(true)
-  const [showMacros, setShowMacros] = useState(false)
   const [contentH, setContentH] = useState(0)
   const [sheet, setSheet] = useState<{ visible: boolean; title: string; actions: SheetAction[] }>({
     visible: false, title: '', actions: [],
@@ -141,10 +140,7 @@ export function NutritionPlanCard({
           <View style={s.mealHead}>
             <Text style={s.mealName} numberOfLines={1}>{meal.name}</Text>
             {timed && (
-              <>
-                <Text style={s.mealDot}>·</Text>
-                <Text style={s.mealTime}>{String(meal.targetTimeHour).padStart(2, '0')}:00</Text>
-              </>
+              <Text style={s.mealTime}>{String(meal.targetTimeHour).padStart(2, '0')}:00</Text>
             )}
           </View>
           <Text style={s.mealMeta} numberOfLines={1}>{fmt(meal.plannedMacros.calories)} kcal</Text>
@@ -207,31 +203,17 @@ export function NutritionPlanCard({
               <>
                 {meals.length > 0 && (
                   <View style={s.totalBlock}>
-                    {/* Calories carry the summary; macros stay one tap away so
-                        the list itself keeps a single number per plan. */}
-                    <TouchableOpacity
-                      style={s.totalLine}
-                      onPress={() => setShowMacros(v => !v)}
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 6, bottom: 6, left: 0, right: 0 }}
-                    >
+                    {/* Calories lead; the macro line reads as their caption, in
+                        one neutral tone so nothing competes with the number. */}
+                    <View style={s.totalLine}>
                       <Text style={s.totalLabel}>Total do plano</Text>
                       <View style={s.totalRight}>
                         <Text style={s.totalValue}>{fmt(planMacros.calories)} kcal</Text>
-                        <Ionicons
-                          name={showMacros ? 'chevron-up' : 'chevron-down'}
-                          size={13}
-                          color="#555560"
-                        />
+                        <Text style={s.macroLine}>
+                          {fmt(planMacros.proteinG)}P · {fmt(planMacros.carbsG)}C · {fmt(planMacros.fatG)}G
+                        </Text>
                       </View>
-                    </TouchableOpacity>
-                    {showMacros && (
-                      <View style={s.macroDetail}>
-                        <MacroDot label="Proteína" value={planMacros.proteinG} color={MACRO_COLORS.protein} />
-                        <MacroDot label="Carbo" value={planMacros.carbsG} color={MACRO_COLORS.carbs} />
-                        <MacroDot label="Gordura" value={planMacros.fatG} color={MACRO_COLORS.fat} />
-                      </View>
-                    )}
+                    </View>
                   </View>
                 )}
                 {meals.map(renderMealItem)}
@@ -264,17 +246,6 @@ export function NutritionPlanCard({
   )
 }
 
-// Revealed macro breakdown: the color survives as a small dot only, so the
-// numbers read as one calm row instead of three competing highlights.
-function MacroDot({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <View style={s.macroDotItem}>
-      <View style={[s.macroDotMark, { backgroundColor: color }]} />
-      <Text style={s.macroDotText}>{label} {fmt(value)}g</Text>
-    </View>
-  )
-}
-
 const s = StyleSheet.create({
   cardDragging: { opacity: 0.9, backgroundColor: '#1E1E28', borderRadius: 12 },
 
@@ -301,28 +272,26 @@ const s = StyleSheet.create({
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 0 },
 
   measureWrap: { position: 'absolute', left: 0, right: 0, top: 0 },
-  mealsWrap: { paddingTop: 14, paddingBottom: 10 },
+  mealsWrap: { paddingTop: 16, paddingBottom: 12 },
   loadingRow: { height: 74, justifyContent: 'center', alignItems: 'center' },
 
-  totalBlock: { paddingHorizontal: 2, paddingBottom: 20 },
-  totalLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  totalLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase' },
-  totalRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  totalValue: { color: '#B8B8C4', fontSize: 12, fontVariant: ['tabular-nums'] },
-  macroDetail: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 10 },
-  macroDotItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  macroDotMark: { width: 5, height: 5, borderRadius: 2.5 },
-  macroDotText: { color: '#8A8A9A', fontSize: 11, fontVariant: ['tabular-nums'] },
+  totalBlock: { paddingHorizontal: 2, paddingBottom: 22 },
+  totalLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  totalLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 2 },
+  totalRight: { alignItems: 'flex-end', gap: 4 },
+  totalValue: { color: '#F0F0F5', fontSize: 15, fontWeight: '500', fontVariant: ['tabular-nums'] },
+  macroLine: { color: '#6A6A7A', fontSize: 11, letterSpacing: 0.2, fontVariant: ['tabular-nums'] },
 
   mealRow: {
     flexDirection: 'row', alignItems: 'center', height: 74,
     backgroundColor: '#1A1A22', borderRadius: 12, borderWidth: 1, borderColor: '#252530',
     marginBottom: 10, overflow: 'hidden',
   },
-  mealInfo: { flex: 1, minWidth: 0, paddingLeft: 16, paddingVertical: 12, paddingRight: 4 },
-  mealHead: { flexDirection: 'row', alignItems: 'center', gap: 7, minWidth: 0 },
-  mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '500', flexShrink: 1 },
-  mealDot: { color: '#4A4A5A', fontSize: 12, flexShrink: 0 },
+  mealInfo: { flex: 1, minWidth: 0, paddingLeft: 16, paddingVertical: 12, paddingRight: 10 },
+  // Name on the left, time parked on the right edge: the column of times reads
+  // as a schedule down the list instead of decorating each name.
+  mealHead: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
+  mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '500', flex: 1 },
   mealTime: { color: '#8A8A9A', fontSize: 12, fontVariant: ['tabular-nums'], flexShrink: 0 },
   mealMeta: { color: '#6A6A7A', fontSize: 12, marginTop: 6, fontVariant: ['tabular-nums'] },
   menuBtn: { paddingRight: 14, paddingLeft: 8 },
