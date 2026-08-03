@@ -33,7 +33,9 @@ export function NutritionPlanCard({
   plan, onEditPlan, onAddMeal, onEditMeal, onOpenMeal, onDrag, isDragging,
 }: Props) {
   const qc = useQueryClient()
-  const [isOpen, setIsOpen] = useState(false)
+  // Meals are what the screen is for, so every plan opens expanded. Collapsing
+  // stays a manual choice.
+  const [isOpen, setIsOpen] = useState(true)
   const [showMacros, setShowMacros] = useState(false)
   const [contentH, setContentH] = useState(0)
   const [sheet, setSheet] = useState<{ visible: boolean; title: string; actions: SheetAction[] }>({
@@ -43,7 +45,7 @@ export function NutritionPlanCard({
     visible: boolean; title: string; message: string; confirmText: string; onConfirm: () => void
   }>({ visible: false, title: '', message: '', confirmText: '', onConfirm: () => {} })
 
-  const progress = useRef(new Animated.Value(0)).current
+  const progress = useRef(new Animated.Value(1)).current
   const chevronRotate = progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '90deg'] })
   const containerHeight = progress.interpolate({ inputRange: [0, 1], outputRange: [0, contentH] })
   const contentOpacity = progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] })
