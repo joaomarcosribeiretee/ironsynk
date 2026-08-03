@@ -9,14 +9,6 @@ export const MACRO_COLORS = {
   fat: '#FF5252',
 } as const
 
-// Same hues, desaturated: used where the macro numbers are supporting detail
-// and the full-strength accents would shout over the calories.
-export const MACRO_COLORS_SOFT = {
-  protein: '#7B9FDB',
-  carbs: '#D6A85C',
-  fat: '#D98A8A',
-} as const
-
 // Compact number: drop trailing ".0", keep one decimal otherwise.
 export function fmt(n: number | null | undefined): string {
   if (n === null || n === undefined) return '—'

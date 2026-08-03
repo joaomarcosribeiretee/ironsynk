@@ -9,7 +9,7 @@ import type { NutritionPlanListItem, PlanMeal, DietGoal } from '../lib/api'
 import { ActionSheet, type SheetAction } from '../screens/workout/ActionSheet'
 import { ConfirmModal } from './ConfirmModal'
 import { showToast } from './Toast'
-import { MACRO_COLORS_SOFT, fmt, sumMacros, sortMealsByTime } from '../lib/nutrition'
+import { fmt, sumMacros, sortMealsByTime } from '../lib/nutrition'
 
 const GOAL_LABELS: Record<DietGoal, string> = {
   BULK: 'Bulk',
@@ -199,18 +199,11 @@ export function NutritionPlanCard({
               <View style={s.loadingRow}><ActivityIndicator size="small" color="#4FC3F7" /></View>
             ) : (
               <>
+                {/* One quiet line: the plan's calories, nothing else. Macros
+                    live where they are acted on — Acompanhar Hoje and the plan
+                    detail screen. */}
                 {meals.length > 0 && (
-                  <View style={s.totalBlock}>
-                    {/* Calories lead; the macro line reads as their caption, in
-                        one neutral tone so nothing competes with the number. */}
-                    <Text style={s.totalValue}>{fmt(planMacros.calories)} kcal</Text>
-                    <View style={s.macroDivider} />
-                    <View style={s.macroRow}>
-                      <MacroColumn label="Proteína" grams={planMacros.proteinG} color={MACRO_COLORS_SOFT.protein} />
-                      <MacroColumn label="Carboidratos" grams={planMacros.carbsG} color={MACRO_COLORS_SOFT.carbs} />
-                      <MacroColumn label="Gorduras" grams={planMacros.fatG} color={MACRO_COLORS_SOFT.fat} />
-                    </View>
-                  </View>
+                  <Text style={s.totalLine}>Total planejado · {fmt(planMacros.calories)} kcal</Text>
                 )}
                 {meals.map(renderMealItem)}
                 <TouchableOpacity style={s.addRow} onPress={() => onAddMeal(plan.id)} activeOpacity={0.7}>
@@ -238,17 +231,6 @@ export function NutritionPlanCard({
         onConfirm={() => { setConfirm(c => ({ ...c, visible: false })); confirm.onConfirm() }}
         onCancel={() => setConfirm(c => ({ ...c, visible: false }))}
       />
-    </View>
-  )
-}
-
-// One macro per column: the hue rides on the caption, the gram value stays
-// neutral so the three numbers read as one set.
-function MacroColumn({ label, grams, color }: { label: string; grams: number; color: string }) {
-  return (
-    <View style={s.macroCol}>
-      <Text style={[s.macroLabel, { color }]} numberOfLines={1}>{label}</Text>
-      <Text style={s.macroValue}>{Math.round(grams)}g</Text>
     </View>
   )
 }
@@ -282,16 +264,10 @@ const s = StyleSheet.create({
   mealsWrap: { paddingTop: 16, paddingBottom: 12 },
   loadingRow: { height: 74, justifyContent: 'center', alignItems: 'center' },
 
-  totalBlock: {
-    backgroundColor: '#1A1A22', borderRadius: 12, borderWidth: 1, borderColor: '#252530',
-    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14, marginBottom: 20,
+  totalLine: {
+    color: '#6A6A7A', fontSize: 11, letterSpacing: 0.2, fontVariant: ['tabular-nums'],
+    paddingHorizontal: 2, marginBottom: 16,
   },
-  totalValue: { color: '#F0F0F5', fontSize: 22, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  macroDivider: { height: 1, backgroundColor: '#252530', marginTop: 13, marginBottom: 13 },
-  macroRow: { flexDirection: 'row' },
-  macroCol: { flex: 1, gap: 4 },
-  macroLabel: { fontSize: 10, fontWeight: '500', letterSpacing: 0.4, textTransform: 'uppercase' },
-  macroValue: { color: '#F0F0F5', fontSize: 15, fontWeight: '500', fontVariant: ['tabular-nums'] },
 
   mealRow: {
     flexDirection: 'row', alignItems: 'center', height: 74,
