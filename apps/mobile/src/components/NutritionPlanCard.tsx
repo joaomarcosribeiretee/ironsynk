@@ -127,23 +127,23 @@ export function NutritionPlanCard({
     })
   }
 
-  // Time, name, calories — nothing else. The food count lived here before and
-  // only repeated what the meal detail already shows.
+  // Time, name, calories — nothing else. The time carries the brand accent and
+  // leads the row, the way the blue play button leads a workout card.
   function renderMealItem(meal: PlanMeal) {
     const timed = meal.targetTimeHour != null
     return (
       <View key={meal.id} style={s.mealRow}>
-        <View style={s.mealTimeCol}>
-          <Text style={[s.mealTime, !timed && s.mealTimeEmpty]}>
-            {timed ? `${String(meal.targetTimeHour).padStart(2, '0')}:00` : '--:--'}
-          </Text>
-        </View>
         <TouchableOpacity
           style={s.mealInfo}
           onPress={() => onOpenMeal(meal, plan.id)}
           activeOpacity={0.7}
         >
-          <Text style={s.mealName} numberOfLines={1}>{meal.name}</Text>
+          <View style={s.mealHead}>
+            <Text style={[s.mealTime, !timed && s.mealTimeEmpty]}>
+              {timed ? `${String(meal.targetTimeHour).padStart(2, '0')}:00` : '--:--'}
+            </Text>
+            <Text style={s.mealName} numberOfLines={1}>{meal.name}</Text>
+          </View>
           <Text style={s.mealMeta} numberOfLines={1}>{fmt(meal.plannedMacros.calories)} kcal</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -316,14 +316,13 @@ const s = StyleSheet.create({
     backgroundColor: '#1A1A22', borderRadius: 12, borderWidth: 1, borderColor: '#252530',
     marginBottom: 10, overflow: 'hidden',
   },
-  // Left column mirrors the play button slot of a workout row, so meal and
-  // workout lists share the same rhythm.
-  mealTimeCol: { width: 62, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
-  mealTime: { color: '#8A8A9A', fontSize: 13, fontVariant: ['tabular-nums'] },
-  mealTimeEmpty: { color: '#4A4A5A' },
-  mealInfo: { flex: 1, minWidth: 0, paddingVertical: 12, paddingRight: 4 },
-  mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '500' },
-  mealMeta: { color: '#8A8A9A', fontSize: 13, marginTop: 5, fontVariant: ['tabular-nums'] },
+  mealInfo: { flex: 1, minWidth: 0, paddingLeft: 16, paddingVertical: 12, paddingRight: 4 },
+  mealHead: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
+  // The accent lives in the time itself — no chip, no fill, no extra weight.
+  mealTime: { color: '#4FC3F7', fontSize: 13, fontWeight: '600', letterSpacing: 0.3, fontVariant: ['tabular-nums'], flexShrink: 0 },
+  mealTimeEmpty: { color: '#4A4A5A', fontWeight: '500' },
+  mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '500', flexShrink: 1 },
+  mealMeta: { color: '#6A6A7A', fontSize: 12, marginTop: 6, fontVariant: ['tabular-nums'] },
   menuBtn: { paddingRight: 14, paddingLeft: 8 },
 
   addRow: {
