@@ -13,14 +13,13 @@ type Props = {
   visible: boolean
   planName: string
   macros: MacrosRecord
-  mealsCount: number
-  foodsCount: number
   onClose: () => void
 }
 
-// Read-only breakdown of a plan: totals only, no action beyond closing it.
-// Same centered card as PlanModal/MealModal so the module has one modal shape.
-export function NutritionSummaryModal({ visible, planName, macros, mealsCount, foodsCount, onClose }: Props) {
+// Read-only breakdown of a plan: calories and macros only, no action beyond
+// closing it. Same centered card as PlanModal/MealModal so the module has one
+// modal shape.
+export function NutritionSummaryModal({ visible, planName, macros, onClose }: Props) {
   const scale = useRef(new Animated.Value(0.92)).current
 
   useEffect(() => {
@@ -58,11 +57,6 @@ export function NutritionSummaryModal({ visible, planName, macros, mealsCount, f
             <Row label="Proteína" value={`${Math.round(macros.proteinG)}g`} color={MACRO_COLORS.protein} />
             <Row label="Carboidratos" value={`${Math.round(macros.carbsG)}g`} color={MACRO_COLORS.carbs} />
             <Row label="Gorduras" value={`${Math.round(macros.fatG)}g`} color={MACRO_COLORS.fat} />
-
-            <View style={s.divider} />
-
-            <Row label="Refeições" value={String(mealsCount)} />
-            <Row label="Alimentos" value={String(foodsCount)} />
           </Animated.View>
         </View>
       </KeyboardAvoidingView>

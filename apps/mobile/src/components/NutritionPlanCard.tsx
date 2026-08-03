@@ -238,8 +238,6 @@ export function NutritionPlanCard({
         visible={summaryOpen}
         planName={plan.name}
         macros={planMacros}
-        mealsCount={meals.length}
-        foodsCount={meals.reduce((n, m) => n + m.foods.length, 0)}
         onClose={() => setSummaryOpen(false)}
       />
       <ConfirmModal
