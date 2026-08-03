@@ -9,7 +9,7 @@ import type { NutritionPlanListItem, PlanMeal, DietGoal } from '../lib/api'
 import { ActionSheet, type SheetAction } from '../screens/workout/ActionSheet'
 import { ConfirmModal } from './ConfirmModal'
 import { showToast } from './Toast'
-import { fmt, sumMacros, sortMealsByTime } from '../lib/nutrition'
+import { MACRO_COLORS_SOFT, fmt, sumMacros, sortMealsByTime } from '../lib/nutrition'
 
 const GOAL_LABELS: Record<DietGoal, string> = {
   BULK: 'Bulk',
@@ -126,10 +126,13 @@ export function NutritionPlanCard({
     })
   }
 
-  // Name first, time as a quiet suffix, calories last. Nothing here is colored:
-  // the card is identified by what the meal is called.
+  // The name owns the card; time and calories share the metadata line under it,
+  // so the row reads like an agenda entry rather than a stat block.
   function renderMealItem(meal: PlanMeal) {
-    const timed = meal.targetTimeHour != null
+    const time = meal.targetTimeHour != null
+      ? `${String(meal.targetTimeHour).padStart(2, '0')}:00`
+      : null
+    const kcal = `${fmt(meal.plannedMacros.calories)} kcal`
     return (
       <View key={meal.id} style={s.mealRow}>
         <TouchableOpacity
@@ -137,13 +140,8 @@ export function NutritionPlanCard({
           onPress={() => onOpenMeal(meal, plan.id)}
           activeOpacity={0.7}
         >
-          <View style={s.mealHead}>
-            <Text style={s.mealName} numberOfLines={1}>{meal.name}</Text>
-            {timed && (
-              <Text style={s.mealTime}>{String(meal.targetTimeHour).padStart(2, '0')}:00</Text>
-            )}
-          </View>
-          <Text style={s.mealMeta} numberOfLines={1}>{fmt(meal.plannedMacros.calories)} kcal</Text>
+          <Text style={s.mealName} numberOfLines={1}>{meal.name}</Text>
+          <Text style={s.mealMeta} numberOfLines={1}>{time ? `${time} · ${kcal}` : kcal}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => showMealMenu(meal)}
@@ -205,14 +203,17 @@ export function NutritionPlanCard({
                   <View style={s.totalBlock}>
                     {/* Calories lead; the macro line reads as their caption, in
                         one neutral tone so nothing competes with the number. */}
-                    <View style={s.totalLine}>
-                      <Text style={s.totalLabel}>Total do plano</Text>
-                      <View style={s.totalRight}>
-                        <Text style={s.totalValue}>{fmt(planMacros.calories)} kcal</Text>
-                        <Text style={s.macroLine}>
-                          {fmt(planMacros.proteinG)}P · {fmt(planMacros.carbsG)}C · {fmt(planMacros.fatG)}G
-                        </Text>
-                      </View>
+                    <Text style={s.totalValue}>{fmt(planMacros.calories)} kcal</Text>
+                    <View style={s.macroLine}>
+                      <Text style={[s.macroItem, { color: MACRO_COLORS_SOFT.protein }]}>
+                        Proteína {fmt(planMacros.proteinG)}g
+                      </Text>
+                      <Text style={[s.macroItem, { color: MACRO_COLORS_SOFT.carbs }]}>
+                        Carboidratos {fmt(planMacros.carbsG)}g
+                      </Text>
+                      <Text style={[s.macroItem, { color: MACRO_COLORS_SOFT.fat }]}>
+                        Gorduras {fmt(planMacros.fatG)}g
+                      </Text>
                     </View>
                   </View>
                 )}
@@ -276,11 +277,9 @@ const s = StyleSheet.create({
   loadingRow: { height: 74, justifyContent: 'center', alignItems: 'center' },
 
   totalBlock: { paddingHorizontal: 2, paddingBottom: 22 },
-  totalLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  totalLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 2 },
-  totalRight: { alignItems: 'flex-end', gap: 4 },
-  totalValue: { color: '#F0F0F5', fontSize: 15, fontWeight: '500', fontVariant: ['tabular-nums'] },
-  macroLine: { color: '#6A6A7A', fontSize: 11, letterSpacing: 0.2, fontVariant: ['tabular-nums'] },
+  totalValue: { color: '#F0F0F5', fontSize: 18, fontWeight: '500', fontVariant: ['tabular-nums'] },
+  macroLine: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 7 },
+  macroItem: { fontSize: 11, letterSpacing: 0.2, fontVariant: ['tabular-nums'] },
 
   mealRow: {
     flexDirection: 'row', alignItems: 'center', height: 74,
@@ -288,12 +287,8 @@ const s = StyleSheet.create({
     marginBottom: 10, overflow: 'hidden',
   },
   mealInfo: { flex: 1, minWidth: 0, paddingLeft: 16, paddingVertical: 12, paddingRight: 10 },
-  // Name on the left, time parked on the right edge: the column of times reads
-  // as a schedule down the list instead of decorating each name.
-  mealHead: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
-  mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '500', flex: 1 },
-  mealTime: { color: '#8A8A9A', fontSize: 12, fontVariant: ['tabular-nums'], flexShrink: 0 },
-  mealMeta: { color: '#6A6A7A', fontSize: 12, marginTop: 6, fontVariant: ['tabular-nums'] },
+  mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '500' },
+  mealMeta: { color: '#8A8A9A', fontSize: 12, marginTop: 5, fontVariant: ['tabular-nums'] },
   menuBtn: { paddingRight: 14, paddingLeft: 8 },
 
   addRow: {
