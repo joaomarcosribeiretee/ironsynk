@@ -11,7 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import type { MealFoodRecord } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
-import { MACRO_COLORS, fmt } from '../../lib/nutrition'
+import { MACRO_COLORS, fmt, servingLabel } from '../../lib/nutrition'
 import { showToast } from '../../components/Toast'
 import { ActionSheet } from '../workout/ActionSheet'
 import { FoodSearchModal } from './FoodSearchModal'
@@ -77,12 +77,12 @@ export function MealDetailScreen() {
         <View style={s.summary}>
           <View style={s.calBlock}>
             <Text style={s.calValue}>{fmt(m.calories)}</Text>
-            <Text style={s.calUnit}>kcal</Text>
+            <Text style={s.calUnit}>kcal no total</Text>
           </View>
           <View style={s.macroRow}>
-            <Macro label="P" grams={m.proteinG} color={MACRO_COLORS.protein} />
-            <Macro label="C" grams={m.carbsG} color={MACRO_COLORS.carbs} />
-            <Macro label="G" grams={m.fatG} color={MACRO_COLORS.fat} />
+            <Macro label="Proteína" grams={m.proteinG} color={MACRO_COLORS.protein} />
+            <Macro label="Carboidratos" grams={m.carbsG} color={MACRO_COLORS.carbs} />
+            <Macro label="Gorduras" grams={m.fatG} color={MACRO_COLORS.fat} />
           </View>
         </View>
       )}
@@ -110,7 +110,7 @@ export function MealDetailScreen() {
                 <TouchableOpacity key={mf.id} style={s.foodCard} activeOpacity={0.7} onPress={() => setQtyEdit(mf)}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={s.foodName} numberOfLines={1}>{mf.food.name}</Text>
-                    <Text style={s.foodMeta}>{fmt(mf.quantityG)} g · {fmt(mf.macros.calories)} kcal</Text>
+                    <Text style={s.foodMeta}>{servingLabel(mf)} · {fmt(mf.macros.calories)} kcal</Text>
                   </View>
                   <TouchableOpacity
                     onPress={() => setSheetFood(mf)}
@@ -172,14 +172,13 @@ const s = StyleSheet.create({
   headerTitle: { flex: 1, color: '#F0F0F5', fontSize: 20, fontWeight: '500' },
 
   summary: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingBottom: 12, marginBottom: 8,
+    paddingHorizontal: 16, paddingBottom: 12, marginBottom: 8, gap: 8,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2A2A35',
   },
   calBlock: { flexDirection: 'row', alignItems: 'baseline', gap: 5 },
   calValue: { color: '#F0F0F5', fontSize: 22, fontWeight: '600', fontVariant: ['tabular-nums'] },
   calUnit: { color: '#8A8A9A', fontSize: 12 },
-  macroRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  macroRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 14, rowGap: 6 },
   macroItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   dot: { width: 5, height: 5, borderRadius: 3 },
   macroText: { color: '#8A8A9A', fontSize: 12, fontVariant: ['tabular-nums'] },

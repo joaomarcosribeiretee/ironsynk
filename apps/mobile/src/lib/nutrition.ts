@@ -21,6 +21,32 @@ export function fmtGrams(n: number | null | undefined): string {
 
 export const EMPTY_MACROS: MacrosRecord = { calories: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: null }
 
+// A logged portion as the user picked it. Only `quantityG` exists today; the
+// serving fields are read when a food source starts providing them.
+export type ServingSource = {
+  quantityG: number
+  servingQuantity?: number | null
+  servingUnit?: string | null
+  servingWeightG?: number | null  // equivalent weight, supplied by the source
+}
+
+const WEIGHT_UNITS = new Set(['g', 'kg', 'ml', 'l'])
+
+// Practical serving label: the unit the user actually selected leads. An
+// equivalent weight only shows when the source supplies one — conversions are
+// never derived here. Falls back to grams, which is all the API stores today.
+export function servingLabel(s: ServingSource): string {
+  const unit = s.servingUnit?.trim()
+  const qty = s.servingQuantity
+  if (!unit || qty === null || qty === undefined || qty <= 0) return `${fmt(s.quantityG)} g`
+
+  const head = `${fmt(qty)} ${unit}`
+  if (WEIGHT_UNITS.has(unit.toLowerCase())) return head
+  return s.servingWeightG === null || s.servingWeightG === undefined
+    ? head
+    : `${head} · ${fmt(s.servingWeightG)} g`
+}
+
 // Sum a list of macro payloads (client-side preview while editing).
 export function sumMacros(list: MacrosRecord[]): MacrosRecord {
   const t: MacrosRecord = { calories: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: null }
