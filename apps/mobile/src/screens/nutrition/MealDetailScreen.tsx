@@ -13,6 +13,7 @@ import type { MealFoodRecord } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { MACRO_COLORS, fmt, servingLabel } from '../../lib/nutrition'
 import { showToast } from '../../components/Toast'
+import { ConfirmModal } from '../../components/ConfirmModal'
 import { ActionSheet } from '../workout/ActionSheet'
 import { FoodSearchModal } from './FoodSearchModal'
 import type { PortionPayload } from './FoodSearchModal'
@@ -29,6 +30,7 @@ export function MealDetailScreen() {
   const [foodModal, setFoodModal] = useState(false)
   const [qtyEdit, setQtyEdit] = useState<MealFoodRecord | null>(null)
   const [sheetFood, setSheetFood] = useState<MealFoodRecord | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState<MealFoodRecord | null>(null)
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['nutrition-plan', planId],
@@ -151,9 +153,22 @@ export function MealDetailScreen() {
         onClose={() => setSheetFood(null)}
         actions={target ? [
           { label: 'Editar quantidade', onPress: () => setQtyEdit(target) },
-          { label: 'Remover', destructive: true, onPress: () => removeFood.mutate(target.id) },
+          { label: 'Remover', destructive: true, onPress: () => setConfirmRemove(target) },
           { label: 'Cancelar', cancel: true, onPress: () => {} },
         ] : []}
+      />
+      {/* Removing a food asks first, like every other destructive action. */}
+      <ConfirmModal
+        visible={confirmRemove !== null}
+        title="Remover alimento"
+        message={`Remover ${confirmRemove?.food.name ?? ''} desta refeição?`}
+        confirmText="Remover"
+        destructive
+        onConfirm={() => {
+          if (confirmRemove) removeFood.mutate(confirmRemove.id)
+          setConfirmRemove(null)
+        }}
+        onCancel={() => setConfirmRemove(null)}
       />
     </SafeAreaView>
   )
