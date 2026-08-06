@@ -182,19 +182,15 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
                   </View>
                 ) : (
                   results.map((food) => (
-                    <TouchableOpacity key={food.id} style={s.foodRow} onPress={() => pickFood(food)} activeOpacity={0.7}>
-                      <View style={{ flex: 1 }}>
+                    <TouchableOpacity key={food.id} style={s.foodRow} onPress={() => pickFood(food)} activeOpacity={0.6}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={s.foodName} numberOfLines={1}>{food.name}</Text>
-                        <Text style={s.foodMeta} numberOfLines={1}>
-                          {food.brand ? `${food.brand} · ` : ''}{fmt(food.calories)} kcal / 100g
-                        </Text>
+                        {food.brand ? <Text style={s.foodBrand} numberOfLines={1}>{food.brand}</Text> : null}
                       </View>
-                      <View style={s.foodMacros}>
-                        <Text style={[s.miniMacro, { color: MACRO_COLORS.protein }]}>P {fmt(food.proteinG)}</Text>
-                        <Text style={[s.miniMacro, { color: MACRO_COLORS.carbs }]}>C {fmt(food.carbsG)}</Text>
-                        <Text style={[s.miniMacro, { color: MACRO_COLORS.fat }]}>G {fmt(food.fatG)}</Text>
+                      <View style={s.kcalCol}>
+                        <Text style={s.foodKcal}>{fmt(food.calories)} kcal</Text>
+                        <Text style={s.kcalRef}>por 100 g</Text>
                       </View>
-                      {food.source === 'off' && <View style={s.offBadge}><Text style={s.offText}>OFF</Text></View>}
                     </TouchableOpacity>
                   ))
                 )}
@@ -211,26 +207,32 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
           {mode === 'quantity' && selected && (
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.qtyPad}>
               <Text style={s.qtyFoodName}>{selected.name}</Text>
-              {selected.brand ? <Text style={s.qtyBrand}>{selected.brand}</Text> : null}
-              <Text style={s.per100}>Valores por 100g: {fmt(selected.calories)} kcal · P {fmt(selected.proteinG)} · C {fmt(selected.carbsG)} · G {fmt(selected.fatG)}</Text>
+              {selected.brand ? <Text style={s.qtyBrand} numberOfLines={1}>{selected.brand}</Text> : null}
 
-              <Text style={s.label}>Quantidade (g)</Text>
-              <TextInput
-                style={s.qtyInput}
-                value={quantity}
-                onChangeText={setQuantity}
-                keyboardType="numeric"
-                placeholder="100"
-                placeholderTextColor="#4A4A5A"
-                autoFocus
-              />
+              <Text style={s.label}>Quantidade</Text>
+              <View style={s.qtyRow}>
+                <TextInput
+                  style={s.qtyInputFlex}
+                  value={quantity}
+                  onChangeText={setQuantity}
+                  keyboardType="numeric"
+                  placeholder="100"
+                  placeholderTextColor="#4A4A5A"
+                  autoFocus
+                />
+                <Text style={s.qtyUnit}>g</Text>
+              </View>
 
               {preview && (
-                <View style={s.previewCard}>
-                  <View style={s.previewItem}><Text style={s.previewVal}>{fmt(preview.calories)}</Text><Text style={s.previewLbl}>kcal</Text></View>
-                  <View style={s.previewItem}><Text style={[s.previewVal, { color: MACRO_COLORS.protein }]}>{fmt(preview.proteinG)}</Text><Text style={s.previewLbl}>Prot</Text></View>
-                  <View style={s.previewItem}><Text style={[s.previewVal, { color: MACRO_COLORS.carbs }]}>{fmt(preview.carbsG)}</Text><Text style={s.previewLbl}>Carb</Text></View>
-                  <View style={s.previewItem}><Text style={[s.previewVal, { color: MACRO_COLORS.fat }]}>{fmt(preview.fatG)}</Text><Text style={s.previewLbl}>Gord</Text></View>
+                <View style={s.nutriCard}>
+                  <View style={s.calBlock}>
+                    <Text style={s.calValue}>{fmt(preview.calories)}</Text>
+                    <Text style={s.calUnit}>kcal</Text>
+                  </View>
+                  <View style={s.divider} />
+                  <MacroRow label="Proteína" value={`${Math.round(preview.proteinG)}g`} color={MACRO_COLORS.protein} />
+                  <MacroRow label="Carboidratos" value={`${Math.round(preview.carbsG)}g`} color={MACRO_COLORS.carbs} />
+                  <MacroRow label="Gorduras" value={`${Math.round(preview.fatG)}g`} color={MACRO_COLORS.fat} />
                 </View>
               )}
 
@@ -283,6 +285,20 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
   )
 }
 
+// Nutritional detail lives here — this is the only step of the flow that shows
+// the full macro breakdown.
+function MacroRow({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <View style={s.macroRow}>
+      <View style={s.macroLeft}>
+        <View style={[s.dot, { backgroundColor: color }]} />
+        <Text style={s.macroLabel}>{label}</Text>
+      </View>
+      <Text style={s.macroValue}>{value}</Text>
+    </View>
+  )
+}
+
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#141418' },
   header: {
@@ -309,22 +325,22 @@ const s = StyleSheet.create({
   retryText: { color: '#4FC3F7', fontSize: 13, fontWeight: '500' },
 
   foodRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: '#2A2A35',
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2A2A35',
   },
   foodName: { color: '#F0F0F5', fontSize: 15, fontWeight: '500' },
-  foodMeta: { color: '#8A8A9A', fontSize: 12, marginTop: 2 },
-  foodMacros: { alignItems: 'flex-end', gap: 1 },
-  miniMacro: { fontSize: 11, fontWeight: '600' },
-  offBadge: { backgroundColor: 'rgba(138,138,154,0.15)', borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2 },
-  offText: { color: '#8A8A9A', fontSize: 9, fontWeight: '700' },
+  foodBrand: { color: '#6A6A7A', fontSize: 12, marginTop: 2 },
+  kcalCol: { alignItems: 'flex-end', flexShrink: 0 },
+  foodKcal: { color: '#8A8A9A', fontSize: 13, fontWeight: '500', fontVariant: ['tabular-nums'] },
+  kcalRef: { color: '#4A4A5A', fontSize: 10, marginTop: 2 },
 
   customLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 18 },
   customLinkText: { color: '#4FC3F7', fontSize: 14, fontWeight: '500' },
 
   qtyPad: { padding: 20 },
-  qtyFoodName: { color: '#F0F0F5', fontSize: 20, fontWeight: '700' },
-  qtyBrand: { color: '#8A8A9A', fontSize: 14, marginTop: 2 },
+  qtyFoodName: { color: '#F0F0F5', fontSize: 20, fontWeight: '600' },
+  qtyBrand: { color: '#8A8A9A', fontSize: 13, marginTop: 3 },
   per100: { color: '#8A8A9A', fontSize: 12, marginTop: 10, lineHeight: 17 },
 
   label: { color: '#8A8A9A', fontSize: 12, fontWeight: '400', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8, marginTop: 18 },
@@ -335,14 +351,27 @@ const s = StyleSheet.create({
   macroInputsRow: { flexDirection: 'row', gap: 12 },
   macroInputCol: { flex: 1 },
 
-  previewCard: {
-    flexDirection: 'row', justifyContent: 'space-around',
-    backgroundColor: '#1E1E24', borderRadius: 14, borderWidth: 1, borderColor: '#2A2A35',
-    paddingVertical: 16, marginTop: 20,
+  qtyRow: {
+    flexDirection: 'row', alignItems: 'center',
+    height: 48, backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
+    borderRadius: 12, paddingHorizontal: 16,
   },
-  previewItem: { alignItems: 'center' },
-  previewVal: { color: '#F0F0F5', fontSize: 18, fontWeight: '700' },
-  previewLbl: { color: '#8A8A9A', fontSize: 11, marginTop: 3 },
+  qtyInputFlex: { flex: 1, color: '#F0F0F5', fontSize: 16, height: '100%', fontVariant: ['tabular-nums'] },
+  qtyUnit: { color: '#8A8A9A', fontSize: 14, marginLeft: 8 },
+
+  nutriCard: {
+    backgroundColor: '#1E1E24', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A35',
+    padding: 18, marginTop: 20,
+  },
+  calBlock: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  calValue: { color: '#F0F0F5', fontSize: 28, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  calUnit: { color: '#8A8A9A', fontSize: 13 },
+  divider: { height: 1, backgroundColor: '#2A2A35', marginVertical: 14 },
+  macroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 7 },
+  macroLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  macroLabel: { color: '#8A8A9A', fontSize: 14 },
+  macroValue: { color: '#F0F0F5', fontSize: 15, fontWeight: '500', fontVariant: ['tabular-nums'] },
 
   primaryWrap: { borderRadius: 14, overflow: 'hidden', marginTop: 28 },
   primaryBtn: { height: 50, alignItems: 'center', justifyContent: 'center' },
