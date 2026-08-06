@@ -6,7 +6,7 @@
 // (network, timeout, bad JSON, missing fields) it returns an empty result so
 // the API keeps working with just the local Food table.
 
-import type { FoodSearchResult } from '@ironsynk/shared'
+import type { BaseUnit, FoodSearchResult } from '@ironsynk/shared'
 
 const OFF_BASE = 'https://world.openfoodfacts.org'
 const REQUEST_TIMEOUT_MS = 4000
@@ -51,6 +51,13 @@ function str(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
 
+// OFF writes units freely ("g", "G", "ml", "oz", ...). Only the two units our
+// per-100 macros can be expressed in are accepted; anything else is unusable.
+function unitOf(value: unknown): BaseUnit | null {
+  const raw = str(value)?.toLowerCase()
+  return raw === 'g' || raw === 'ml' ? raw : null
+}
+
 // Map a raw OFF product to our per-100g search-result shape. Returns null when
 // the product lacks the minimum usable data (a name + at least calories).
 export function normalizeOffProduct(raw: unknown): FoodSearchResult | null {
@@ -77,6 +84,16 @@ export function normalizeOffProduct(raw: unknown): FoodSearchResult | null {
       : null)
   if (calories === null) return null
 
+  // OFF states the serving itself (serving_quantity + its unit). We take it as
+  // published or not at all — no serving is ever inferred from the name.
+  const baseUnit = unitOf(product['product_quantity_unit'])
+  const servingUnit = unitOf(product['serving_quantity_unit'])
+  const servingSize = num(product['serving_quantity'])
+  // A serving in a different unit than the per-100 values would need a
+  // conversion we cannot make, so it is dropped.
+  const usableServing =
+    servingSize !== null && servingSize > 0 && (servingUnit === null || servingUnit === (baseUnit ?? 'g'))
+
   return {
     id: `off:${code}`,
     name,
@@ -89,6 +106,9 @@ export function normalizeOffProduct(raw: unknown): FoodSearchResult | null {
     isCustom: false,
     createdById: null,
     sourceId: code,
+    baseUnit,
+    servingSizeG: usableServing ? servingSize : null,
+    servingLabel: usableServing ? str(product['serving_size']) : null,
     source: 'off',
   }
 }
@@ -98,7 +118,8 @@ export async function searchOpenFoodFacts(query: string, limit: number): Promise
   const url =
     `${OFF_BASE}/cgi/search.pl?search_terms=${encodeURIComponent(query)}` +
     `&search_simple=1&action=process&json=1&page_size=${limit}` +
-    `&fields=code,product_name,product_name_en,generic_name,brands,nutriments`
+    `&fields=code,product_name,product_name_en,generic_name,brands,nutriments` +
+    `,serving_size,serving_quantity,serving_quantity_unit,product_quantity_unit`
 
   const data = await offFetch(url)
   if (typeof data !== 'object' || data === null) return []
@@ -118,7 +139,8 @@ export async function searchOpenFoodFacts(query: string, limit: number): Promise
 export async function getOpenFoodFactsProduct(code: string): Promise<FoodSearchResult | null> {
   const url =
     `${OFF_BASE}/api/v2/product/${encodeURIComponent(code)}.json` +
-    `?fields=code,product_name,product_name_en,generic_name,brands,nutriments`
+    `?fields=code,product_name,product_name_en,generic_name,brands,nutriments` +
+    `,serving_size,serving_quantity,serving_quantity_unit,product_quantity_unit`
 
   const data = await offFetch(url)
   if (typeof data !== 'object' || data === null) return null

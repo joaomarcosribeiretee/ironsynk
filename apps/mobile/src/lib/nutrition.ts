@@ -1,4 +1,4 @@
-import type { MacrosRecord } from './api'
+import type { FoodRecord, MacrosRecord, ServingUnit } from './api'
 
 // Brand-aligned macro accent colors, reused across every nutrition screen so
 // protein/carbs/fat read consistently.
@@ -21,30 +21,51 @@ export function fmtGrams(n: number | null | undefined): string {
 
 export const EMPTY_MACROS: MacrosRecord = { calories: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: null }
 
-// A logged portion as the user picked it. Only `quantityG` exists today; the
-// serving fields are read when a food source starts providing them.
-export type ServingSource = {
+// A portion as the user entered it, alongside the food it belongs to.
+export type Portion = {
   quantityG: number
+  servingUnit?: ServingUnit | null
   servingQuantity?: number | null
-  servingUnit?: string | null
-  servingWeightG?: number | null  // equivalent weight, supplied by the source
+  food: Pick<FoodRecord, 'baseUnit' | 'servingSizeG' | 'servingLabel'>
 }
 
-const WEIGHT_UNITS = new Set(['g', 'kg', 'ml', 'l'])
+// The weight/volume unit a food's values are stated in. Sources publish either
+// one; we never convert between them, so this is only ever read, never derived.
+export function baseUnitOf(food: { baseUnit?: 'g' | 'ml' | null }): 'g' | 'ml' {
+  return food.baseUnit === 'ml' ? 'ml' : 'g'
+}
 
-// Practical serving label: the unit the user actually selected leads. An
-// equivalent weight only shows when the source supplies one — conversions are
-// never derived here. Falls back to grams, which is all the API stores today.
-export function servingLabel(s: ServingSource): string {
-  const unit = s.servingUnit?.trim()
-  const qty = s.servingQuantity
-  if (!unit || qty === null || qty === undefined || qty <= 0) return `${fmt(s.quantityG)} g`
+// Can this food be logged in servings? Only when its source published one.
+export function hasServing(food: { servingSizeG?: number | null }): boolean {
+  return typeof food.servingSizeG === 'number' && food.servingSizeG > 0
+}
 
-  const head = `${fmt(qty)} ${unit}`
-  if (WEIGHT_UNITS.has(unit.toLowerCase())) return head
-  return s.servingWeightG === null || s.servingWeightG === undefined
-    ? head
-    : `${head} · ${fmt(s.servingWeightG)} g`
+// One serving spelled out, e.g. "porção (30 g)". Uses the source's own wording
+// when it published a label.
+export function servingOptionLabel(food: Pick<FoodRecord, 'baseUnit' | 'servingSizeG' | 'servingLabel'>): string {
+  return `porção (${fmt(food.servingSizeG)} ${baseUnitOf(food)})`
+}
+
+// How a portion reads in a list: the unit the user picked leads, and its
+// weight equivalent follows only when it adds information (servings).
+// Rows logged before serving units existed read as plain grams.
+export function servingLabel(p: Portion): string {
+  const base = baseUnitOf(p.food)
+  const qty = p.servingQuantity
+  if (p.servingUnit !== 'serving' || qty === null || qty === undefined) {
+    return `${fmt(p.quantityG)} ${base}`
+  }
+  const noun = qty === 1 ? 'porção' : 'porções'
+  return `${fmt(qty)} ${noun} · ${fmt(p.quantityG)} ${base}`
+}
+
+// Same wording without the weight equivalent, for rows too tight to carry it.
+export function servingLabelShort(p: Portion): string {
+  const qty = p.servingQuantity
+  if (p.servingUnit !== 'serving' || qty === null || qty === undefined) {
+    return `${fmt(p.quantityG)} ${baseUnitOf(p.food)}`
+  }
+  return `${fmt(qty)} ${qty === 1 ? 'porção' : 'porções'}`
 }
 
 // Sum a list of macro payloads (client-side preview while editing).

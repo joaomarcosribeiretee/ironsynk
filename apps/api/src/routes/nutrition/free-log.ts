@@ -9,7 +9,7 @@ import {
 } from '@ironsynk/shared'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
-import { macrosForQuantity, sumMacros } from '../../lib/nutrition.js'
+import { macrosForQuantity, sumMacros, foodView, type FoodRow } from '../../lib/nutrition.js'
 
 // Free logging: meals recorded straight onto a day. These never read or write
 // Meal/MealLog, so nothing here can shift plan adherence. The planned-diet
@@ -35,20 +35,6 @@ function toDateString(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-type FoodRow = {
-  id: string
-  name: string
-  brand: string | null
-  calories: number
-  proteinG: number
-  carbsG: number
-  fatG: number
-  fiberG: number | null
-  isCustom: boolean
-  createdById: string | null
-  sourceId: string | null
-}
-
 function loggedFoodView(lf: {
   id: string
   loggedMealId: string
@@ -63,7 +49,7 @@ function loggedFoodView(lf: {
     foodId: lf.foodId,
     quantityG: lf.quantityG,
     isCooked: lf.isCooked,
-    food: lf.food,
+    food: foodView(lf.food),
     macros: macrosForQuantity(lf.food, lf.quantityG),
   }
 }

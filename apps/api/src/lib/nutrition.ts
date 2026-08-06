@@ -1,4 +1,42 @@
-import type { Macros } from '@ironsynk/shared'
+import type { Food, Macros, ServingUnit } from '@ironsynk/shared'
+
+// A Food row as Prisma returns it: the unit columns are plain strings there.
+export type FoodRow = Omit<Food, 'baseUnit'> & { baseUnit: string | null }
+
+// Narrow the free-text unit columns back to the shared unions before a food
+// leaves the API. Unknown values read as "no unit stated".
+export function foodView(food: FoodRow): Food {
+  return { ...food, baseUnit: food.baseUnit === 'ml' ? 'ml' : food.baseUnit === 'g' ? 'g' : null }
+}
+
+export function servingUnitView(unit: string | null): ServingUnit | null {
+  return unit === 'g' || unit === 'ml' || unit === 'serving' ? unit : null
+}
+
+// Resolve what gets stored for a portion. The gram amount macros are computed
+// from stays server-authoritative: when the user picks servings it is the
+// food's own published serving size times the count — never a client value and
+// never a conversion we invented. Returns null when the food publishes no
+// serving to multiply.
+export function resolvePortion(
+  food: { servingSizeG: number | null },
+  input: { quantityG: number; servingUnit?: ServingUnit; servingQuantity?: number },
+): { quantityG: number; servingUnit: ServingUnit | null; servingQuantity: number | null } | null {
+  const { servingUnit, servingQuantity } = input
+  if (servingUnit === undefined || servingQuantity === undefined) {
+    return { quantityG: input.quantityG, servingUnit: null, servingQuantity: null }
+  }
+  if (servingUnit === 'serving') {
+    if (food.servingSizeG === null || food.servingSizeG <= 0) return null
+    return {
+      quantityG: Math.round(servingQuantity * food.servingSizeG * 100) / 100,
+      servingUnit,
+      servingQuantity,
+    }
+  }
+  // 'g' / 'ml' — the count is the amount itself.
+  return { quantityG: servingQuantity, servingUnit, servingQuantity }
+}
 
 // Food macros are stored per 100g (project convention). Scale to a logged
 // quantity in grams. Fiber is optional at the source; it stays null when the

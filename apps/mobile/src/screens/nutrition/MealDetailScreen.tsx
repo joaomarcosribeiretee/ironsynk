@@ -15,6 +15,7 @@ import { MACRO_COLORS, fmt, servingLabel } from '../../lib/nutrition'
 import { showToast } from '../../components/Toast'
 import { ActionSheet } from '../workout/ActionSheet'
 import { FoodSearchModal } from './FoodSearchModal'
+import type { PortionPayload } from './FoodSearchModal'
 import { QuantityEditModal } from './QuantityEditModal'
 
 type Nav = NativeStackNavigationProp<AppStackParamList>
@@ -44,11 +45,13 @@ export function MealDetailScreen() {
   }
 
   const addFood = useMutation({
-    mutationFn: ({ foodId, quantityG }: { foodId: string; quantityG: number }) => api.nutrition.addMealFood(mealId, { foodId, quantityG }),
+    mutationFn: ({ foodId, portion }: { foodId: string; portion: PortionPayload }) =>
+      api.nutrition.addMealFood(mealId, { foodId, ...portion }),
     onSuccess: () => invalidate(),
   })
   const updateFood = useMutation({
-    mutationFn: ({ id, quantityG }: { id: string; quantityG: number }) => api.nutrition.updateMealFood(id, { quantityG }),
+    mutationFn: ({ id, portion }: { id: string; portion: PortionPayload }) =>
+      api.nutrition.updateMealFood(id, portion),
     onSuccess: () => invalidate(),
     onError: () => showToast('Erro ao atualizar', 'error'),
   })
@@ -134,13 +137,13 @@ export function MealDetailScreen() {
         visible={foodModal}
         mealName={meal?.name ?? mealName}
         onClose={() => setFoodModal(false)}
-        onAdd={async (foodId, quantityG) => { await addFood.mutateAsync({ foodId, quantityG }) }}
+        onAdd={async (foodId, portion) => { await addFood.mutateAsync({ foodId, portion }) }}
       />
       <QuantityEditModal
         mealFood={qtyEdit}
         saving={updateFood.isPending}
         onClose={() => setQtyEdit(null)}
-        onSave={async (id, quantityG) => { await updateFood.mutateAsync({ id, quantityG }); setQtyEdit(null) }}
+        onSave={async (id, portion) => { await updateFood.mutateAsync({ id, portion }); setQtyEdit(null) }}
       />
       <ActionSheet
         visible={target !== null}

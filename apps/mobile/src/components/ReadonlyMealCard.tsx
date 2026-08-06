@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import type { PlanMeal, MealFoodRecord } from '../lib/api'
-import { MACRO_COLORS, fmt } from '../lib/nutrition'
+import { MACRO_COLORS, fmt, servingLabelShort } from '../lib/nutrition'
 
 type Props = {
   meal: PlanMeal
@@ -67,7 +67,7 @@ export function ReadonlyMealCard({ meal, index }: Props) {
                       {!!mf.food.brand && <Text style={s.foodBrand} numberOfLines={1}>{mf.food.brand}</Text>}
                     </View>
                     <View style={s.foodRight}>
-                      <Text style={s.foodQty}>{fmt(mf.quantityG)}g</Text>
+                      <Text style={s.foodQty}>{servingLabelShort(mf)}</Text>
                       <Text style={s.foodKcal}>{fmt(mf.macros.calories)} kcal</Text>
                     </View>
                   </View>

@@ -8,15 +8,23 @@ import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { api } from '../../lib/api'
-import type { FoodSearchResult } from '../../lib/api'
-import { MACRO_COLORS, fmt, macrosForQuantity } from '../../lib/nutrition'
+import type { FoodSearchResult, ServingUnit } from '../../lib/api'
+import {
+  MACRO_COLORS, fmt, macrosForQuantity, baseUnitOf, hasServing, servingOptionLabel,
+} from '../../lib/nutrition'
 import { showToast } from '../../components/Toast'
+
+export type PortionPayload = {
+  quantityG: number
+  servingUnit: ServingUnit
+  servingQuantity: number
+}
 
 type Props = {
   visible: boolean
   mealName: string
   onClose: () => void
-  onAdd: (foodId: string, quantityG: number) => Promise<void>
+  onAdd: (foodId: string, portion: PortionPayload) => Promise<void>
 }
 
 type Mode = 'search' | 'quantity' | 'custom'
@@ -36,6 +44,7 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
   const debounced = useDebounced(query.trim())
   const [selected, setSelected] = useState<FoodSearchResult | null>(null)
   const [quantity, setQuantity] = useState('100')
+  const [unit, setUnit] = useState<ServingUnit>('g')
   const [adding, setAdding] = useState(false)
 
   // Custom food form
@@ -48,7 +57,7 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
 
   useEffect(() => {
     if (visible) {
-      setMode('search'); setQuery(''); setSelected(null); setQuantity('100'); setAdding(false)
+      setMode('search'); setQuery(''); setSelected(null); setQuantity('100'); setUnit('g'); setAdding(false)
       setCName(''); setCCal(''); setCProtein(''); setCCarbs(''); setCFat(''); setCFiber('')
     }
   }, [visible])
@@ -67,14 +76,23 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
 
   function pickFood(food: FoodSearchResult) {
     setSelected(food)
+    // Weight/volume is the safe default: it needs nothing from the source.
+    setUnit(baseUnitOf(food))
     setQuantity('100')
     setMode('quantity')
   }
 
+  // Switching unit re-anchors the amount, since "100 servings" is never what
+  // the user meant by "100 g".
+  function pickUnit(next: ServingUnit) {
+    if (next === unit) return
+    setUnit(next)
+    setQuantity(next === 'serving' ? '1' : '100')
+  }
+
   async function handleConfirmAdd() {
     if (!selected || adding) return
-    const qty = parseFloat(quantity.replace(',', '.'))
-    if (!Number.isFinite(qty) || qty <= 0) {
+    if (count <= 0) {
       showToast('Informe uma quantidade válida', 'warning')
       return
     }
@@ -87,7 +105,7 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
         const cached = await api.nutrition.cacheOffFood(selected.sourceId)
         foodId = cached.data.food.id
       }
-      await onAdd(foodId, qty)
+      await onAdd(foodId, { quantityG, servingUnit: unit, servingQuantity: count })
       onClose()
     } catch {
       showToast('Falha ao adicionar alimento', 'error')
@@ -112,6 +130,7 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
         ...(fib !== undefined && Number.isFinite(fib) ? { fiberG: fib } : {}),
       })
       setSelected(res.data.food)
+      setUnit(baseUnitOf(res.data.food))
       setQuantity('100')
       setMode('quantity')
     } catch {
@@ -119,7 +138,17 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
     }
   }
 
-  const preview = selected ? macrosForQuantity(selected, parseFloat(quantity.replace(',', '.')) || 0) : null
+  // Typed amount → grams → macros. Servings multiply the size the source
+  // published for this food; nothing else is ever converted.
+  const count = Math.max(parseFloat(quantity.replace(',', '.')) || 0, 0)
+  const quantityG = unit === 'serving' ? Math.round(count * (selected?.servingSizeG ?? 0) * 100) / 100 : count
+  const preview = selected ? macrosForQuantity(selected, quantityG) : null
+  const step = unit === 'serving' ? 1 : 10
+
+  function nudge(delta: number) {
+    const next = Math.round((count + delta) * 100) / 100
+    setQuantity(String(next > 0 ? next : step))
+  }
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent presentationStyle="fullScreen">
@@ -131,8 +160,10 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
           >
             <Ionicons name={mode === 'search' ? 'close' : 'chevron-back'} size={24} color="#F0F0F5" />
           </TouchableOpacity>
+          {/* The selected food is the subject of the quantity step, so the
+              header only carries the meal it is going into. */}
           <Text style={s.headerTitle} numberOfLines={1}>
-            {mode === 'custom' ? 'Novo alimento' : mode === 'quantity' ? 'Quantidade' : mealName}
+            {mode === 'custom' ? 'Novo alimento' : mealName}
           </Text>
           <View style={{ width: 24 }} />
         </View>
@@ -208,20 +239,46 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.qtyPad}>
               <Text style={s.qtyFoodName}>{selected.name}</Text>
               {selected.brand ? <Text style={s.qtyBrand} numberOfLines={1}>{selected.brand}</Text> : null}
+              <Text style={s.qtyRef}>{fmt(selected.calories)} kcal por 100 {baseUnitOf(selected)}</Text>
 
               <Text style={s.label}>Quantidade</Text>
-              <View style={s.qtyRow}>
+              <View style={s.stepperRow}>
+                <TouchableOpacity style={s.stepBtn} onPress={() => nudge(-step)} activeOpacity={0.7}>
+                  <Ionicons name="remove" size={20} color="#8A8A9A" />
+                </TouchableOpacity>
                 <TextInput
-                  style={s.qtyInputFlex}
+                  style={s.stepInput}
                   value={quantity}
                   onChangeText={setQuantity}
-                  keyboardType="numeric"
-                  placeholder="100"
+                  keyboardType="decimal-pad"
+                  placeholder={unit === 'serving' ? '1' : '100'}
                   placeholderTextColor="#4A4A5A"
+                  selectTextOnFocus
                   autoFocus
                 />
-                <Text style={s.qtyUnit}>g</Text>
+                <TouchableOpacity style={s.stepBtn} onPress={() => nudge(step)} activeOpacity={0.7}>
+                  <Ionicons name="add" size={20} color="#8A8A9A" />
+                </TouchableOpacity>
               </View>
+
+              {/* Unit choice exists only when the source published a serving. */}
+              {hasServing(selected) && (
+                <View style={s.unitRow}>
+                  <UnitChip
+                    label={baseUnitOf(selected)}
+                    active={unit !== 'serving'}
+                    onPress={() => pickUnit(baseUnitOf(selected))}
+                  />
+                  <UnitChip
+                    label={servingOptionLabel(selected)}
+                    active={unit === 'serving'}
+                    onPress={() => pickUnit('serving')}
+                  />
+                </View>
+              )}
+              {unit === 'serving' && (
+                <Text style={s.equivalent}>≈ {fmt(quantityG)} {baseUnitOf(selected)}</Text>
+              )}
 
               {preview && (
                 <View style={s.nutriCard}>
@@ -285,6 +342,14 @@ export function FoodSearchModal({ visible, mealName, onClose, onAdd }: Props) {
   )
 }
 
+function UnitChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={[s.chip, active && s.chipActive]} onPress={onPress} activeOpacity={0.7}>
+      <Text style={[s.chipText, active && s.chipTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  )
+}
+
 // Nutritional detail lives here — this is the only step of the flow that shows
 // the full macro breakdown.
 function MacroRow({ label, value, color }: { label: string; value: string; color: string }) {
@@ -341,6 +406,7 @@ const s = StyleSheet.create({
   qtyPad: { padding: 20 },
   qtyFoodName: { color: '#F0F0F5', fontSize: 20, fontWeight: '600' },
   qtyBrand: { color: '#8A8A9A', fontSize: 13, marginTop: 3 },
+  qtyRef: { color: '#6A6A7A', fontSize: 12, marginTop: 6 },
   per100: { color: '#8A8A9A', fontSize: 12, marginTop: 10, lineHeight: 17 },
 
   label: { color: '#8A8A9A', fontSize: 12, fontWeight: '400', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8, marginTop: 18 },
@@ -351,13 +417,26 @@ const s = StyleSheet.create({
   macroInputsRow: { flexDirection: 'row', gap: 12 },
   macroInputCol: { flex: 1 },
 
-  qtyRow: {
+  stepperRow: {
     flexDirection: 'row', alignItems: 'center',
-    height: 48, backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
-    borderRadius: 12, paddingHorizontal: 16,
+    height: 52, backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
+    borderRadius: 14, overflow: 'hidden',
   },
-  qtyInputFlex: { flex: 1, color: '#F0F0F5', fontSize: 16, height: '100%', fontVariant: ['tabular-nums'] },
-  qtyUnit: { color: '#8A8A9A', fontSize: 14, marginLeft: 8 },
+  stepBtn: { width: 52, height: '100%', alignItems: 'center', justifyContent: 'center' },
+  stepInput: {
+    flex: 1, height: '100%', textAlign: 'center',
+    color: '#F0F0F5', fontSize: 20, fontWeight: '600', fontVariant: ['tabular-nums'],
+  },
+
+  unitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
+    backgroundColor: '#1E1E24', borderWidth: 1, borderColor: '#2A2A35',
+  },
+  chipActive: { backgroundColor: 'rgba(41,121,255,0.12)', borderColor: 'rgba(41,121,255,0.3)' },
+  chipText: { color: '#8A8A9A', fontSize: 13 },
+  chipTextActive: { color: '#4FC3F7', fontWeight: '500' },
+  equivalent: { color: '#6A6A7A', fontSize: 12, marginTop: 10, fontVariant: ['tabular-nums'] },
 
   nutriCard: {
     backgroundColor: '#1E1E24', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A35',

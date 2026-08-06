@@ -13,7 +13,7 @@ import { api } from '../../lib/api'
 import type { DailyExecution, DailyMeal } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { MacroSummary } from '../../components/MacroSummary'
-import { fmt, sumMacros } from '../../lib/nutrition'
+import { fmt, sumMacros, servingLabelShort } from '../../lib/nutrition'
 import { showToast } from '../../components/Toast'
 
 type Nav = NativeStackNavigationProp<AppStackParamList>
@@ -338,7 +338,7 @@ function MealExecCard({ meal, isNext, onToggle }: { meal: DailyMeal; isNext: boo
               foods.map((mealFood) => (
                 <View key={mealFood.id} style={s.foodLine}>
                   <Text style={s.foodName} numberOfLines={1}>{mealFood.food.name}</Text>
-                  <Text style={s.foodQty}>{fmt(mealFood.quantityG)}g</Text>
+                  <Text style={s.foodQty}>{servingLabelShort(mealFood)}</Text>
                 </View>
               ))
             )}

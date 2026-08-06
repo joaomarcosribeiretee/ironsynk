@@ -206,6 +206,17 @@ export const MacrosSchema = z.object({
 export type Macros = z.infer<typeof MacrosSchema>
 
 // ── Food ──────────────────────────────────────
+
+// What the per-100 macros of a food refer to. Sources publish either weight or
+// volume; we never convert between the two.
+export const BaseUnitSchema = z.enum(['g', 'ml'])
+export type BaseUnit = z.infer<typeof BaseUnitSchema>
+
+// How a portion was entered. 'serving' means "N times the serving the source
+// published for this food" — it is only valid when the food has servingSizeG.
+export const ServingUnitSchema = z.enum(['g', 'ml', 'serving'])
+export type ServingUnit = z.infer<typeof ServingUnitSchema>
+
 export const FoodSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -218,6 +229,11 @@ export const FoodSchema = z.object({
   isCustom: z.boolean(),
   createdById: z.string().nullable(),
   sourceId: z.string().nullable(),
+  // Serving published by the data source. All nullable: a food without a
+  // stated serving can only be logged by weight/volume.
+  baseUnit: BaseUnitSchema.nullable(),
+  servingSizeG: z.number().nullable(),
+  servingLabel: z.string().nullable(),
 })
 export type Food = z.infer<typeof FoodSchema>
 
@@ -317,17 +333,28 @@ export const ReorderMealsSchema = z.object({
 export type ReorderMealsInput = z.infer<typeof ReorderMealsSchema>
 
 // ── Meal food ─────────────────────────────────
+// Serving fields always travel as a pair — a unit without a count (or the
+// reverse) cannot be rendered back to the user. Omitting both keeps the
+// original gram-only behaviour.
+const bothOrNeitherServing = (v: { servingUnit?: unknown; servingQuantity?: unknown }): boolean =>
+  (v.servingUnit === undefined) === (v.servingQuantity === undefined)
+const servingPairMessage = { message: 'servingUnit and servingQuantity must be sent together' }
+
 export const AddMealFoodSchema = z.object({
   foodId: z.string().min(1),
   quantityG: z.number().positive(),
   isCooked: z.boolean().optional(),
-})
+  servingUnit: ServingUnitSchema.optional(),
+  servingQuantity: z.number().positive().optional(),
+}).refine(bothOrNeitherServing, servingPairMessage)
 export type AddMealFoodInput = z.infer<typeof AddMealFoodSchema>
 
 export const UpdateMealFoodSchema = z.object({
   quantityG: z.number().positive().optional(),
   isCooked: z.boolean().optional(),
-})
+  servingUnit: ServingUnitSchema.optional(),
+  servingQuantity: z.number().positive().optional(),
+}).refine(bothOrNeitherServing, servingPairMessage)
 export type UpdateMealFoodInput = z.infer<typeof UpdateMealFoodSchema>
 
 // A meal food resolved with the food record and macros for the logged quantity.
@@ -337,6 +364,10 @@ export const MealFoodSchema = z.object({
   foodId: z.string(),
   quantityG: z.number(),
   isCooked: z.boolean(),
+  // How the portion was entered. null on rows logged before serving units
+  // existed — those read as plain grams.
+  servingUnit: ServingUnitSchema.nullable(),
+  servingQuantity: z.number().nullable(),
   food: FoodSchema,
   macros: MacrosSchema,
 })

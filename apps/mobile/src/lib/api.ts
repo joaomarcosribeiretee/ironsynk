@@ -494,6 +494,11 @@ export type FoodRecord = {
   isCustom: boolean
   createdById: string | null
   sourceId: string | null
+  // Serving published by the food's data source. null when it states none, in
+  // which case the food can only be logged by weight/volume.
+  baseUnit: 'g' | 'ml' | null
+  servingSizeG: number | null
+  servingLabel: string | null
 }
 
 // Search result: `source` distinguishes a persisted local food from a live
@@ -534,6 +539,10 @@ export type MealFoodRecord = {
   foodId: string
   quantityG: number
   isCooked: boolean
+  // How the portion was entered. null on rows logged before serving units
+  // existed — those read as grams.
+  servingUnit: ServingUnit | null
+  servingQuantity: number | null
   food: FoodRecord
   macros: MacrosRecord
 }
@@ -675,8 +684,12 @@ export type CreateFoodInput = {
   fatG: number
   fiberG?: number
 }
-export type AddMealFoodInput = { foodId: string; quantityG: number; isCooked?: boolean }
-export type UpdateMealFoodInput = { quantityG?: number; isCooked?: boolean }
+// A portion as the user entered it. Sending a serving pair lets the API store
+// the wording; sending only quantityG keeps the plain gram behaviour.
+export type ServingUnit = 'g' | 'ml' | 'serving'
+export type PortionInput = { servingUnit?: ServingUnit; servingQuantity?: number }
+export type AddMealFoodInput = { foodId: string; quantityG: number; isCooked?: boolean } & PortionInput
+export type UpdateMealFoodInput = { quantityG?: number; isCooked?: boolean } & PortionInput
 
 export const api = {
   auth: {

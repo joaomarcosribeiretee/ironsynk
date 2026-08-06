@@ -16,7 +16,9 @@ import {
 } from '@ironsynk/shared'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
-import { macrosForQuantity, sumMacros } from '../../lib/nutrition.js'
+import {
+  macrosForQuantity, sumMacros, foodView, servingUnitView, resolvePortion, type FoodRow,
+} from '../../lib/nutrition.js'
 import { searchOpenFoodFacts, getOpenFoodFactsProduct } from '../../lib/open-food-facts.js'
 import { freeLogRoutes } from './free-log.js'
 
@@ -38,30 +40,27 @@ function toDateString(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-type FoodRow = {
-  id: string
-  name: string
-  brand: string | null
-  calories: number
-  proteinG: number
-  carbsG: number
-  fatG: number
-  fiberG: number | null
-  isCustom: boolean
-  createdById: string | null
-  sourceId: string | null
-}
-
-function mealFoodView(mf: { id: string; mealId: string; foodId: string; quantityG: number; isCooked: boolean; food: FoodRow }): MealFood {
+function mealFoodView(mf: {
+  id: string; mealId: string; foodId: string; quantityG: number; isCooked: boolean
+  servingUnit: string | null; servingQuantity: number | null; food: FoodRow
+}): MealFood {
   return {
     id: mf.id,
     mealId: mf.mealId,
     foodId: mf.foodId,
     quantityG: mf.quantityG,
     isCooked: mf.isCooked,
-    food: mf.food,
+    servingUnit: servingUnitView(mf.servingUnit),
+    servingQuantity: mf.servingQuantity,
+    food: foodView(mf.food),
     macros: macrosForQuantity(mf.food, mf.quantityG),
   }
+}
+
+function invalidServing(reply: FastifyReply): FastifyReply {
+  return reply.status(400).send({
+    error: { code: 'SERVING_UNAVAILABLE', message: 'This food has no serving size published by its source' },
+  })
 }
 
 // Load a plan and assert ownership. Returns the plan or sends the error response.
@@ -104,7 +103,7 @@ export async function nutritionRoutes(fastify: FastifyInstance): Promise<void> {
       take: limit,
     })
 
-    const results: FoodSearchResult[] = local.map((f) => ({ ...f, source: 'local' as const }))
+    const results: FoodSearchResult[] = local.map((f) => ({ ...foodView(f), source: 'local' as const }))
 
     // Only reach out to OFF when the local bank did not fill the page.
     if (results.length < limit) {
@@ -133,7 +132,7 @@ export async function nutritionRoutes(fastify: FastifyInstance): Promise<void> {
 
     const food = await prisma.food.findUnique({ where: { id } })
     if (!food) return notFound(reply, 'Food not found')
-    return reply.send({ data: { food: { ...food, source: 'local' } } })
+    return reply.send({ data: { food: { ...foodView(food), source: 'local' } } })
   })
 
   // POST /foods — create a custom food (macros per 100g).
@@ -152,7 +151,7 @@ export async function nutritionRoutes(fastify: FastifyInstance): Promise<void> {
         createdById: request.authUser.id,
       },
     })
-    return reply.status(201).send({ data: { food: { ...food, source: 'local' } } })
+    return reply.status(201).send({ data: { food: { ...foodView(food), source: 'local' } } })
   })
 
   // POST /foods/cache-off — persist a selected OFF product into the local bank.
@@ -161,7 +160,7 @@ export async function nutritionRoutes(fastify: FastifyInstance): Promise<void> {
 
     // Already cached? Return the existing row (idempotent).
     const existing = await prisma.food.findFirst({ where: { sourceId: body.sourceId } })
-    if (existing) return reply.send({ data: { food: { ...existing, source: 'local' } } })
+    if (existing) return reply.send({ data: { food: { ...foodView(existing), source: 'local' } } })
 
     const product = await getOpenFoodFactsProduct(body.sourceId)
     if (!product) {
@@ -179,9 +178,13 @@ export async function nutritionRoutes(fastify: FastifyInstance): Promise<void> {
         fiberG: product.fiberG,
         isCustom: false,
         sourceId: product.sourceId,
+        // Serving as published by OFF, so the practical unit survives caching.
+        baseUnit: product.baseUnit,
+        servingSizeG: product.servingSizeG,
+        servingLabel: product.servingLabel,
       },
     })
-    return reply.status(201).send({ data: { food: { ...food, source: 'local' } } })
+    return reply.status(201).send({ data: { food: { ...foodView(food), source: 'local' } } })
   })
 
   // ═══════════════════════════════════════════
@@ -406,8 +409,18 @@ export async function nutritionRoutes(fastify: FastifyInstance): Promise<void> {
     const food = await prisma.food.findUnique({ where: { id: body.foodId } })
     if (!food) return notFound(reply, 'Food not found')
 
+    const portion = resolvePortion(food, body)
+    if (!portion) return invalidServing(reply)
+
     const mealFood = await prisma.mealFood.create({
-      data: { mealId, foodId: body.foodId, quantityG: body.quantityG, isCooked: body.isCooked ?? false },
+      data: {
+        mealId,
+        foodId: body.foodId,
+        quantityG: portion.quantityG,
+        isCooked: body.isCooked ?? false,
+        servingUnit: portion.servingUnit,
+        servingQuantity: portion.servingQuantity,
+      },
       include: { food: true },
     })
     return reply.status(201).send({ data: { mealFood: mealFoodView(mealFood) } })
@@ -418,14 +431,30 @@ export async function nutritionRoutes(fastify: FastifyInstance): Promise<void> {
     const { id } = request.params as { id: string }
     const body = UpdateMealFoodSchema.parse(request.body)
 
-    const existing = await prisma.mealFood.findUnique({ where: { id }, include: { meal: { include: { plan: true } } } })
+    const existing = await prisma.mealFood.findUnique({
+      where: { id },
+      include: { food: true, meal: { include: { plan: true } } },
+    })
     if (!existing) return notFound(reply, 'Meal food not found')
     if (existing.meal.plan.userId !== request.authUser.id) return forbidden(reply)
+
+    // A portion is only rewritten when the request carries one. Editing it as a
+    // bare gram amount drops the old wording, so the row never claims a serving
+    // count that no longer matches its weight.
+    const portion =
+      body.servingUnit !== undefined || body.quantityG !== undefined
+        ? resolvePortion(existing.food, { quantityG: body.quantityG ?? existing.quantityG, ...(body.servingUnit !== undefined && body.servingQuantity !== undefined ? { servingUnit: body.servingUnit, servingQuantity: body.servingQuantity } : {}) })
+        : undefined
+    if (portion === null) return invalidServing(reply)
 
     const updated = await prisma.mealFood.update({
       where: { id },
       data: {
-        ...(body.quantityG !== undefined && { quantityG: body.quantityG }),
+        ...(portion && {
+          quantityG: portion.quantityG,
+          servingUnit: portion.servingUnit,
+          servingQuantity: portion.servingQuantity,
+        }),
         ...(body.isCooked !== undefined && { isCooked: body.isCooked }),
       },
       include: { food: true },

@@ -322,6 +322,12 @@ model Food {
   createdById String?
   sourceId    String?
 
+  // Serving info as published by the data source. Never derived by us: a food
+  // only offers a practical serving when its source states one.
+  baseUnit     String? // "g" | "ml" — what the per-100 macros refer to. null = g
+  servingSizeG Float? // how much one serving weighs, in baseUnit
+  servingLabel String? // source's own wording, e.g. "30 g (1 barra)"
+
   mealFoods       MealFood[]
   loggedMealFoods LoggedMealFood[]
 }
@@ -366,6 +372,11 @@ model MealFood {
   foodId    String
   quantityG Float
   isCooked  Boolean @default(false)
+
+  // How the user entered the portion. quantityG stays the value macros are
+  // computed from; these only preserve the wording. null = legacy gram entry.
+  servingUnit     String? // "g" | "ml" | "serving"
+  servingQuantity Float? // count in servingUnit
 
   meal Meal @relation(fields: [mealId], references: [id])
   food Food @relation(fields: [foodId], references: [id])

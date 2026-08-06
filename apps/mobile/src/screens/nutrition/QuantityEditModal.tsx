@@ -5,6 +5,8 @@ import {
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import type { MealFoodRecord } from '../../lib/api'
+import { fmt, baseUnitOf } from '../../lib/nutrition'
+import type { PortionPayload } from './FoodSearchModal'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
@@ -12,17 +14,28 @@ type Props = {
   mealFood: MealFoodRecord | null
   saving: boolean
   onClose: () => void
-  onSave: (id: string, quantityG: number) => Promise<void>
+  onSave: (id: string, portion: PortionPayload) => Promise<void>
 }
 
-// Lightweight gram-quantity editor for a food already in a meal.
+// Quantity editor for a food already in a meal. It keeps the unit the food was
+// logged in, so a portion entered as servings is edited as servings.
 export function QuantityEditModal({ mealFood, saving, onClose, onSave }: Props) {
   const [qty, setQty] = useState('')
-  useEffect(() => { if (mealFood) setQty(String(mealFood.quantityG)) }, [mealFood])
+  useEffect(() => {
+    if (mealFood) setQty(String(mealFood.servingQuantity ?? mealFood.quantityG))
+  }, [mealFood])
   if (!mealFood) return null
 
+  const base = baseUnitOf(mealFood.food)
+  const unit = mealFood.servingUnit ?? base
   const parsed = parseFloat(qty.replace(',', '.'))
   const valid = Number.isFinite(parsed) && parsed > 0
+
+  // Servings multiply the size published for this food — same rule the API
+  // applies when it stores the row.
+  const quantityG = unit === 'serving'
+    ? Math.round(parsed * (mealFood.food.servingSizeG ?? 0) * 100) / 100
+    : parsed
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
@@ -33,10 +46,18 @@ export function QuantityEditModal({ mealFood, saving, onClose, onSave }: Props) 
             <Text style={s.title} numberOfLines={1}>{mealFood.food.name}</Text>
             <Text style={s.label}>Quantidade</Text>
             <View style={s.inputRow}>
-              <TextInput style={s.input} value={qty} onChangeText={setQty} keyboardType="numeric" autoFocus placeholderTextColor="#4A4A5A" />
-              <Text style={s.unit}>g</Text>
+              <TextInput style={s.input} value={qty} onChangeText={setQty} keyboardType="decimal-pad" autoFocus selectTextOnFocus placeholderTextColor="#4A4A5A" />
+              <Text style={s.unit}>{unit === 'serving' ? (parsed === 1 ? 'porção' : 'porções') : unit}</Text>
             </View>
-            <TouchableOpacity style={[s.btnWrap, !valid && { opacity: 0.4 }]} disabled={!valid || saving} onPress={() => valid && onSave(mealFood.id, parsed)} activeOpacity={0.85}>
+            {unit === 'serving' && valid && (
+              <Text style={s.equivalent}>≈ {fmt(quantityG)} {base}</Text>
+            )}
+            <TouchableOpacity
+              style={[s.btnWrap, !valid && { opacity: 0.4 }]}
+              disabled={!valid || saving}
+              onPress={() => valid && onSave(mealFood.id, { quantityG, servingUnit: unit, servingQuantity: parsed })}
+              activeOpacity={0.85}
+            >
               <LinearGradient colors={['#2979FF', '#1565C0']} style={s.btn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                 {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Salvar</Text>}
               </LinearGradient>
@@ -60,6 +81,7 @@ const s = StyleSheet.create({
   },
   input: { flex: 1, height: '100%', color: '#F0F0F5', fontSize: 16, fontVariant: ['tabular-nums'] },
   unit: { color: '#8A8A9A', fontSize: 14, marginLeft: 8 },
+  equivalent: { color: '#6A6A7A', fontSize: 12, marginTop: 8, fontVariant: ['tabular-nums'] },
   btnWrap: { borderRadius: 14, overflow: 'hidden', marginTop: 18 },
   btn: { height: 48, alignItems: 'center', justifyContent: 'center' },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '500' },
