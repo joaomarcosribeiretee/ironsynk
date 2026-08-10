@@ -139,6 +139,21 @@ export function NutritionScreen() {
           <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
         </LinearGradient>
       </TouchableOpacity>
+
+      {/* Free logging is the escape hatch from the plan, not a rival to it: a
+          plain text row so "Acompanhar Hoje" keeps the visual weight. It never
+          depends on an active plan, so it always navigates. */}
+      <TouchableOpacity
+        onPress={() => navigation.navigate('NutritionLog')}
+        activeOpacity={0.6}
+        style={s.freeLogBtn}
+        hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
+      >
+        <Ionicons name="create-outline" size={15} color="#4FC3F7" />
+        <Text style={s.freeLogText}>Registrar alimentação</Text>
+        <Ionicons name="chevron-forward" size={13} color="#4A4A5A" />
+      </TouchableOpacity>
+
       <View style={s.spacer} />
       <View style={s.sectionRow}>
         <Text style={s.sectionLabel}>PLANOS</Text>
@@ -251,7 +266,13 @@ const s = StyleSheet.create({
   todayBtnText: { color: '#fff', fontSize: 15, fontWeight: '500' },
   todayBtnSub: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 },
 
-  spacer: { height: 24 },
+  freeLogBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    alignSelf: 'flex-start', paddingVertical: 10, paddingHorizontal: 2, marginTop: 6,
+  },
+  freeLogText: { color: '#4FC3F7', fontSize: 13, fontWeight: '500' },
+
+  spacer: { height: 18 },
 
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   sectionLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 1.2 },
