@@ -26,6 +26,28 @@ const BORDER = '#2A2A35'
 
 const SPRING = { damping: 16, stiffness: 180, mass: 0.7 }
 
+// Geometry lives here because the bar floats above the screens: it is absolutely
+// positioned and outside their layout, so a scrolling screen has no other way to
+// know how much of its bottom edge is covered. The values below are the ones the
+// bar actually renders with — read them through useFloatingTabBarInset() instead
+// of guessing a padding per screen.
+const BAR_PADDING_V = 8
+const BAR_BORDER = 1
+const ITEM_PADDING_V = 9
+const ICON_SIZE = 22
+// The bar hovers above the safe area rather than sitting on it.
+const BAR_BOTTOM_GAP = Platform.OS === 'ios' ? 18 : 22
+
+export const FLOATING_TAB_BAR_HEIGHT =
+  ICON_SIZE + ITEM_PADDING_V * 2 + BAR_PADDING_V * 2 + BAR_BORDER * 2
+
+// Height of screen the bar occludes, safe area included. Scrolling tab screens
+// add this to their content padding so the last item clears the bar.
+export function useFloatingTabBarInset() {
+  const insets = useSafeAreaInsets()
+  return insets.bottom + BAR_BOTTOM_GAP + FLOATING_TAB_BAR_HEIGHT
+}
+
 type TabItemProps = {
   focused: boolean
   label: string
@@ -94,7 +116,7 @@ function TabItem({ focused, label, onPress, onLongPress, renderIcon }: TabItemPr
             alignItems: 'center',
             justifyContent: 'center',
             paddingHorizontal: 14,
-            paddingVertical: 9,
+            paddingVertical: ITEM_PADDING_V,
             borderRadius: 22,
             overflow: 'hidden',
           },
@@ -151,7 +173,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: insets.bottom + (Platform.OS === 'ios' ? 18 : 22),
+        bottom: insets.bottom + BAR_BOTTOM_GAP,
         alignItems: 'center',
       }}
     >
@@ -164,10 +186,10 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
           marginHorizontal: 20,
           backgroundColor: SURFACE,
           borderRadius: 28,
-          borderWidth: 1,
+          borderWidth: BAR_BORDER,
           borderColor: BORDER,
           paddingHorizontal: 8,
-          paddingVertical: 8,
+          paddingVertical: BAR_PADDING_V,
           // Neutral depth shadow only — a colored glow bled a blue halo behind
           // and below the bar instead of letting the screen background show.
           shadowColor: '#000000',
@@ -210,7 +232,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
               onLongPress={onLongPress}
               renderIcon={(color) =>
                 options.tabBarIcon
-                  ? options.tabBarIcon({ focused, color, size: 22 })
+                  ? options.tabBarIcon({ focused, color, size: ICON_SIZE })
                   : null
               }
             />

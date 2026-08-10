@@ -14,6 +14,7 @@ import { api } from '../../lib/api'
 import type { NutritionPlanListItem, PlanMeal } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import type { AthleteTabParamList } from '../../navigation/AthleteTabNavigator'
+import { useFloatingTabBarInset } from '../../navigation/FloatingTabBar'
 import { NutritionPlanCard } from '../../components/NutritionPlanCard'
 import { PlanModal } from '../nutrition/PlanModal'
 import type { PlanFormData } from '../nutrition/PlanModal'
@@ -31,6 +32,10 @@ type Nav = CompositeNavigationProp<
 export function NutritionScreen() {
   const navigation = useNavigation<Nav>()
   const qc = useQueryClient()
+  // The floating tab bar overlaps the scroll view, so expanded plans could push
+  // their last meals permanently under it. Pad by the bar's real occluded height
+  // instead of a fixed guess.
+  const tabBarInset = useFloatingTabBarInset()
 
   const [planModal, setPlanModal] = useState<{ open: boolean; editing: NutritionPlanListItem | null }>({ open: false, editing: null })
   const [mealModal, setMealModal] = useState<{ open: boolean; planId: string | null; editing: PlanMeal | null }>({ open: false, planId: null, editing: null })
@@ -203,7 +208,11 @@ export function NutritionScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[s.scrollContent, { paddingBottom: tabBarInset + 16 }]}
+        scrollIndicatorInsets={{ bottom: tabBarInset }}
+        showsVerticalScrollIndicator={false}
+      >
         {ListHeader}
         {isLoading || plans.length === 0 ? ListEmpty : (
           plans.map((plan) => (
@@ -260,7 +269,8 @@ const s = StyleSheet.create({
   },
   headerTitle: { color: '#F0F0F5', fontSize: 26, fontWeight: '500' },
 
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 40 },
+  // paddingBottom is applied inline — it depends on the floating tab bar inset.
+  scrollContent: { paddingHorizontal: 16 },
 
   todayBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14 },
   todayBtnText: { color: '#fff', fontSize: 15, fontWeight: '500' },
