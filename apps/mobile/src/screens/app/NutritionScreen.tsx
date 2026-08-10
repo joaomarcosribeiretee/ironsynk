@@ -155,7 +155,7 @@ export function NutritionScreen() {
         hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
       >
         <Ionicons name="create-outline" size={15} color="#4FC3F7" />
-        <Text style={s.freeLogText}>Registro livre</Text>
+        <Text style={s.freeLogText}>Registro Livre</Text>
         <Ionicons name="chevron-forward" size={13} color="#4A4A5A" />
       </TouchableOpacity>
 
