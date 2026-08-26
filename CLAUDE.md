@@ -798,6 +798,16 @@ Keep it under 2 minutes. Any deeper info comes from the trainer's consultation f
 
 ---
 
+## Agents & Skills (team kit)
+
+Portable automation for Cursor, Claude Code, and Antigravity lives in **`.agents/`**.
+See **`AGENTS.md`** for the map. After clone or kit edits: `npm run sync-agents`.
+
+- Skills = how to do a task (`design-system`, `api-endpoint`, `mobile-screen`, …)
+- Agents = who does it (`explorer`, `mobile-dev`, `api-dev`, `reviewer`, `shipper`)
+
+---
+
 ## Coding Conventions
 
 - **Language:** TypeScript everywhere, strict mode
