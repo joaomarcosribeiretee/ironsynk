@@ -32,7 +32,7 @@ export function NutritionLogScreen() {
         <View style={s.iconWrap}>
           <Ionicons name="create-outline" size={28} color="#4FC3F7" />
         </View>
-        <Text style={s.title}>Em breve</Text>
+        <Text style={s.title}>Em construção</Text>
         <Text style={s.sub}>
           Registre o que comeu no dia, sem precisar de um plano ativo.
         </Text>
