@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Animated,
 } from 'react-native'
@@ -13,13 +13,20 @@ import { api } from '../../lib/api'
 import type { DailyExecution, DailyMeal } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { MacroSummary } from '../../components/MacroSummary'
-import { fmt, sumMacros, servingLabelShort } from '../../lib/nutrition'
+import { fmt, sumMacros, servingLabelShort, sortMealsByTime } from '../../lib/nutrition'
 import { showToast } from '../../components/Toast'
 
 type Nav = NativeStackNavigationProp<AppStackParamList>
 type TodayResponse = { data: DailyExecution }
 
 const TODAY_KEY = ['nutrition-today'] as const
+
+// State colours carry the whole hierarchy on this screen, so they are named
+// once instead of being spelled out per style: blue is "in progress / up next",
+// green is reserved for something that is actually finished, and anything
+// neither of those stays neutral.
+const PROGRESS = '#2979FF'
+const SUCCESS = '#00E676'
 
 // ── date label ────────────────────────────────
 // The API returns a plain "YYYY-MM-DD"; format it without relying on Intl so
@@ -102,9 +109,15 @@ export function NutritionTodayScreen() {
 
   const exec = data?.data
   const totals = exec?.totals
-  const meals = exec?.meals ?? []
+  // The API returns meals in the plan's stored order; a day is eaten on the
+  // clock, so the list is re-sorted by time here (untimed meals last, keeping
+  // their stored order between themselves). Everything below — including which
+  // meal is "next" — reads from this ordering, never from insertion order.
+  const meals = sortMealsByTime(exec?.meals ?? [])
   const pendingMealId = toggle.isPending ? toggle.variables?.mealId : undefined
-  // First meal still open — highlighted so the next action is always obvious.
+  // The earliest meal still open. Derived from the sorted list and from
+  // persisted completion only, so checking meals out of order simply leaves the
+  // earlier one as next, and clearing a meal hands "next" back to it.
   const nextMealId = meals.find((meal) => !meal.isCompleted)?.mealId
 
   function handleToggle(meal: DailyMeal) {
@@ -127,7 +140,11 @@ export function NutritionTodayScreen() {
           <View style={s.headerSideBtn} />
         </View>
         <View style={s.progressTrack}>
-          <View style={[s.progressFill, { width: `${totals?.adherencePercent ?? 0}%` }]} />
+          <View style={[
+            s.progressFill,
+            { width: `${totals?.adherencePercent ?? 0}%` },
+            (totals?.adherencePercent ?? 0) === 100 && s.progressFillDone,
+          ]} />
         </View>
       </View>
 
@@ -189,6 +206,7 @@ export function NutritionTodayScreen() {
                   key={meal.mealId}
                   meal={meal}
                   isNext={meal.mealId === nextMealId}
+                  isPending={pendingMealId === meal.mealId}
                   onToggle={() => handleToggle(meal)}
                 />
               ))
@@ -211,9 +229,32 @@ function encouragement(completed: number, total: number): string {
 }
 
 // One segment per meal reads faster than a single bar: the athlete sees at a
-// glance how many meals are done and how many are left.
+// glance how many meals are done and how many are left. Filled segments are
+// blue while the day is in progress and only turn green once every meal is in,
+// so green keeps meaning "finished" rather than "some progress".
 function DayProgressCard({ completed, total, percent }: { completed: number; total: number; percent: number }) {
   const allDone = total > 0 && completed === total
+
+  // Closing the day gets one restrained acknowledgement: the badge pops once on
+  // the transition and the success line fades in. Re-opening a meal reverses it
+  // without a pop, so undoing never feels like it is celebrating anything.
+  const pop = useSharedValue(1)
+  const doneFade = useSharedValue(allDone ? 1 : 0)
+  const wasDone = useRef(allDone)
+
+  useEffect(() => {
+    if (allDone && !wasDone.current) {
+      pop.value = withSequence(
+        withTiming(1.06, { duration: 140 }),
+        withSpring(1, { damping: 12, stiffness: 200 }),
+      )
+    }
+    doneFade.value = withTiming(allDone ? 1 : 0, { duration: 220 })
+    wasDone.current = allDone
+  }, [allDone, pop, doneFade])
+
+  const badgeStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }))
+  const doneStyle = useAnimatedStyle(() => ({ opacity: doneFade.value }))
 
   return (
     <View style={[s.dayCard, allDone && s.dayCardDone]}>
@@ -225,25 +266,35 @@ function DayProgressCard({ completed, total, percent }: { completed: number; tot
             <Text style={s.dayValueTarget}>/{total} refeições</Text>
           </View>
         </View>
-        <View style={[s.dayBadge, allDone && s.dayBadgeDone]}>
+        <Reanimated.View style={[s.dayBadge, allDone && s.dayBadgeDone, badgeStyle]}>
           <Text style={[s.dayBadgeText, allDone && s.dayBadgeTextDone]}>{percent}%</Text>
-        </View>
+        </Reanimated.View>
       </View>
 
       {total > 0 && total <= 10 ? (
         <View style={s.segmentRow}>
           {Array.from({ length: total }, (_, index) => (
-            <View key={index} style={[s.segment, index < completed && s.segmentDone]} />
+            <View
+              key={index}
+              style={[s.segment, index < completed && s.segmentFilled, index < completed && allDone && s.segmentDone]}
+            />
           ))}
         </View>
       ) : (
         <View style={s.dayTrack}>
-          <View style={[s.dayFill, { width: `${percent}%` }]} />
+          <View style={[s.dayFill, { width: `${percent}%` }, allDone && s.dayFillDone]} />
         </View>
       )}
 
       {total > 0 && (
-        <Text style={[s.dayHint, allDone && s.dayHintDone]}>{encouragement(completed, total)}</Text>
+        allDone ? (
+          <Reanimated.View style={[s.dayDoneRow, doneStyle]}>
+            <Ionicons name="checkmark-circle" size={14} color={SUCCESS} />
+            <Text style={s.dayHintDone}>{encouragement(completed, total)}</Text>
+          </Reanimated.View>
+        ) : (
+          <Text style={s.dayHint}>{encouragement(completed, total)}</Text>
+        )
       )}
     </View>
   )
@@ -254,11 +305,15 @@ function DayProgressCard({ completed, total, percent }: { completed: number; tot
 // Same completion feel as workout sets: spring + haptic, no spinner. The
 // optimistic cache write makes the state flip instant, so a loading state
 // would only add latency to a tap that has already visually succeeded.
-function MealCheck({ checked, onPress }: { checked: boolean; onPress: () => void }) {
+function MealCheck({ checked, disabled, onPress }: { checked: boolean; disabled: boolean; onPress: () => void }) {
   const scale = useSharedValue(1)
   const boxStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }))
 
   function handlePress() {
+    // A meal with a request already in flight ignores further taps. Bouncing
+    // the box and firing a haptic anyway would claim the tap registered when
+    // the screen is about to discard it.
+    if (disabled) return
     Haptics.impactAsync(checked ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium)
     scale.value = withSequence(
       withTiming(0.9, { duration: 60 }),
@@ -279,7 +334,9 @@ function MealCheck({ checked, onPress }: { checked: boolean; onPress: () => void
 // Collapsed, a card carries only what the athlete needs to act: state, time,
 // name and calories. Foods and the macro breakdown live one tap away so the
 // list stays scannable no matter how many meals the plan has.
-function MealExecCard({ meal, isNext, onToggle }: { meal: DailyMeal; isNext: boolean; onToggle: () => void }) {
+function MealExecCard({ meal, isNext, isPending, onToggle }: {
+  meal: DailyMeal; isNext: boolean; isPending: boolean; onToggle: () => void
+}) {
   const done = meal.isCompleted
   const macros = meal.plannedMacros
   const foods = meal.foods
@@ -304,15 +361,17 @@ function MealExecCard({ meal, isNext, onToggle }: { meal: DailyMeal; isNext: boo
   return (
     <View style={[s.mealCard, done && s.mealCardDone, !done && isNext && s.mealCardNext]}>
       <View style={s.mealTop}>
-        <MealCheck checked={done} onPress={onToggle} />
+        <MealCheck checked={done} disabled={isPending} onPress={onToggle} />
         {/* Tapping the meal itself still completes it — a checklist wants a
             big, forgiving target. Details are on the chevron. */}
-        <TouchableOpacity style={s.mealInfo} onPress={onToggle} activeOpacity={0.7}>
+        <TouchableOpacity style={s.mealInfo} onPress={onToggle} activeOpacity={0.7} disabled={isPending}>
           <View style={s.mealMetaRow}>
             {time !== null && (
               <Text style={[s.mealTime, done && s.mealTimeDone]}>{time}</Text>
             )}
-            {!done && isNext && <Text style={s.statusNext}>PRÓXIMA</Text>}
+            {!done && isNext && (
+              <View style={s.nextTag}><Text style={s.statusNext}>PRÓXIMA</Text></View>
+            )}
           </View>
           <Text style={[s.mealName, done && s.mealNameDone]} numberOfLines={1}>{meal.name}</Text>
           <Text style={[s.mealKcal, done && s.mealKcalDone]}>{fmt(macros.calories)} kcal</Text>
@@ -369,7 +428,8 @@ const s = StyleSheet.create({
   headerTitle: { color: '#F0F0F5', fontSize: 19, fontWeight: '600' },
   headerSub: { color: '#8A8A9A', fontSize: 12, marginTop: 1 },
   progressTrack: { height: 2, backgroundColor: '#2A2A35' },
-  progressFill: { height: 2, backgroundColor: '#00E676' },
+  progressFill: { height: 2, backgroundColor: PROGRESS },
+  progressFillDone: { backgroundColor: SUCCESS },
 
   scroll: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 56 },
   center: { paddingVertical: 80, alignItems: 'center', gap: 12 },
@@ -378,27 +438,33 @@ const s = StyleSheet.create({
   retryText: { color: '#4FC3F7', fontSize: 13, fontWeight: '500' },
 
   // Day progress
-  dayCard: { backgroundColor: '#1E1E24', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A35', padding: 16 },
-  dayCardDone: { borderColor: 'rgba(0,230,118,0.35)' },
+  dayCard: { backgroundColor: '#1E1E24', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A35', padding: 14 },
+  // A hint of green on the edge, not a green panel — the badge and the success
+  // line already say the day is closed.
+  dayCardDone: { borderColor: 'rgba(0,230,118,0.22)' },
   dayTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dayTitleWrap: { flex: 1 },
   dayLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 1.2 },
   dayValueRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4 },
-  dayValue: { color: '#F0F0F5', fontSize: 28, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  dayValueDone: { color: '#00E676' },
-  dayValueTarget: { color: '#8A8A9A', fontSize: 14, fontWeight: '400', marginLeft: 2, fontVariant: ['tabular-nums'] },
-  dayBadge: { backgroundColor: 'rgba(79,195,247,0.1)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  dayValue: { color: '#F0F0F5', fontSize: 24, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  dayValueDone: { color: SUCCESS },
+  dayValueTarget: { color: '#8A8A9A', fontSize: 13, fontWeight: '400', marginLeft: 2, fontVariant: ['tabular-nums'] },
+  dayBadge: { backgroundColor: 'rgba(79,195,247,0.1)', borderRadius: 9, paddingHorizontal: 9, paddingVertical: 4 },
   dayBadgeDone: { backgroundColor: 'rgba(0,230,118,0.12)' },
-  dayBadgeText: { color: '#4FC3F7', fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  dayBadgeTextDone: { color: '#00E676' },
+  dayBadgeText: { color: '#4FC3F7', fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  dayBadgeTextDone: { color: SUCCESS },
 
-  segmentRow: { flexDirection: 'row', gap: 4, marginTop: 14 },
-  segment: { flex: 1, height: 6, borderRadius: 3, backgroundColor: '#141418' },
-  segmentDone: { backgroundColor: '#00E676' },
-  dayTrack: { height: 6, borderRadius: 3, backgroundColor: '#141418', marginTop: 14, overflow: 'hidden' },
-  dayFill: { height: 6, borderRadius: 3, backgroundColor: '#00E676' },
+  segmentRow: { flexDirection: 'row', gap: 4, marginTop: 12 },
+  segment: { flex: 1, height: 5, borderRadius: 2.5, backgroundColor: '#141418' },
+  // Progress is blue; the same segments turn green only once the day closes.
+  segmentFilled: { backgroundColor: PROGRESS },
+  segmentDone: { backgroundColor: SUCCESS },
+  dayTrack: { height: 5, borderRadius: 2.5, backgroundColor: '#141418', marginTop: 12, overflow: 'hidden' },
+  dayFill: { height: 5, borderRadius: 2.5, backgroundColor: PROGRESS },
+  dayFillDone: { backgroundColor: SUCCESS },
   dayHint: { color: '#8A8A9A', fontSize: 12, marginTop: 10 },
-  dayHintDone: { color: '#00E676' },
+  dayDoneRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
+  dayHintDone: { color: SUCCESS, fontSize: 12 },
 
   macroWrap: { marginTop: 12 },
 
@@ -408,21 +474,27 @@ const s = StyleSheet.create({
   noMeals: { alignItems: 'center', gap: 10, paddingVertical: 32 },
 
   // Meal card — the primary object on this screen.
-  mealCard: { backgroundColor: '#1E1E24', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A35', padding: 16, marginBottom: 10 },
-  // Completion reads from the check and a quiet border, never a painted card.
-  mealCardDone: { borderColor: 'rgba(0,230,118,0.22)' },
-  mealCardNext: { borderColor: 'rgba(79,195,247,0.22)' },
+  mealCard: { backgroundColor: '#1E1E24', borderRadius: 14, borderWidth: 1, borderColor: '#2A2A35', padding: 14, marginBottom: 8 },
+  // Three states, each readable without depending on the border alone: a done
+  // card recedes into the background and dims its own text, the next card
+  // carries a faint blue wash plus the PRÓXIMA tag, pending stays untouched.
+  mealCardDone: { backgroundColor: '#1B1B21', borderColor: 'rgba(0,230,118,0.18)' },
+  mealCardNext: { backgroundColor: 'rgba(41,121,255,0.05)', borderColor: 'rgba(41,121,255,0.28)' },
   mealTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   mealInfo: { flex: 1 },
   expandBtn: { paddingLeft: 8, paddingTop: 8 },
-  check: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, marginTop: 2 },
+  check: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, marginTop: 2 },
   checkEmpty: { backgroundColor: 'transparent', borderColor: '#3A3A45' },
-  checkDone: { backgroundColor: '#00E676', borderColor: '#00E676' },
+  checkDone: { backgroundColor: SUCCESS, borderColor: SUCCESS },
 
-  mealMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 14 },
+  mealMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 18 },
   mealTime: { color: '#8A8A9A', fontSize: 11, fontWeight: '600', letterSpacing: 0.4, fontVariant: ['tabular-nums'] },
   mealTimeDone: { color: '#6A6A7A' },
-  statusNext: { color: 'rgba(79,195,247,0.75)', fontSize: 10, fontWeight: '600', letterSpacing: 0.4 },
+  nextTag: {
+    backgroundColor: 'rgba(41,121,255,0.14)', borderRadius: 6,
+    paddingHorizontal: 6, paddingVertical: 2,
+  },
+  statusNext: { color: '#4FC3F7', fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
   mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '600', marginTop: 2 },
   mealNameDone: { color: '#8A8A9A' },
   mealKcal: { color: '#B8B8C4', fontSize: 13, marginTop: 4, fontVariant: ['tabular-nums'] },

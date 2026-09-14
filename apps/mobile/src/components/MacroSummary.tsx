@@ -36,8 +36,8 @@ function remaining(consumed: number, target: number | null): number | null {
 export function MacroSummary(p: Props) {
   const rows: Row[] = [
     { label: 'Proteína', color: MACRO_COLORS.protein, consumed: p.consumedProteinG, target: p.targetProteinG, unit: 'g' },
-    { label: 'Carbo', color: MACRO_COLORS.carbs, consumed: p.consumedCarbsG, target: p.targetCarbsG, unit: 'g' },
-    { label: 'Gordura', color: MACRO_COLORS.fat, consumed: p.consumedFatG, target: p.targetFatG, unit: 'g' },
+    { label: 'Carboidratos', color: MACRO_COLORS.carbs, consumed: p.consumedCarbsG, target: p.targetCarbsG, unit: 'g' },
+    { label: 'Gorduras', color: MACRO_COLORS.fat, consumed: p.consumedFatG, target: p.targetFatG, unit: 'g' },
   ]
 
   const calPct = clampPct(p.consumedCalories, p.targetCalories)
@@ -49,26 +49,26 @@ export function MacroSummary(p: Props) {
   const showBars = !collapsible || macrosOpen
 
   return (
-    <View style={s.card}>
+    <View style={[s.card, collapsible && s.cardCompact]}>
       <View style={s.calRow}>
         <View>
           <Text style={s.calLabel}>CALORIAS</Text>
           <View style={s.calValueRow}>
-            <Text style={[s.calValue, subdued && s.calValueLead]}>{fmt(p.consumedCalories)}</Text>
+            <Text style={[s.calValue, subdued && s.calValueLead, collapsible && s.calValueCompact]}>{fmt(p.consumedCalories)}</Text>
             <Text style={s.calTarget}>
               {p.targetCalories !== null ? ` / ${fmt(p.targetCalories)} kcal` : ' kcal'}
             </Text>
           </View>
         </View>
         {p.targetCalories !== null && (
-          <View style={[s.pctBadge, calDone && s.pctBadgeDone]}>
-            <Text style={[s.pctText, { color: calDone ? '#00E676' : MACRO_COLORS.calories }]}>{calPct}%</Text>
+          <View style={[s.pctBadge, collapsible && s.pctBadgeCompact, calDone && s.pctBadgeDone]}>
+            <Text style={[s.pctText, collapsible && s.pctTextCompact, { color: calDone ? '#00E676' : MACRO_COLORS.calories }]}>{calPct}%</Text>
           </View>
         )}
       </View>
 
       {p.targetCalories !== null && (
-        <View style={s.calBarTrack}>
+        <View style={[s.calBarTrack, collapsible && s.calBarTrackCompact]}>
           <View style={[s.calBarFill, { width: `${calPct}%` }, calDone && s.barFillDone]} />
         </View>
       )}
@@ -81,12 +81,14 @@ export function MacroSummary(p: Props) {
 
       {collapsible && (
         <TouchableOpacity
-          style={s.macroToggle}
+          style={[s.macroToggle, collapsible && s.macroToggleCompact]}
           onPress={() => setMacrosOpen((open) => !open)}
           activeOpacity={0.7}
         >
           <Text style={s.macroToggleText}>
-            P {fmt(p.consumedProteinG)}g · C {fmt(p.consumedCarbsG)}g · G {fmt(p.consumedFatG)}g
+            {macrosOpen
+              ? 'Macros'
+              : `P ${fmt(p.consumedProteinG)}g · C ${fmt(p.consumedCarbsG)}g · G ${fmt(p.consumedFatG)}g`}
           </Text>
           <Ionicons name={macrosOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#555560" />
         </TouchableOpacity>
@@ -99,7 +101,10 @@ export function MacroSummary(p: Props) {
           const left = remaining(r.consumed, r.target)
           return (
             <View key={r.label} style={s.macroCol}>
-              <Text style={s.macroLabel}>{r.label}</Text>
+              {/* Full names now that they fit; capped to one line so a narrow
+                  device truncates instead of wrapping and knocking the three
+                  columns out of alignment. */}
+              <Text style={s.macroLabel} numberOfLines={1}>{r.label}</Text>
               <Text style={[s.macroValue, subdued && s.macroValueSubdued]}>
                 {fmt(r.consumed)}
                 <Text style={s.macroTarget}>{r.target !== null ? `/${fmt(r.target)}${r.unit}` : r.unit}</Text>
@@ -133,11 +138,13 @@ const s = StyleSheet.create({
     borderColor: '#2A2A35',
     padding: 16,
   },
+  cardCompact: { padding: 14 },
   calRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   calLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500', letterSpacing: 1.2 },
   calValueRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4 },
   calValue: { color: '#F0F0F5', fontSize: 28, fontWeight: '700', fontVariant: ['tabular-nums'] },
   calValueLead: { fontSize: 32 },
+  calValueCompact: { fontSize: 26 },
   calTarget: { color: '#8A8A9A', fontSize: 14, fontWeight: '400', fontVariant: ['tabular-nums'] },
   pctBadge: {
     backgroundColor: 'rgba(79,195,247,0.1)',
@@ -145,10 +152,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
+  pctBadgeCompact: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 9 },
   pctBadgeDone: { backgroundColor: 'rgba(0,230,118,0.12)' },
   pctText: { fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  pctTextCompact: { fontSize: 14 },
 
   calBarTrack: { height: 6, borderRadius: 3, backgroundColor: '#141418', marginTop: 12, overflow: 'hidden' },
+  calBarTrackCompact: { marginTop: 10 },
   calBarFill: { height: 6, borderRadius: 3, backgroundColor: MACRO_COLORS.calories },
   barFillDone: { backgroundColor: '#00E676' },
 
@@ -161,11 +171,12 @@ const s = StyleSheet.create({
     marginTop: 14, paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2A2A35',
   },
+  macroToggleCompact: { marginTop: 12, paddingTop: 10 },
   macroToggleText: { color: '#8A8A9A', fontSize: 12, fontVariant: ['tabular-nums'] },
 
   macroRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
   macroRowSubdued: { marginTop: 18 },
-  macroRowCollapsible: { marginTop: 14 },
+  macroRowCollapsible: { marginTop: 12 },
   macroCol: { flex: 1 },
   macroLabel: { color: '#8A8A9A', fontSize: 11, fontWeight: '500' },
   macroValue: { color: '#F0F0F5', fontSize: 14, fontWeight: '600', marginTop: 3, fontVariant: ['tabular-nums'] },
