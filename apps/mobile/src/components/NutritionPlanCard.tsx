@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Animated,
 } from 'react-native'
@@ -157,6 +157,18 @@ export function NutritionPlanCard({
   }
 
   const planMacros = sumMacros(meals.map(m => m.plannedMacros))
+  // A plan only has nutrition to show once its meals actually hold foods. Meals
+  // without foods sum to zero, and a "0 kcal" total plus a Resumo that opens an
+  // all-zero breakdown is noise, so both stay hidden until there is real data.
+  const hasNutritionData =
+    planMacros.calories > 0 || planMacros.proteinG > 0 ||
+    planMacros.carbsG > 0 || planMacros.fatG > 0
+  // Removing the last food while the summary is open would leave it showing an
+  // all-zero breakdown, so the modal closes with its data.
+  useEffect(() => {
+    if (summaryOpen && !hasNutritionData) setSummaryOpen(false)
+  }, [summaryOpen, hasNutritionData])
+
   const goalLabel = plan.goal ? GOAL_LABELS[plan.goal] : null
   // A plan literally named after its goal ("Cutting") makes the goal pill pure
   // repetition — drop it and let the name carry the information.
@@ -203,7 +215,7 @@ export function NutritionPlanCard({
               <>
                 {/* One quiet line: the plan's calories, plus a labelled action
                     so the full breakdown reads as reachable, not decorative. */}
-                {meals.length > 0 && (
+                {hasNutritionData && (
                   <View style={s.totalRow}>
                     <Text style={s.totalLine}>Total planejado · {fmt(planMacros.calories)} kcal</Text>
                     <TouchableOpacity
@@ -217,7 +229,14 @@ export function NutritionPlanCard({
                     </TouchableOpacity>
                   </View>
                 )}
-                {meals.map(renderMealItem)}
+                {/* One muted line, no card: an empty plan should read as "not
+                    filled in yet" and hand the eye straight to the action
+                    below it, not open a hole in the list. */}
+                {meals.length === 0 ? (
+                  <View style={s.emptyMeals}>
+                    <Text style={s.emptyMealsText}>Nenhuma refeição neste plano</Text>
+                  </View>
+                ) : meals.map(renderMealItem)}
                 <TouchableOpacity style={s.addRow} onPress={() => onAddMeal(plan.id)} activeOpacity={0.7}>
                   <Ionicons name="add-circle-outline" size={16} color="#4FC3F7" />
                   <Text style={s.addText}>Adicionar refeição</Text>
@@ -305,6 +324,9 @@ const s = StyleSheet.create({
   mealName: { color: '#F0F0F5', fontSize: 16, fontWeight: '500' },
   mealMeta: { color: '#8A8A9A', fontSize: 12, marginTop: 5, fontVariant: ['tabular-nums'] },
   menuBtn: { paddingRight: 14, paddingLeft: 8 },
+
+  emptyMeals: { alignItems: 'center', paddingTop: 2, paddingBottom: 12 },
+  emptyMealsText: { color: '#6A6A7A', fontSize: 12 },
 
   addRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
