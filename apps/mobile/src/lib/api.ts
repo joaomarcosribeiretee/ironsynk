@@ -75,10 +75,12 @@ export type TrainerProfileRecord = {
   bio: string | null
 }
 
+export type UserRole = 'ATHLETE' | 'TRAINER' | 'ADMIN'
+
 export type UserRecord = {
   id: string
   email: string
-  role: 'ATHLETE' | 'TRAINER' | 'ADMIN'
+  role: UserRole
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -409,6 +411,20 @@ export type SignedPostMediaUpload = {
   maxSizeBytes: number
 }
 
+// ─── Social ─────────────────────────────────────────────────────────────────
+
+export type SocialUser = {
+  id: string
+  name: string | null
+  avatar: string | null
+  role: UserRole
+}
+
+export type SocialUserWithFollow = SocialUser & {
+  isFollowing: boolean
+  followsMe: boolean
+}
+
 export type WorkoutPostRecord = {
   id: string
   content: string | null
@@ -416,9 +432,55 @@ export type WorkoutPostRecord = {
   videoUrl: string | null
   media: PostMediaItem[] | null
   createdAt: string
-  user: { id: string; name: string | null; avatar: string | null }
+  user: SocialUser
   session: SessionRecord | null
+  // Social counters, resolved server-side against the signed-in viewer.
+  likeCount: number
+  commentCount: number
+  isLiked: boolean
+  isMine: boolean
 }
+
+export type PostComment = {
+  id: string
+  postId: string
+  content: string
+  createdAt: string
+  user: SocialUser
+  isMine: boolean
+}
+
+export type SocialProfileRecord = {
+  id: string
+  role: UserRole
+  name: string | null
+  avatar: string | null
+  bio: string | null
+  gymName: string | null
+  isPrivate: boolean
+  isMe: boolean
+  isFollowing: boolean
+  followsMe: boolean
+  /** False when a private profile is viewed by someone who does not follow it. */
+  canViewPosts: boolean
+  counts: { posts: number; followers: number; following: number }
+}
+
+export type SocialNotificationType = 'like' | 'comment' | 'follow'
+
+export type SocialNotificationRecord = {
+  id: string
+  type: SocialNotificationType
+  isRead: boolean
+  createdAt: string
+  actor: SocialUser | null
+  postId: string | null
+  preview: string | null
+}
+
+export type FeedScope = 'following' | 'discover'
+
+export type CursorPage<K extends string, T> = { [P in K]: T[] } & { nextCursor: string | null }
 
 // ─── Workout analytics (Profile > Performance dashboard) ────────────────────────
 
@@ -691,6 +753,21 @@ export type PortionInput = { servingUnit?: ServingUnit; servingQuantity?: number
 export type AddMealFoodInput = { foodId: string; quantityG: number; isCooked?: boolean } & PortionInput
 export type UpdateMealFoodInput = { quantityG?: number; isCooked?: boolean } & PortionInput
 
+// Followers and following differ only by path — one builder keeps both honest.
+function listFollowRequest(
+  kind: 'followers' | 'following',
+  userId: string,
+  params?: { limit?: number; cursor?: string },
+) {
+  const qs = new URLSearchParams()
+  if (params?.limit !== undefined) qs.set('limit', String(params.limit))
+  if (params?.cursor) qs.set('cursor', params.cursor)
+  const query = qs.toString()
+  return request<{ data: CursorPage<'users', SocialUserWithFollow> }>(
+    `/api/v1/social/users/${userId}/${kind}${query ? `?${query}` : ''}`
+  )
+}
+
 export const api = {
   auth: {
     register: (body: RegisterInput) =>
@@ -841,6 +918,97 @@ export const api = {
         `/api/v1/posts/me${query ? `?${query}` : ''}`
       )
     },
+
+    // ── Feed ──
+    feed: (params: { scope: FeedScope; limit?: number; cursor?: string }) => {
+      const qs = new URLSearchParams({ scope: params.scope })
+      if (params.limit !== undefined) qs.set('limit', String(params.limit))
+      if (params.cursor) qs.set('cursor', params.cursor)
+      return request<{ data: CursorPage<'posts', WorkoutPostRecord> }>(
+        `/api/v1/posts/feed?${qs.toString()}`
+      )
+    },
+    listByUser: (userId: string, params?: { limit?: number; cursor?: string }) => {
+      const qs = new URLSearchParams()
+      if (params?.limit !== undefined) qs.set('limit', String(params.limit))
+      if (params?.cursor) qs.set('cursor', params.cursor)
+      const query = qs.toString()
+      return request<{ data: CursorPage<'posts', WorkoutPostRecord> }>(
+        `/api/v1/posts/user/${userId}${query ? `?${query}` : ''}`
+      )
+    },
+    get: (postId: string) =>
+      request<{ data: { post: WorkoutPostRecord } }>(`/api/v1/posts/${postId}`),
+    remove: (postId: string) =>
+      request<{ data: { success: boolean } }>(`/api/v1/posts/${postId}`, { method: 'DELETE' }),
+
+    // ── Likes ──
+    like: (postId: string) =>
+      request<{ data: { isLiked: boolean; likeCount: number } }>(`/api/v1/posts/${postId}/like`, { method: 'POST' }),
+    unlike: (postId: string) =>
+      request<{ data: { isLiked: boolean; likeCount: number } }>(`/api/v1/posts/${postId}/like`, { method: 'DELETE' }),
+    listLikes: (postId: string) =>
+      request<{ data: { users: SocialUser[] } }>(`/api/v1/posts/${postId}/likes`),
+
+    // ── Comments ──
+    listComments: (postId: string, params?: { limit?: number; cursor?: string }) => {
+      const qs = new URLSearchParams()
+      if (params?.limit !== undefined) qs.set('limit', String(params.limit))
+      if (params?.cursor) qs.set('cursor', params.cursor)
+      const query = qs.toString()
+      return request<{ data: CursorPage<'comments', PostComment> }>(
+        `/api/v1/posts/${postId}/comments${query ? `?${query}` : ''}`
+      )
+    },
+    addComment: (postId: string, content: string) =>
+      request<{ data: { comment: PostComment; commentCount: number } }>(
+        `/api/v1/posts/${postId}/comments`,
+        { method: 'POST', body: { content } }
+      ),
+    removeComment: (postId: string, commentId: string) =>
+      request<{ data: { success: boolean; commentCount: number } }>(
+        `/api/v1/posts/${postId}/comments/${commentId}`,
+        { method: 'DELETE' }
+      ),
+  },
+  social: {
+    searchUsers: (q: string, limit = 20) =>
+      request<{ data: { users: SocialUserWithFollow[] } }>(
+        `/api/v1/social/users/search?q=${encodeURIComponent(q)}&limit=${limit}`
+      ),
+    suggestedUsers: () =>
+      request<{ data: { users: SocialUserWithFollow[] } }>('/api/v1/social/users/suggested'),
+    getProfile: (userId: string) =>
+      request<{ data: { profile: SocialProfileRecord } }>(`/api/v1/social/users/${userId}`),
+    follow: (userId: string) =>
+      request<{ data: { isFollowing: boolean; followerCount: number } }>(
+        `/api/v1/social/users/${userId}/follow`,
+        { method: 'POST' }
+      ),
+    unfollow: (userId: string) =>
+      request<{ data: { isFollowing: boolean; followerCount: number } }>(
+        `/api/v1/social/users/${userId}/follow`,
+        { method: 'DELETE' }
+      ),
+    listFollowers: (userId: string, params?: { limit?: number; cursor?: string }) =>
+      listFollowRequest('followers', userId, params),
+    listFollowing: (userId: string, params?: { limit?: number; cursor?: string }) =>
+      listFollowRequest('following', userId, params),
+
+    // ── Notifications ──
+    listNotifications: (params?: { limit?: number; cursor?: string }) => {
+      const qs = new URLSearchParams()
+      if (params?.limit !== undefined) qs.set('limit', String(params.limit))
+      if (params?.cursor) qs.set('cursor', params.cursor)
+      const query = qs.toString()
+      return request<{
+        data: CursorPage<'notifications', SocialNotificationRecord> & { unreadCount: number }
+      }>(`/api/v1/social/notifications${query ? `?${query}` : ''}`)
+    },
+    unreadNotificationCount: () =>
+      request<{ data: { unreadCount: number } }>('/api/v1/social/notifications/unread-count'),
+    markNotificationsRead: () =>
+      request<{ data: { success: boolean } }>('/api/v1/social/notifications/read', { method: 'POST' }),
   },
   nutrition: {
     // ── Foods ──

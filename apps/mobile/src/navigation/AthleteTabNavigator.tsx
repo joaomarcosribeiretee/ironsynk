@@ -1,7 +1,7 @@
 import React from 'react'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
-import { FeedScreen } from '../screens/app/FeedScreen'
+import { FeedScreen } from '../screens/social/FeedScreen'
 import { WorkoutScreen } from '../screens/workout/WorkoutScreen'
 import { NutritionScreen } from '../screens/app/NutritionScreen'
 import { ProfileScreen } from '../screens/app/ProfileScreen'

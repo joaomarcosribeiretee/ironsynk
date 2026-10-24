@@ -1,11 +1,13 @@
 import React from 'react'
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import type { WorkoutPostRecord, ExecutionExerciseRecord } from '../lib/api'
 import type { AppStackParamList } from '../navigation/AppNavigator'
 import { PostMediaCarousel } from './PostMediaCarousel'
+import { PostActionBar } from './PostActionBar'
+import { Avatar } from './Avatar'
 
 type NavProp = NativeStackNavigationProp<AppStackParamList>
 
@@ -47,10 +49,6 @@ function formatDateTime(iso: string) {
   return `${weekday.charAt(0).toUpperCase() + weekday.slice(1)}, ${day} de ${month} às ${time}`
 }
 
-function getInitials(name: string) {
-  return name.split(' ').slice(0, 2).map(n => n[0]?.toUpperCase() ?? '').join('')
-}
-
 // ─── Stat ────────────────────────────────────────────────────────────────────
 
 function Stat({ value, label }: { value: string; label: string }) {
@@ -77,13 +75,37 @@ function ExercisePreviewRow({ exercise }: { exercise: ExecutionExerciseRecord })
   )
 }
 
-export function WorkoutPostCard({ post }: { post: WorkoutPostRecord }) {
+export type WorkoutPostCardProps = {
+  post: WorkoutPostRecord
+  /**
+   * `feed` adds the like/comment bar, makes the author tappable and opens the
+   * post detail instead of the workout. `profile` is the original history card.
+   */
+  variant?: 'profile' | 'feed'
+  onPressUser?: (userId: string) => void
+  onPressPost?: (postId: string) => void
+  onPressComments?: (postId: string) => void
+}
+
+export function WorkoutPostCard({
+  post,
+  variant = 'profile',
+  onPressUser,
+  onPressPost,
+  onPressComments,
+}: WorkoutPostCardProps) {
   const navigation = useNavigation<NavProp>()
   const session = post.session
   const userName = post.user.name ?? 'Atleta'
+  const isFeed = variant === 'feed'
 
   function goToSession() {
     if (session) navigation.navigate('WorkoutSession', { sessionId: session.id })
+  }
+
+  function onCardPress() {
+    if (isFeed) onPressPost?.(post.id)
+    else goToSession()
   }
 
   const techniques = session
@@ -106,30 +128,41 @@ export function WorkoutPostCard({ post }: { post: WorkoutPostRecord }) {
   const extraCount = checkedExercises.length - visibleExercises.length
   const hasMedia = !!post.media && post.media.length > 0
 
+  function renderHeader() {
+    const inner = (
+      <>
+        <Avatar uri={post.user.avatar} name={userName} size={40} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={cs.userName} numberOfLines={1}>{userName}</Text>
+          <Text style={cs.postDate}>{formatDateTime(session?.startedAt ?? post.createdAt)}</Text>
+        </View>
+        {totalPRs > 0 && (
+          <View style={cs.prBadge}>
+            <Ionicons name="trophy" size={11} color={GOLD} />
+            <Text style={cs.prBadgeText}>{totalPRs}</Text>
+          </View>
+        )}
+      </>
+    )
+
+    // Only the feed opens a profile from here — on your own history it is noise.
+    if (isFeed && onPressUser) {
+      return (
+        <TouchableOpacity
+          style={cs.userHeader}
+          onPress={() => onPressUser(post.user.id)}
+          activeOpacity={0.8}
+        >
+          {inner}
+        </TouchableOpacity>
+      )
+    }
+    return <View style={cs.userHeader}>{inner}</View>
+  }
+
   function renderCardContent() {
     return (
       <>
-        {/* User header */}
-        <View style={cs.userHeader}>
-          {post.user.avatar ? (
-            <Image source={{ uri: post.user.avatar }} style={cs.avatar} />
-          ) : (
-            <View style={[cs.avatar, cs.avatarFallback]}>
-              <Text style={cs.avatarInitials}>{getInitials(userName)}</Text>
-            </View>
-          )}
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={cs.userName} numberOfLines={1}>{userName}</Text>
-            <Text style={cs.postDate}>{formatDateTime(session?.startedAt ?? post.createdAt)}</Text>
-          </View>
-          {totalPRs > 0 && (
-            <View style={cs.prBadge}>
-              <Ionicons name="trophy" size={11} color={GOLD} />
-              <Text style={cs.prBadgeText}>{totalPRs}</Text>
-            </View>
-          )}
-        </View>
-
         {/* Caption */}
         {!!post.content && <Text style={cs.caption}>{post.content}</Text>}
 
@@ -199,15 +232,23 @@ export function WorkoutPostCard({ post }: { post: WorkoutPostRecord }) {
     )
   }
 
-  if (session) {
-    return (
-      <TouchableOpacity style={cs.card} onPress={goToSession} activeOpacity={0.92}>
-        {renderCardContent()}
-      </TouchableOpacity>
-    )
-  }
+  const isPressable = isFeed ? !!onPressPost : !!session
 
-  return <View style={cs.card}>{renderCardContent()}</View>
+  return (
+    <View style={cs.card}>
+      {renderHeader()}
+      {isPressable ? (
+        <TouchableOpacity style={cs.body} onPress={onCardPress} activeOpacity={0.92}>
+          {renderCardContent()}
+        </TouchableOpacity>
+      ) : (
+        <View style={cs.body}>{renderCardContent()}</View>
+      )}
+      {isFeed && onPressComments && (
+        <PostActionBar post={post} onPressComments={onPressComments} />
+      )}
+    </View>
+  )
 }
 
 const cs = StyleSheet.create({
@@ -220,12 +261,11 @@ const cs = StyleSheet.create({
     gap: 14,
     marginBottom: 14,
   },
+  // The tappable region — everything but the author header and the action bar.
+  body: { gap: 14 },
 
   // Header
   userHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatar: { width: 40, height: 40, borderRadius: 20, flexShrink: 0 },
-  avatarFallback: { backgroundColor: '#2A2A35', justifyContent: 'center', alignItems: 'center' },
-  avatarInitials: { color: '#F0F0F5', fontSize: 14, fontWeight: '700' },
   userName: { color: '#F0F0F5', fontSize: 14, fontWeight: '600' },
   postDate: { color: '#555560', fontSize: 11, marginTop: 2 },
   // Compact gold PR marker in the header — a quiet achievement cue

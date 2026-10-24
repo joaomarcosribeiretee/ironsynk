@@ -553,6 +553,10 @@ model Post {
   trainingLog TrainingLog? @relation(fields: [trainingLogId], references: [id])
   likes       Like[]
   comments    Comment[]
+
+  // Feed reads are always "newest first", globally or scoped to one author.
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 model Like {
@@ -564,6 +568,7 @@ model Like {
   post Post @relation(fields: [postId], references: [id])
 
   @@id([userId, postId])
+  @@index([postId])
 }
 
 model Comment {
@@ -575,6 +580,8 @@ model Comment {
 
   post Post @relation(fields: [postId], references: [id])
   user User @relation(fields: [userId], references: [id])
+
+  @@index([postId, createdAt])
 }
 
 model Follow {
@@ -586,6 +593,8 @@ model Follow {
   following User @relation("Following", fields: [followingId], references: [id])
 
   @@id([followerId, followingId])
+  // The composite id already covers "who X follows"; this covers "who follows X".
+  @@index([followingId])
 }
 
 model Notification {
@@ -597,6 +606,9 @@ model Notification {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([userId, isRead])
 }
 
 // ─────────────────────────────────────────────

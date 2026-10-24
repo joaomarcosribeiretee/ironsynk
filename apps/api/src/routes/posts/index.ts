@@ -1,8 +1,23 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { CreatePostFromTrainingLogSchema, type PostMediaItem } from '@ironsynk/shared'
+import {
+  CreatePostFromTrainingLogSchema,
+  CreateCommentSchema,
+  FeedQuerySchema,
+  PaginationQuerySchema,
+  type PostMediaItem,
+} from '@ironsynk/shared'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
+import {
+  SOCIAL_USER_SELECT,
+  postInclude,
+  mapPost,
+  mapComment,
+  mapSocialUser,
+  canViewUserPosts,
+  notify,
+} from '../../lib/social.js'
 
 // Derive legacy imageUrls/videoUrl from ordered media for backward-compatible reads.
 function deriveLegacyMedia(media: PostMediaItem[]): { imageUrls: string[]; videoUrl: string | null } {
@@ -12,56 +27,15 @@ function deriveLegacyMedia(media: PostMediaItem[]): { imageUrls: string[]; video
   return { imageUrls, videoUrl: firstVideo?.url ?? null }
 }
 
-const EXERCISE_SELECT = {
-  id: true, name: true, muscleGroup: true, equipment: true, gifUrl: true, videoUrl: true,
-} as const
-
-const SET_SELECT = {
-  id: true, trainingLogId: true, executionExerciseId: true, exerciseId: true,
-  setNumber: true, order: true, setType: true, technique: true, techniqueConfig: true,
-  repsCompleted: true, weightKg: true, isChecked: true, checkedAt: true,
-  isPersonalRecord: true, notes: true, plannedSetId: true,
-} as const
-
-const SESSION_INCLUDE = {
-  executionExercises: {
-    orderBy: { order: 'asc' as const },
-    include: {
-      exercise: { select: EXERCISE_SELECT },
-      setLogs: { select: SET_SELECT, orderBy: { order: 'asc' as const } },
-    },
-  },
-} as const
-
-function mapSession(s: any) {
-  const { executionExercises, ...rest } = s
-  return {
-    ...rest,
-    exercises: (executionExercises ?? []).map((ee: any) => {
-      const { setLogs, ...exRest } = ee
-      return { ...exRest, sets: setLogs }
-    }),
-  }
-}
-
-function mapPost(p: any) {
-  return {
-    id: p.id,
-    content: p.content,
-    imageUrls: p.imageUrls,
-    videoUrl: p.videoUrl,
-    media: (p.media ?? null) as PostMediaItem[] | null,
-    createdAt: p.createdAt,
-    user: {
-      id: p.user.id,
-      name: p.user.profile?.name ?? null,
-      avatar: p.user.profile?.avatar ?? null,
-    },
-    session: p.trainingLog ? mapSession(p.trainingLog) : null,
-  }
+function validationError(message: string) {
+  return { error: { code: 'VALIDATION_ERROR', message } }
 }
 
 export async function postRoutes(fastify: FastifyInstance): Promise<void> {
+  // ───────────────────────────────────────────────────────────────────────────
+  // Publishing
+  // ───────────────────────────────────────────────────────────────────────────
+
   // POST /api/v1/posts — publish a finished workout (idempotent per trainingLog)
   fastify.post('/', { preHandler: authMiddleware }, async (request, reply) => {
     const body = z.object({
@@ -109,9 +83,7 @@ export async function postRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post('/from-training-log', { preHandler: authMiddleware }, async (request, reply) => {
     const parsed = CreatePostFromTrainingLogSchema.safeParse(request.body)
     if (!parsed.success) {
-      return reply.status(400).send({
-        error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0]?.message ?? 'Invalid request body' },
-      })
+      return reply.status(400).send(validationError(parsed.error.issues[0]?.message ?? 'Invalid request body'))
     }
     const body = parsed.data
     const userId = request.authUser.id
@@ -160,14 +132,64 @@ export async function postRoutes(fastify: FastifyInstance): Promise<void> {
       })
       return tx.post.findUniqueOrThrow({
         where: { id: post.id },
-        include: {
-          user: { select: { id: true, profile: { select: { name: true, avatar: true } } } },
-          trainingLog: { include: SESSION_INCLUDE },
-        },
+        include: postInclude(userId),
       })
     })
 
-    return reply.status(201).send({ data: { post: mapPost(created) } })
+    return reply.status(201).send({ data: { post: mapPost(created, userId) } })
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Reading
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // GET /api/v1/posts/feed — the social timeline.
+  //   scope=following → people the viewer follows, plus their own posts
+  //   scope=discover  → public profiles the viewer does not follow yet
+  // Keyset pagination: `cursor` is the last post id of the previous page, so a
+  // post published mid-scroll cannot shift the window and duplicate a row.
+  fastify.get('/feed', { preHandler: authMiddleware }, async (request, reply) => {
+    const parsed = FeedQuerySchema.safeParse(request.query)
+    if (!parsed.success) {
+      return reply.status(400).send(validationError(parsed.error.issues[0]?.message ?? 'Invalid query'))
+    }
+    const { scope, limit, cursor } = parsed.data
+    const viewerId = request.authUser.id
+
+    const following = await prisma.follow.findMany({
+      where: { followerId: viewerId },
+      select: { followingId: true },
+    })
+    const followingIds = following.map((f) => f.followingId)
+
+    const where =
+      scope === 'following'
+        ? { userId: { in: [...followingIds, viewerId] } }
+        : {
+            // Discover surfaces public profiles only, and never what the
+            // following feed already shows — that is what makes it useful
+            // while the athlete follows nobody yet.
+            userId: { notIn: [...followingIds, viewerId] },
+            user: { profile: { isPrivate: false } },
+          }
+
+    const posts = await prisma.post.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: postInclude(viewerId),
+    })
+
+    const hasMore = posts.length > limit
+    const page = hasMore ? posts.slice(0, limit) : posts
+
+    return reply.send({
+      data: {
+        posts: page.map((p) => mapPost(p, viewerId)),
+        nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+      },
+    })
   })
 
   // GET /api/v1/posts/me — current user's published workouts (newest first)
@@ -185,14 +207,250 @@ export async function postRoutes(fastify: FastifyInstance): Promise<void> {
         orderBy: { createdAt: 'desc' },
         take: query.limit,
         skip: query.offset,
-        include: {
-          user: { select: { id: true, profile: { select: { name: true, avatar: true } } } },
-          trainingLog: { include: SESSION_INCLUDE },
-        },
+        include: postInclude(userId),
       }),
       prisma.post.count({ where: { userId } }),
     ])
 
-    return reply.send({ data: { posts: posts.map(mapPost), total } })
+    return reply.send({ data: { posts: posts.map((p) => mapPost(p, userId)), total } })
+  })
+
+  // GET /api/v1/posts/user/:userId — another athlete's published workouts
+  fastify.get('/user/:userId', { preHandler: authMiddleware }, async (request, reply) => {
+    const { userId } = request.params as { userId: string }
+    const parsed = PaginationQuerySchema.safeParse(request.query)
+    if (!parsed.success) {
+      return reply.status(400).send(validationError(parsed.error.issues[0]?.message ?? 'Invalid query'))
+    }
+    const { limit, cursor } = parsed.data
+    const viewerId = request.authUser.id
+
+    if (!(await canViewUserPosts(viewerId, userId))) {
+      return reply.status(403).send({ error: { code: 'PROFILE_PRIVATE', message: 'This profile is private' } })
+    }
+
+    const posts = await prisma.post.findMany({
+      where: { userId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: postInclude(viewerId),
+    })
+
+    const hasMore = posts.length > limit
+    const page = hasMore ? posts.slice(0, limit) : posts
+
+    return reply.send({
+      data: {
+        posts: page.map((p) => mapPost(p, viewerId)),
+        nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+      },
+    })
+  })
+
+  // GET /api/v1/posts/:id — single post (the feed card's tap target)
+  fastify.get('/:id', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const viewerId = request.authUser.id
+
+    const post = await prisma.post.findUnique({
+      where: { id },
+      include: postInclude(viewerId),
+    })
+    if (!post) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Post not found' } })
+
+    if (!(await canViewUserPosts(viewerId, post.userId))) {
+      return reply.status(403).send({ error: { code: 'PROFILE_PRIVATE', message: 'This profile is private' } })
+    }
+
+    return reply.send({ data: { post: mapPost(post, viewerId) } })
+  })
+
+  // DELETE /api/v1/posts/:id — unpublish own post (the training log itself stays)
+  fastify.delete('/:id', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const viewerId = request.authUser.id
+
+    const post = await prisma.post.findUnique({
+      where: { id },
+      select: { userId: true, trainingLogId: true },
+    })
+    if (!post) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Post not found' } })
+    if (post.userId !== viewerId) {
+      return reply.status(403).send({ error: { code: 'FORBIDDEN', message: 'Post does not belong to you' } })
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Likes and comments have no FK cascade, so they go first.
+      await tx.like.deleteMany({ where: { postId: id } })
+      await tx.comment.deleteMany({ where: { postId: id } })
+      await tx.post.delete({ where: { id } })
+      if (post.trainingLogId) {
+        await tx.trainingLog.update({ where: { id: post.trainingLogId }, data: { isPosted: false } })
+      }
+    })
+
+    return reply.send({ data: { success: true } })
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Likes
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // POST /api/v1/posts/:id/like — idempotent: a repeated tap is still one like
+  fastify.post('/:id/like', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const viewerId = request.authUser.id
+
+    const post = await prisma.post.findUnique({ where: { id }, select: { userId: true } })
+    if (!post) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Post not found' } })
+    if (!(await canViewUserPosts(viewerId, post.userId))) {
+      return reply.status(403).send({ error: { code: 'PROFILE_PRIVATE', message: 'This profile is private' } })
+    }
+
+    const existing = await prisma.like.findUnique({
+      where: { userId_postId: { userId: viewerId, postId: id } },
+      select: { userId: true },
+    })
+    if (!existing) {
+      await prisma.like.create({ data: { userId: viewerId, postId: id } })
+      // Only a genuinely new like is worth a notification.
+      await notify(post.userId, viewerId, 'like', { postId: id })
+    }
+
+    const likeCount = await prisma.like.count({ where: { postId: id } })
+    return reply.send({ data: { isLiked: true, likeCount } })
+  })
+
+  // DELETE /api/v1/posts/:id/like — idempotent unlike
+  fastify.delete('/:id/like', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const viewerId = request.authUser.id
+
+    const post = await prisma.post.findUnique({ where: { id }, select: { id: true } })
+    if (!post) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Post not found' } })
+
+    await prisma.like.deleteMany({ where: { userId: viewerId, postId: id } })
+    const likeCount = await prisma.like.count({ where: { postId: id } })
+
+    return reply.send({ data: { isLiked: false, likeCount } })
+  })
+
+  // GET /api/v1/posts/:id/likes — who liked this post
+  fastify.get('/:id/likes', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = PaginationQuerySchema.safeParse(request.query)
+    if (!parsed.success) {
+      return reply.status(400).send(validationError(parsed.error.issues[0]?.message ?? 'Invalid query'))
+    }
+    const viewerId = request.authUser.id
+
+    const post = await prisma.post.findUnique({ where: { id }, select: { userId: true } })
+    if (!post) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Post not found' } })
+    if (!(await canViewUserPosts(viewerId, post.userId))) {
+      return reply.status(403).send({ error: { code: 'PROFILE_PRIVATE', message: 'This profile is private' } })
+    }
+
+    const likes = await prisma.like.findMany({
+      where: { postId: id },
+      orderBy: { createdAt: 'desc' },
+      take: parsed.data.limit,
+      include: { user: { select: SOCIAL_USER_SELECT } },
+    })
+
+    return reply.send({ data: { users: likes.map((l) => mapSocialUser(l.user)) } })
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Comments
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // GET /api/v1/posts/:id/comments — oldest first, so a thread reads top-down
+  fastify.get('/:id/comments', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = PaginationQuerySchema.safeParse(request.query)
+    if (!parsed.success) {
+      return reply.status(400).send(validationError(parsed.error.issues[0]?.message ?? 'Invalid query'))
+    }
+    const { limit, cursor } = parsed.data
+    const viewerId = request.authUser.id
+
+    const post = await prisma.post.findUnique({ where: { id }, select: { userId: true } })
+    if (!post) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Post not found' } })
+    if (!(await canViewUserPosts(viewerId, post.userId))) {
+      return reply.status(403).send({ error: { code: 'PROFILE_PRIVATE', message: 'This profile is private' } })
+    }
+
+    const comments = await prisma.comment.findMany({
+      where: { postId: id },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: { user: { select: SOCIAL_USER_SELECT } },
+    })
+
+    const hasMore = comments.length > limit
+    const page = hasMore ? comments.slice(0, limit) : comments
+
+    return reply.send({
+      data: {
+        comments: page.map((c) => mapComment(c, viewerId)),
+        nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
+      },
+    })
+  })
+
+  // POST /api/v1/posts/:id/comments
+  fastify.post('/:id/comments', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const parsed = CreateCommentSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send(validationError(parsed.error.issues[0]?.message ?? 'Invalid comment'))
+    }
+    const viewerId = request.authUser.id
+
+    const post = await prisma.post.findUnique({ where: { id }, select: { userId: true } })
+    if (!post) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Post not found' } })
+    if (!(await canViewUserPosts(viewerId, post.userId))) {
+      return reply.status(403).send({ error: { code: 'PROFILE_PRIVATE', message: 'This profile is private' } })
+    }
+
+    const comment = await prisma.comment.create({
+      data: { postId: id, userId: viewerId, content: parsed.data.content },
+      include: { user: { select: SOCIAL_USER_SELECT } },
+    })
+    const commentCount = await prisma.comment.count({ where: { postId: id } })
+
+    await notify(post.userId, viewerId, 'comment', {
+      postId: id,
+      preview: parsed.data.content.slice(0, 80),
+    })
+
+    return reply.status(201).send({
+      data: { comment: mapComment(comment, viewerId), commentCount },
+    })
+  })
+
+  // DELETE /api/v1/posts/:id/comments/:commentId — the comment's author, or the
+  // post's author moderating their own thread.
+  fastify.delete('/:id/comments/:commentId', { preHandler: authMiddleware }, async (request, reply) => {
+    const { id, commentId } = request.params as { id: string; commentId: string }
+    const viewerId = request.authUser.id
+
+    const comment = await prisma.comment.findUnique({
+      where: { id: commentId },
+      select: { userId: true, postId: true, post: { select: { userId: true } } },
+    })
+    if (!comment || comment.postId !== id) {
+      return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Comment not found' } })
+    }
+    if (comment.userId !== viewerId && comment.post.userId !== viewerId) {
+      return reply.status(403).send({ error: { code: 'FORBIDDEN', message: 'You cannot delete this comment' } })
+    }
+
+    await prisma.comment.delete({ where: { id: commentId } })
+    const commentCount = await prisma.comment.count({ where: { postId: id } })
+
+    return reply.send({ data: { success: true, commentCount } })
   })
 }

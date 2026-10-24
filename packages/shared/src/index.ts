@@ -506,3 +506,106 @@ export const ApiErrorSchema = z.object({
   }),
 })
 export type ApiError = z.infer<typeof ApiErrorSchema>
+
+// ─────────────────────────────────────────────
+// SOCIAL (feed, likes, comments, follows, notifications)
+// ─────────────────────────────────────────────
+
+export const COMMENT_MAX_CHARS = 500
+export const FEED_PAGE_SIZE = 10
+export const FEED_MAX_PAGE_SIZE = 30
+
+/** Which slice of the feed to read. `following` is the default social feed. */
+export const FeedScopeSchema = z.enum(['following', 'discover'])
+export type FeedScope = z.infer<typeof FeedScopeSchema>
+
+/**
+ * Keyset pagination: `cursor` is the id of the last post of the previous page.
+ * Keyset (not offset) so a post published mid-scroll can't shift the window and
+ * duplicate or skip rows.
+ */
+export const FeedQuerySchema = z.object({
+  scope: FeedScopeSchema.default('following'),
+  limit: z.coerce.number().int().min(1).max(FEED_MAX_PAGE_SIZE).default(FEED_PAGE_SIZE),
+  cursor: z.string().min(1).optional(),
+})
+export type FeedQuery = z.infer<typeof FeedQuerySchema>
+
+export const PaginationQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  cursor: z.string().min(1).optional(),
+})
+export type PaginationQuery = z.infer<typeof PaginationQuerySchema>
+
+export const UserSearchQuerySchema = z.object({
+  q: z.string().trim().min(1).max(60),
+  limit: z.coerce.number().int().min(1).max(30).default(20),
+})
+export type UserSearchQuery = z.infer<typeof UserSearchQuerySchema>
+
+export const CreateCommentSchema = z.object({
+  content: z.string().trim().min(1).max(COMMENT_MAX_CHARS),
+})
+export type CreateCommentInput = z.infer<typeof CreateCommentSchema>
+
+export const SocialUserSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  avatar: z.string().nullable(),
+  role: RoleSchema,
+})
+export type SocialUser = z.infer<typeof SocialUserSchema>
+
+/** Counters + the viewer's own relationship to the post, resolved server-side. */
+export const PostSocialSchema = z.object({
+  likeCount: z.number().int(),
+  commentCount: z.number().int(),
+  isLiked: z.boolean(),
+  isMine: z.boolean(),
+})
+export type PostSocial = z.infer<typeof PostSocialSchema>
+
+export const CommentSchema = z.object({
+  id: z.string(),
+  postId: z.string(),
+  content: z.string(),
+  createdAt: z.string(),
+  user: SocialUserSchema,
+  isMine: z.boolean(),
+})
+export type Comment = z.infer<typeof CommentSchema>
+
+export const SocialProfileSchema = z.object({
+  id: z.string(),
+  role: RoleSchema,
+  name: z.string().nullable(),
+  avatar: z.string().nullable(),
+  bio: z.string().nullable(),
+  gymName: z.string().nullable(),
+  isPrivate: z.boolean(),
+  isMe: z.boolean(),
+  isFollowing: z.boolean(),
+  followsMe: z.boolean(),
+  /** False when a private profile is viewed by someone who does not follow it. */
+  canViewPosts: z.boolean(),
+  counts: z.object({
+    posts: z.number().int(),
+    followers: z.number().int(),
+    following: z.number().int(),
+  }),
+})
+export type SocialProfile = z.infer<typeof SocialProfileSchema>
+
+export const NotificationTypeSchema = z.enum(['like', 'comment', 'follow'])
+export type NotificationType = z.infer<typeof NotificationTypeSchema>
+
+export const SocialNotificationSchema = z.object({
+  id: z.string(),
+  type: NotificationTypeSchema,
+  isRead: z.boolean(),
+  createdAt: z.string(),
+  actor: SocialUserSchema.nullable(),
+  postId: z.string().nullable(),
+  preview: z.string().nullable(),
+})
+export type SocialNotification = z.infer<typeof SocialNotificationSchema>
