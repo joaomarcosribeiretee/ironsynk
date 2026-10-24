@@ -16,6 +16,7 @@ import { TechniquePickerSheet, TechniqueSelection } from './TechniquePickerSheet
 import { showToast } from '../../components/Toast'
 import * as Haptics from 'expo-haptics'
 import { api } from '../../lib/api'
+import { useQueryClient } from '@tanstack/react-query'
 import type {
   ExecutionExerciseRecord, ExecutionSetLogRecord,
   PlannedSetTechnique, SetType, TechniqueConfig, ExerciseReference,
@@ -704,6 +705,7 @@ function ExerciseCard({ exercise, reference, onSetChecked, onAddSet, onRemoveSet
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export function WorkoutExecutionScreen() {
+  const queryClient = useQueryClient()
   const navigation = useNavigation<NavProp>()
   const route = useRoute<RouteProps>()
   const { workoutId, resumeSessionId } = route.params
@@ -940,6 +942,7 @@ export function WorkoutExecutionScreen() {
     setFinishModal(false)
     try {
       const res = await api.sessions.finish(sessionId, applyChanges)
+      void queryClient.invalidateQueries({ queryKey: ['profile-stats'] })
       store.stopTimer()
       const finishedSession = res.data.session
       store.clearSession()

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { WorkoutAnalyticsQuerySchema } from '@ironsynk/shared'
 import { prisma } from '../../lib/prisma.js'
 import { supabaseAdmin } from '../../lib/supabase.js'
 import { authMiddleware } from '../../middleware/auth.js'
@@ -164,7 +165,9 @@ export async function profileRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /api/v1/profile/stats — workout analytics dashboard for the current user.
   // Declared before /:userId so the literal path is matched first.
   fastify.get('/stats', { preHandler: authMiddleware }, async (request, reply) => {
-    const analytics = await computeWorkoutAnalytics(request.authUser.id)
+    const parsed = WorkoutAnalyticsQuerySchema.safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid analytics filters' } })
+    const analytics = await computeWorkoutAnalytics(request.authUser.id, parsed.data)
     return reply.send({ data: { analytics } })
   })
 

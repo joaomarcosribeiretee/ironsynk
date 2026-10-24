@@ -1,490 +1,211 @@
-import React from 'react'
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
-import { LinearGradient } from 'expo-linear-gradient'
+import React, { useCallback, useState } from 'react'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useQuery } from '@tanstack/react-query'
+import type { WorkoutAnalytics, WorkoutAnalyticsQuery } from '@ironsynk/shared'
+import type { AppStackParamList } from '../navigation/AppNavigator'
 import { api } from '../lib/api'
-import type { WorkoutAnalytics } from '../lib/api'
+import { useAuthStore } from '../store/authStore'
 
-const GOLD = '#FFC14A'
+const MUSCLES: Record<string, string> = {
+  CHEST: 'Peito', BACK: 'Costas', SHOULDERS: 'Ombros', BICEPS: 'Bíceps', TRICEPS: 'Tríceps',
+  FOREARMS: 'Antebraço', QUADS: 'Quadríceps', HAMSTRINGS: 'Posterior', GLUTES: 'Glúteos',
+  CALVES: 'Panturrilha', ABS: 'Abdômen', FULL_BODY: 'Corpo inteiro', OTHER: 'Outro',
+}
+const number = (value: number) => value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+const date = (value: string) => new Date(value).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+const weekDate = (value: string) => `${value.slice(8, 10)}/${value.slice(5, 7)}`
 
-const MUSCLE_LABELS: Record<string, string> = {
-  CHEST: 'Peito', BACK: 'Costas', SHOULDERS: 'Ombros', BICEPS: 'Bíceps',
-  TRICEPS: 'Tríceps', FOREARMS: 'Antebraço', QUADS: 'Quadríceps',
-  HAMSTRINGS: 'Posterior', GLUTES: 'Glúteos', CALVES: 'Panturrilha',
-  ABS: 'Abdômen', FULL_BODY: 'Full Body', OTHER: 'Outro',
+function Choice({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[s.choice, selected && s.selected]}>
+    <Text style={[s.choiceText, selected && s.accent]}>{label}</Text>
+  </Pressable>
+}
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return <View style={s.section}><Text style={s.title}>{title}</Text>{children}</View>
+}
+function Tile({ label, value }: { label: string; value: string }) {
+  return <View style={s.tile}><Text style={s.value}>{value}</Text><Text style={s.muted}>{label}</Text></View>
+}
+function More({ onPress }: { onPress: () => void }) {
+  return <Pressable accessibilityRole="button" onPress={onPress} style={s.choice}><Text style={s.accent}>Ver mais</Text></Pressable>
 }
 
-// ─── Formatters ─────────────────────────────────────────────────────────────
-
-function fmtVolume(v: number): string {
-  if (v >= 1000) return `${(v / 1000).toFixed(1)}k`
-  return v % 1 === 0 ? String(v) : v.toFixed(1)
+/** Zero-based bars with exact values and dates; missing measurements have no bar. */
+function Bars({ points, unit }: { points: { id: string; label: string; value: number | null }[]; unit: string }) {
+  const max = Math.max(1, ...points.map((point) => point.value ?? 0))
+  return <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={s.chart}>
+    {points.map((point) => <View key={point.id} accessible accessibilityLabel={`${point.label}: ${point.value === null ? 'sem dados' : `${number(point.value)} ${unit}`}`} style={s.barColumn}>
+      <Text style={s.barValue}>{point.value === null ? '—' : number(point.value)}</Text>
+      <View style={s.barTrack}><View style={[s.bar, { height: `${(point.value ?? 0) / max * 100}%` }]} /></View>
+      <Text style={s.barLabel}>{point.label}</Text>
+    </View>)}
+  </ScrollView>
 }
 
-function fmtMinutes(min: number): string {
-  if (min <= 0) return '0min'
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  if (h === 0) return `${m}min`
-  return m > 0 ? `${h}h ${m}min` : `${h}h`
-}
-
-function fmtDate(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
-}
-
-function muscleLabel(mg: string): string {
-  return MUSCLE_LABELS[mg] ?? mg
-}
-
-// ─── Primitives ─────────────────────────────────────────────────────────────
-
-function SectionLabel({ children }: { children: string }) {
-  return <Text style={d.sectionLabel}>{children}</Text>
-}
-
-function Card({ children, style }: { children: React.ReactNode; style?: object }) {
-  return <View style={[d.card, style]}>{children}</View>
-}
-
-function EmptyBlock({ icon, title, sub }: { icon: string; title: string; sub?: string }) {
-  return (
-    <View style={d.empty}>
-      <View style={d.emptyIcon}>
-        <Ionicons name={icon as any} size={22} color="#4FC3F7" />
-      </View>
-      <Text style={d.emptyTitle}>{title}</Text>
-      {!!sub && <Text style={d.emptySub}>{sub}</Text>}
+function ExerciseDetail({ exercise }: { exercise: WorkoutAnalytics['exercises'][number] }) {
+  const [metric, setMetric] = useState<'maxWeightKg' | 'best1RM' | 'volume' | 'reps'>('maxWeightKg')
+  const [visible, setVisible] = useState(6)
+  const units = metric === 'reps' ? 'reps' : metric === 'volume' ? 'kg·rep' : 'kg'
+  const latestPoints = exercise.points.slice(-12)
+  return <View style={s.card}>
+    <Text style={s.name}>{exercise.name}</Text>
+    <Text style={s.muted}>{exercise.sessions} sessões · {exercise.totalSets} séries · {number(exercise.totalReps)} reps</Text>
+    <Text style={s.muted}>Volume registrado: {number(exercise.totalVolume)} kg × reps</Text>
+    <View style={s.options}>
+      {([['maxWeightKg', 'Carga'], ['best1RM', '1RM est.'], ['volume', 'Volume'], ['reps', 'Reps']] as const).map(([key, label]) =>
+        <Choice key={key} label={label} selected={metric === key} onPress={() => setMetric(key)} />)}
     </View>
-  )
+    <Text style={s.muted}>Últimas {latestPoints.length} sessões do período · {units}</Text>
+    <Bars unit={units} points={latestPoints.map((point) => ({ id: point.sessionId, label: date(point.date), value: point[metric] }))} />
+    {exercise.points.length === 1 && <Text style={s.muted}>Primeira referência: mais uma sessão permitirá comparar a evolução.</Text>}
+    {exercise.best && <Text style={s.body}>Melhor 1RM estimado: {number(exercise.best.estimated1RM)} kg, com {number(exercise.best.weightKg)} kg × {exercise.best.reps} em {date(exercise.best.date)}.</Text>}
+    <Text style={s.muted}>{exercise.change1RM === null ? 'Sem duas sessões com 1RM estimável.' : `Variação do primeiro ao último 1RM estimável no período: ${exercise.change1RM > 0 ? '+' : ''}${number(exercise.change1RM)} kg.`}</Text>
+    <Text style={s.muted}>1RM: estimativa Epley em séries tradicionais de 1–12 reps; uma repetição usa a carga real. Compare apenas o mesmo exercício e execução.</Text>
+    {[...exercise.points].reverse().slice(0, visible).map((point) => <View key={point.sessionId} style={s.row}>
+      <Text style={s.body}>{date(point.date)}</Text>
+      <Text style={s.muted}>{point.maxWeightKg === null ? 'Carga ausente' : `${number(point.maxWeightKg)} kg máx.`} · {point.sets} séries · {point.reps} reps{point.bestSet ? `\nReferência: ${number(point.bestSet.weightKg)} kg × ${point.bestSet.reps}` : ''}</Text>
+    </View>)}
+    {exercise.points.length > visible && <More onPress={() => setVisible(visible + 12)} />}
+  </View>
 }
-
-function StatTile({ value, unit, label, accent }: { value: string; unit?: string; label: string; accent?: string }) {
-  return (
-    <View style={d.tile}>
-      <View style={d.tileValueRow}>
-        <Text style={[d.tileValue, accent ? { color: accent } : null]}>{value}</Text>
-        {!!unit && <Text style={d.tileUnit}>{unit}</Text>}
-      </View>
-      <Text style={d.tileLabel}>{label}</Text>
-    </View>
-  )
-}
-
-// ─── Frequency chart ─────────────────────────────────────────────────────────
-
-function FrequencyChart({ weeks }: { weeks: { label: string; count: number }[] }) {
-  const max = Math.max(...weeks.map((w) => w.count), 1)
-  return (
-    <View style={d.freqChart}>
-      {weeks.map((w, i) => (
-        <View key={i} style={d.freqSlot}>
-          <Text style={d.freqVal}>{w.count > 0 ? w.count : ''}</Text>
-          <View style={d.freqBarBg}>
-            <LinearGradient
-              colors={w.count > 0 ? ['#4FC3F7', '#2979FF'] : ['#23232C', '#23232C']}
-              style={[d.freqBarFill, { height: `${Math.max((w.count / max) * 100, w.count > 0 ? 12 : 4)}%` }]}
-            />
-          </View>
-          <Text style={d.freqLbl}>{w.label}</Text>
-        </View>
-      ))}
-    </View>
-  )
-}
-
-// ─── Strength progression sparkline ──────────────────────────────────────────
-
-function Sparkline({ points }: { points: { date: string; best1RM: number }[] }) {
-  const values = points.map((p) => p.best1RM)
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const span = max - min || 1
-  return (
-    <View style={d.spark}>
-      {points.map((p, i) => {
-        const h = 8 + ((p.best1RM - min) / span) * 26
-        const isLast = i === points.length - 1
-        return (
-          <View key={i} style={d.sparkSlot}>
-            <View style={[d.sparkBar, { height: h, backgroundColor: isLast ? GOLD : 'rgba(79,195,247,0.45)' }]} />
-          </View>
-        )
-      })}
-    </View>
-  )
-}
-
-function ProgressionRow({ item }: { item: WorkoutAnalytics['progression'][number] }) {
-  const first = item.points[0]!.best1RM
-  const last = item.points[item.points.length - 1]!.best1RM
-  const delta = Math.round((last - first) * 10) / 10
-  const up = delta > 0
-  const flat = delta === 0
-  return (
-    <View style={d.progRow}>
-      <View style={d.progHead}>
-        <Text style={d.progName} numberOfLines={1}>{item.name}</Text>
-        <View style={[d.progDelta, up ? d.progDeltaUp : flat ? d.progDeltaFlat : d.progDeltaDown]}>
-          <Ionicons
-            name={up ? 'trending-up' : flat ? 'remove' : 'trending-down'}
-            size={11}
-            color={up ? GOLD : flat ? '#8A8A9A' : '#FF5252'}
-          />
-          <Text style={[d.progDeltaText, { color: up ? GOLD : flat ? '#8A8A9A' : '#FF5252' }]}>
-            {up ? '+' : ''}{delta}kg
-          </Text>
-        </View>
-      </View>
-      <View style={d.progBody}>
-        <Sparkline points={item.points} />
-        <View style={d.progMeta}>
-          <Text style={d.progCurrent}>{last}<Text style={d.progCurrentUnit}>kg</Text></Text>
-          <Text style={d.progCurrentLbl}>1RM est.</Text>
-        </View>
-      </View>
-    </View>
-  )
-}
-
-// ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export function PerformanceDashboard() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['profile-stats'],
-    queryFn: () => api.profile.stats(),
-    staleTime: 30_000,
+  const [period, setPeriod] = useState<WorkoutAnalyticsQuery['period']>('8')
+  const [exerciseId, setExerciseId] = useState<string | null>(null)
+  const [historyCount, setHistoryCount] = useState(10)
+  const [prCount, setPrCount] = useState(5)
+  const [weeklyMetric, setWeeklyMetric] = useState<'count' | 'volume'>('count')
+  const userId = useAuthStore((state) => state.user?.id)
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: ['profile-stats', userId, period, timeZone],
+    queryFn: () => api.profile.stats({ period, timeZone }), enabled: Boolean(userId), staleTime: 30_000,
   })
-
-  if (isLoading) {
-    return (
-      <View style={d.loading}>
-        <ActivityIndicator color="#4FC3F7" />
-      </View>
-    )
-  }
-
-  if (error || !data) {
-    return (
-      <View style={d.wrap}>
-        <Card>
-          <EmptyBlock icon="cloud-offline-outline" title="Não foi possível carregar" sub="Tente novamente mais tarde" />
-        </Card>
-      </View>
-    )
-  }
-
-  const a = data.data.analytics
-  const noWorkouts = a.summary.totalWorkouts === 0
-
-  if (noWorkouts) {
-    return (
-      <View style={d.wrap}>
-        <Card>
-          <EmptyBlock
-            icon="bar-chart-outline"
-            title="Sem dados de treino ainda"
-            sub="Complete seu primeiro treino para desbloquear seu painel de desempenho"
-          />
-        </Card>
-      </View>
-    )
-  }
-
-  const pr = a.personalRecords
-
-  return (
-    <View style={d.wrap}>
-      {/* ── Resumo ── */}
-      <SectionLabel>RESUMO GERAL</SectionLabel>
-      <View style={d.tileGrid}>
-        <StatTile value={String(a.summary.totalWorkouts)} label="Treinos" />
-        <StatTile value={fmtMinutes(a.summary.totalMinutes)} label="Tempo total" />
-        <StatTile value={fmtVolume(a.summary.totalVolume)} unit="kg" label="Volume total" accent="#4FC3F7" />
-        <StatTile value={`${a.summary.avgDurationMin}`} unit="min" label="Duração média" />
-      </View>
-
-      {/* ── Frequência ── */}
-      <SectionLabel>FREQUÊNCIA — 8 SEMANAS</SectionLabel>
-      <Card>
-        <FrequencyChart weeks={a.frequency.weeks} />
-        <View style={d.freqStats}>
-          <View style={d.freqStat}>
-            <Text style={d.freqStatNum}>{a.frequency.workoutsPerWeek}</Text>
-            <Text style={d.freqStatLbl}>treinos/semana</Text>
+  useFocusEffect(useCallback(() => { if (userId) void refetch() }, [refetch, userId]))
+  const analytics = data?.data.analytics
+  const exercise = analytics?.exercises.find((item) => item.exerciseId === exerciseId) ?? analytics?.exercises[0]
+  return <View style={s.wrap}>
+    <View style={s.options}>
+      {(['4', '8', '12', 'all'] as const).map((value) => <Choice key={value} label={value === 'all' ? 'Tudo' : `${value} sem.`} selected={period === value}
+        onPress={() => { setPeriod(value); setHistoryCount(10); setPrCount(5) }} />)}
+    </View>
+    <Text style={s.muted}>Semanas de segunda a domingo, incluindo a atual em andamento. Fuso: {timeZone}.</Text>
+    <Pressable accessibilityRole="button" disabled={isFetching} onPress={() => void refetch()} style={s.refresh}>
+      <Text style={s.accent}>{isFetching ? 'Atualizando…' : 'Atualizar dados'}</Text>
+    </Pressable>
+    {isLoading && <ActivityIndicator color="#4FC3F7" style={s.loading} />}
+    {error && <Text accessibilityRole="alert" style={s.error}>Não foi possível atualizar. Toque em “Atualizar dados” para tentar novamente.</Text>}
+    {analytics && <>
+      {analytics.summary.totalWorkouts === 0 ? <View style={s.card}><Text style={s.name}>Nenhum treino concluído neste período</Text><Text style={s.muted}>Escolha outro período ou conclua um treino para começar seu histórico.</Text></View> : <>
+        <Section title="Resumo do período">
+          <View style={s.grid}>
+            <Tile label="Treinos concluídos" value={number(analytics.summary.totalWorkouts)} />
+            <Tile label="Dias com treino" value={number(analytics.summary.activeDays)} />
+            <Tile label="Volume · kg × reps" value={number(analytics.summary.totalVolume)} />
+            <Tile label="Séries de trabalho" value={number(analytics.summary.totalSets)} />
+            <Tile label="Repetições" value={number(analytics.summary.totalReps)} />
+            <Tile label="Duração média · min" value={analytics.summary.avgDurationMin === null ? '—' : number(analytics.summary.avgDurationMin)} />
           </View>
-          <View style={d.freqStatDiv} />
-          <View style={d.freqStat}>
-            <Text style={d.freqStatNum}>{a.frequency.currentMonthCount}</Text>
-            <Text style={d.freqStatLbl}>este mês</Text>
+          <Text style={s.muted}>{analytics.summary.totalMinutes === null ? 'Duração não registrada.' : `${number(analytics.summary.totalMinutes)} min em ${analytics.summary.timedWorkouts} treinos com duração registrada.`}</Text>
+          {analytics.summary.missingVolumeSets > 0 && <Text style={s.muted}>Volume parcial: {analytics.summary.missingVolumeSets} séries sem carga ou blocos completos foram excluídas apenas do volume.</Text>}
+        </Section>
+        <Section title="Frequência e volume semanal">
+          <View style={s.card}>
+            <View style={s.options}><Choice label="Treinos" selected={weeklyMetric === 'count'} onPress={() => setWeeklyMetric('count')} /><Choice label="Volume" selected={weeklyMetric === 'volume'} onPress={() => setWeeklyMetric('volume')} /></View>
+            <Text style={s.muted}>{period === 'all' ? 'Gráfico das últimas 12 semanas, ou desde o primeiro treino.' : 'Datas indicam o início de cada semana.'} {weeklyMetric === 'volume' ? 'Volume em kg × reps.' : 'Treinos concluídos.'}</Text>
+            <Bars unit={weeklyMetric === 'count' ? 'treinos' : 'kg·rep'} points={analytics.frequency.weeks.map((item) => ({ id: item.label, label: weekDate(item.label), value: item[weeklyMetric] }))} />
+            <Text style={s.body}>{number(analytics.frequency.workoutsPerWeek)} treinos/semana · {analytics.frequency.consistencyPct}% das semanas com treino</Text>
+            <Text style={s.muted}>{analytics.frequency.activeWeeks} de {analytics.frequency.observedWeeks} semanas observadas no período, a partir do primeiro treino. A semana atual é parcial.</Text>
+            <Text style={s.body}>{analytics.frequency.streakWeeks} semanas seguidas até agora</Text>
+            <Text style={s.muted}>Sequência geral: a semana atual ainda não treinada não interrompe a sequência da semana passada.</Text>
           </View>
-          <View style={d.freqStatDiv} />
-          <View style={d.freqStat}>
-            <Text style={d.freqStatNum}>{a.frequency.consistencyPct}%</Text>
-            <Text style={d.freqStatLbl}>consistência</Text>
+        </Section>
+        <Section title={`Evolução por exercício · ${analytics.exercises.length}`}>
+          {analytics.exercises.length ? <>
+            <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={s.options}>
+              {analytics.exercises.map((item) => <Choice key={item.exerciseId} label={item.name} selected={exercise?.exerciseId === item.exerciseId} onPress={() => setExerciseId(item.exerciseId)} />)}
+            </ScrollView>
+            {exercise && <ExerciseDetail key={`${period}:${exercise.exerciseId}`} exercise={exercise} />}
+          </> : <Text style={s.muted}>Sem séries de trabalho concluídas com repetições registradas.</Text>}
+        </Section>
+        <Section title="Distribuição por grupo muscular">
+          <View style={s.card}>
+            <Text style={s.muted}>Participação nas séries de trabalho por grupo principal. Não representa ativação muscular nem compara força entre músculos.</Text>
+            {analytics.muscleVolume.length === 0 && <Text style={s.muted}>Sem séries elegíveis neste período.</Text>}
+            {analytics.muscleVolume.map((muscle) => <View key={muscle.muscleGroup} style={s.row}>
+              <Text style={s.body}>{MUSCLES[muscle.muscleGroup] ?? muscle.muscleGroup} · {muscle.pct}%</Text>
+              <View style={s.track}><View style={[s.fill, { width: `${muscle.pct}%` }]} /></View>
+              <Text style={s.muted}>{muscle.setCount} séries · {number(muscle.volume)} kg × reps</Text>
+            </View>)}
           </View>
-          <View style={d.freqStatDiv} />
-          <View style={d.freqStat}>
-            <Text style={[d.freqStatNum, a.frequency.streakWeeks > 0 && { color: GOLD }]}>
-              {a.frequency.streakWeeks}
-            </Text>
-            <Text style={d.freqStatLbl}>{a.frequency.streakWeeks === 1 ? 'semana seguida' : 'semanas seguidas'}</Text>
+        </Section>
+        <Section title="Recordes pessoais registrados">
+          <View style={s.card}>
+            <Text style={s.muted}>{analytics.personalRecords.length} séries marcadas como recorde no período. Uma série pode superar mais de uma marca; a primeira referência não é um recorde.</Text>
+            {analytics.personalRecords.length === 0 && <Text style={s.body}>Nenhum recorde registrado neste período.</Text>}
+            {analytics.personalRecords.slice(0, prCount).map((record, index) => <View key={`${record.exerciseId}:${record.date}:${index}`} style={s.row}>
+              <Text style={s.name}>{record.exerciseName}</Text><Text style={s.accent}>{number(record.weightKg)} kg × {record.reps}</Text><Text style={s.muted}>{date(record.date)}</Text>
+            </View>)}
+            {analytics.personalRecords.length > prCount && <More onPress={() => setPrCount(prCount + 10)} />}
           </View>
-        </View>
-      </Card>
-
-      {/* ── Records pessoais ── */}
-      <SectionLabel>RECORDES PESSOAIS</SectionLabel>
-      {pr.total === 0 ? (
-        <Card>
-          <EmptyBlock
-            icon="trophy-outline"
-            title="Nenhum recorde ainda"
-            sub="Supere seu histórico em um exercício para registrar seu primeiro recorde"
-          />
-        </Card>
-      ) : (
-        <Card style={d.prCard}>
-          <View style={d.prTopRow}>
-            <View style={d.prTrophy}>
-              <Ionicons name="trophy" size={18} color={GOLD} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={d.prTotal}>{pr.total}</Text>
-              <Text style={d.prTotalLbl}>{pr.total === 1 ? 'recorde pessoal' : 'recordes pessoais'}</Text>
-            </View>
-          </View>
-          {pr.strongest && (
-            <View style={d.prDetailRow}>
-              <Text style={d.prDetailLbl}>Exercício mais forte</Text>
-              <Text style={d.prDetailVal} numberOfLines={1}>
-                {pr.strongest.exerciseName} · {pr.strongest.estimated1RM}kg
-              </Text>
-            </View>
-          )}
-          {pr.latest && (
-            <View style={d.prDetailRow}>
-              <Text style={d.prDetailLbl}>Último recorde</Text>
-              <Text style={d.prDetailVal} numberOfLines={1}>
-                {pr.latest.exerciseName} · {pr.latest.weightKg}kg × {pr.latest.reps}
-              </Text>
-            </View>
-          )}
-        </Card>
-      )}
-
-      {/* ── Volume por grupamento ── */}
-      <SectionLabel>VOLUME POR GRUPAMENTO</SectionLabel>
-      {a.muscleVolume.length === 0 ? (
-        <Card>
-          <EmptyBlock icon="body-outline" title="Sem volume registrado" />
-        </Card>
-      ) : (
-        <Card style={{ paddingVertical: 6 }}>
-          {a.muscleVolume.map((m) => (
-            <View key={m.muscleGroup} style={d.muscleRow}>
-              <Text style={d.muscleName}>{muscleLabel(m.muscleGroup)}</Text>
-              <View style={d.muscleBarBg}>
-                <LinearGradient
-                  colors={['#4FC3F7', '#2979FF']}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={[d.muscleBarFill, { width: `${Math.max(m.pct, 3)}%` }]}
-                />
+        </Section>
+        <Section title="Destaques do período">
+          <View style={s.card}>
+            {([
+              ['largestVolume', 'Maior volume registrado', 'kg × reps'],
+              ['mostSets', 'Mais séries de trabalho', 'séries'],
+              ['longestWorkout', 'Maior duração registrada', 'min'],
+            ] as const).map(([key, label, unit]) => {
+              const record = analytics.records[key]
+              return <View key={key} style={s.row}><Text style={s.body}>{label}</Text>
+                <Text style={s.accent}>{record ? `${number(record.value)} ${unit}` : 'Sem registro positivo'}</Text>
+                {record && <Text style={s.muted}>{record.workoutName} · {date(record.date)}</Text>}
               </View>
-              <Text style={d.musclePct}>{m.pct}%</Text>
-            </View>
-          ))}
-        </Card>
-      )}
-
-      {/* ── Evolução de carga ── */}
-      <SectionLabel>EVOLUÇÃO DE CARGA</SectionLabel>
-      {a.progression.length === 0 ? (
-        <Card>
-          <EmptyBlock
-            icon="trending-up-outline"
-            title="Sem dados suficientes"
-            sub="Treine o mesmo exercício em ao menos 3 sessões para ver a evolução"
-          />
-        </Card>
-      ) : (
-        <Card style={d.progCard}>
-          {a.progression.map((item, i) => (
-            <View key={item.exerciseId}>
-              {i > 0 && <View style={d.progDivider} />}
-              <ProgressionRow item={item} />
-            </View>
-          ))}
-        </Card>
-      )}
-
-      {/* ── Exercícios ── */}
-      <SectionLabel>EXERCÍCIOS</SectionLabel>
-      <View style={d.tileGrid}>
-        <StatTile value={String(a.exercises.uniqueCount)} label="Exercícios únicos" />
-        <StatTile
-          value={a.exercises.mostTrained ? `${a.exercises.mostTrained.sessions}` : '0'}
-          unit={a.exercises.mostTrained ? 'sessões' : undefined}
-          label={a.exercises.mostTrained ? a.exercises.mostTrained.name : 'Mais treinado'}
-        />
-      </View>
-      {a.exercises.top.length > 0 && (
-        <Card style={{ paddingVertical: 4, marginTop: 8 }}>
-          {a.exercises.top.map((e, i) => (
-            <View key={e.name + i} style={d.exRow}>
-              <Text style={d.exRank}>{i + 1}</Text>
-              <Text style={d.exName} numberOfLines={1}>{e.name}</Text>
-              <Text style={d.exMeta}>{e.sessions} {e.sessions === 1 ? 'sessão' : 'sessões'} · {e.totalSets} séries</Text>
-            </View>
-          ))}
-        </Card>
-      )}
-
-      {/* ── Estatísticas gerais ── */}
-      <SectionLabel>RECORDES DE TREINO</SectionLabel>
-      <Card style={d.generalCard}>
-        {a.records.largestVolume && (
-          <GeneralRow
-            icon="cube-outline"
-            label="Maior volume"
-            value={`${fmtVolume(a.records.largestVolume.value)} kg`}
-            sub={`${a.records.largestVolume.workoutName} · ${fmtDate(a.records.largestVolume.date)}`}
-          />
-        )}
-        {a.records.longestWorkout && (
-          <GeneralRow
-            icon="time-outline"
-            label="Treino mais longo"
-            value={fmtMinutes(a.records.longestWorkout.value)}
-            sub={`${a.records.longestWorkout.workoutName} · ${fmtDate(a.records.longestWorkout.date)}`}
-          />
-        )}
-        {a.records.mostSets && (
-          <GeneralRow
-            icon="layers-outline"
-            label="Mais séries"
-            value={`${a.records.mostSets.value} séries`}
-            sub={`${a.records.mostSets.workoutName} · ${fmtDate(a.records.mostSets.date)}`}
-            last
-          />
-        )}
-      </Card>
-    </View>
-  )
+            })}
+          </View>
+        </Section>
+        <Section title="Histórico de treinos">
+          <View style={s.card}>
+            {analytics.history.slice(0, historyCount).map((session) => <Pressable key={session.sessionId} accessibilityRole="button" accessibilityLabel={`Ver ${session.workoutName}, ${date(session.date)}`} onPress={() => navigation.navigate('WorkoutSession', { sessionId: session.sessionId })} style={s.row}>
+              <Text style={s.name}>{session.workoutName}</Text>
+              <Text style={s.muted}>{date(session.date)} · {session.durationMin === null ? 'Duração ausente' : `${number(session.durationMin)} min`}</Text>
+              <Text style={s.body}>{session.sets} séries · {session.reps} reps · {number(session.volume)} kg × reps</Text>
+              {session.personalRecords > 0 && <Text style={s.accent}>{session.personalRecords} séries com recorde</Text>}
+            </Pressable>)}
+            {analytics.history.length > historyCount && <More onPress={() => setHistoryCount(historyCount + 10)} />}
+          </View>
+        </Section>
+      </>}
+      <Section title="Como os números são calculados">
+        <Text style={s.muted}>Somente treinos concluídos e séries de trabalho marcadas como feitas, com reps positivas. Aquecimento e feeder não entram nas séries, repetições ou volume. Séries sem carga externa contam nas reps e séries; peso corporal não é estimado. Volume é a soma de carga × reps registradas, incluindo os blocos das técnicas quando disponíveis. Uma técnica conta como uma série.</Text>
+      </Section>
+    </>}
+  </View>
 }
 
-function GeneralRow({ icon, label, value, sub, last }: { icon: string; label: string; value: string; sub: string; last?: boolean }) {
-  return (
-    <View style={[d.genRow, last && { borderBottomWidth: 0 }]}>
-      <View style={d.genIcon}>
-        <Ionicons name={icon as any} size={16} color="#4FC3F7" />
-      </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={d.genLabel}>{label}</Text>
-        <Text style={d.genSub} numberOfLines={1}>{sub}</Text>
-      </View>
-      <Text style={d.genValue}>{value}</Text>
-    </View>
-  )
-}
-
-const d = StyleSheet.create({
-  wrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 },
-  loading: { paddingVertical: 48, alignItems: 'center' },
-
-  sectionLabel: { color: '#8A8A9A', fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 10, marginTop: 22 },
-
-  card: { backgroundColor: '#1E1E24', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A35', padding: 16 },
-
-  // Empty
-  empty: { alignItems: 'center', paddingVertical: 14 },
-  emptyIcon: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(79,195,247,0.08)',
-    justifyContent: 'center', alignItems: 'center', marginBottom: 12,
-  },
-  emptyTitle: { color: '#F0F0F5', fontSize: 14, fontWeight: '600', marginBottom: 5 },
-  emptySub: { color: '#8A8A9A', fontSize: 12.5, textAlign: 'center', lineHeight: 18, paddingHorizontal: 12 },
-
-  // Stat tiles
-  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tile: {
-    flexGrow: 1, flexBasis: '47%', backgroundColor: '#1E1E24', borderRadius: 14,
-    borderWidth: 1, borderColor: '#2A2A35', paddingVertical: 16, paddingHorizontal: 16, gap: 6,
-  },
-  tileValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
-  tileValue: { color: '#F0F0F5', fontSize: 22, fontWeight: '800', fontFamily: 'monospace', letterSpacing: -0.5 },
-  tileUnit: { color: '#8A8A9A', fontSize: 12, fontWeight: '600' },
-  tileLabel: { color: '#8A8A9A', fontSize: 11.5 },
-
-  // Frequency
-  freqChart: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 92, marginBottom: 14 },
-  freqSlot: { flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: 4 },
-  freqVal: { color: '#8A8A9A', fontSize: 9, fontWeight: '700', height: 12 },
-  freqBarBg: { width: '100%', flex: 1, backgroundColor: '#16161B', borderRadius: 6, justifyContent: 'flex-end', overflow: 'hidden' },
-  freqBarFill: { width: '100%', borderRadius: 6 },
-  freqLbl: { color: '#555560', fontSize: 9 },
-  freqStats: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#16161B', borderRadius: 12, paddingVertical: 12 },
-  freqStat: { flex: 1, alignItems: 'center', gap: 3 },
-  freqStatNum: { color: '#F0F0F5', fontSize: 16, fontWeight: '700', fontFamily: 'monospace' },
-  freqStatLbl: { color: '#555560', fontSize: 9, textAlign: 'center' },
-  freqStatDiv: { width: 1, height: 26, backgroundColor: '#23232C' },
-
-  // PR
-  prCard: { gap: 14 },
-  prTopRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  prTrophy: {
-    width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(255,193,74,0.10)',
-    borderWidth: 1, borderColor: 'rgba(255,193,74,0.22)', justifyContent: 'center', alignItems: 'center',
-  },
-  prTotal: { color: GOLD, fontSize: 24, fontWeight: '800', fontFamily: 'monospace' },
-  prTotalLbl: { color: '#8A8A9A', fontSize: 12 },
-  prDetailRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  prDetailLbl: { color: '#8A8A9A', fontSize: 12.5 },
-  prDetailVal: { color: '#F0F0F5', fontSize: 12.5, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
-
-  // Muscle volume
-  muscleRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, gap: 12 },
-  muscleName: { color: '#C4C4CE', fontSize: 12.5, width: 78 },
-  muscleBarBg: { flex: 1, height: 8, backgroundColor: '#16161B', borderRadius: 4, overflow: 'hidden' },
-  muscleBarFill: { height: '100%', borderRadius: 4 },
-  musclePct: { color: '#8A8A9A', fontSize: 12, fontWeight: '600', width: 36, textAlign: 'right', fontFamily: 'monospace' },
-
-  // Progression
-  progCard: { paddingVertical: 6 },
-  progDivider: { height: 1, backgroundColor: '#23232C', marginVertical: 4 },
-  progRow: { paddingVertical: 12, gap: 10 },
-  progHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  progName: { color: '#F0F0F5', fontSize: 14, fontWeight: '600', flex: 1 },
-  progDelta: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  progDeltaUp: { backgroundColor: 'rgba(255,193,74,0.10)' },
-  progDeltaFlat: { backgroundColor: 'rgba(138,138,154,0.10)' },
-  progDeltaDown: { backgroundColor: 'rgba(255,82,82,0.10)' },
-  progDeltaText: { fontSize: 11.5, fontWeight: '700', fontFamily: 'monospace' },
-  progBody: { flexDirection: 'row', alignItems: 'flex-end', gap: 14 },
-  spark: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 36 },
-  sparkSlot: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
-  sparkBar: { width: '100%', borderRadius: 3, minHeight: 4 },
-  progMeta: { alignItems: 'flex-end' },
-  progCurrent: { color: '#F0F0F5', fontSize: 18, fontWeight: '800', fontFamily: 'monospace' },
-  progCurrentUnit: { color: '#8A8A9A', fontSize: 11, fontWeight: '600' },
-  progCurrentLbl: { color: '#555560', fontSize: 9.5 },
-
-  // Exercises
-  exRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
-  exRank: { color: '#555560', fontSize: 12, fontWeight: '700', fontFamily: 'monospace', width: 16 },
-  exName: { color: '#F0F0F5', fontSize: 13, fontWeight: '500', flex: 1 },
-  exMeta: { color: '#6A6A7A', fontSize: 11 },
-
-  // General records
-  generalCard: { paddingVertical: 4 },
-  genRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#23232C' },
-  genIcon: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(79,195,247,0.07)',
-    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
-  },
-  genLabel: { color: '#F0F0F5', fontSize: 13, fontWeight: '600' },
-  genSub: { color: '#6A6A7A', fontSize: 11, marginTop: 2 },
-  genValue: { color: '#4FC3F7', fontSize: 14, fontWeight: '700', fontFamily: 'monospace', flexShrink: 0 },
+const s = StyleSheet.create({
+  wrap: { padding: 16, gap: 12 }, section: { gap: 12, marginTop: 12 },
+  title: { color: '#F0F0F5', fontSize: 17, fontWeight: '700' },
+  card: { backgroundColor: '#1E1E24', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A35', padding: 16, gap: 12 },
+  name: { color: '#F0F0F5', fontWeight: '600', fontSize: 15 }, body: { color: '#F0F0F5', fontSize: 13, lineHeight: 20 },
+  muted: { color: '#8A8A9A', fontSize: 12, lineHeight: 18 }, accent: { color: '#4FC3F7' },
+  error: { color: '#FF5252', lineHeight: 20 }, loading: { padding: 24 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  tile: { flexBasis: '46%', flexGrow: 1, backgroundColor: '#1E1E24', borderRadius: 12, padding: 14, gap: 6 },
+  value: { color: '#F0F0F5', fontSize: 23, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  options: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  choice: { minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#2A2A35', borderRadius: 12 },
+  selected: { borderColor: '#4FC3F7', backgroundColor: '#1C303C' }, choiceText: { color: '#8A8A9A', fontSize: 12 },
+  refresh: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
+  row: { borderBottomWidth: 1, borderColor: '#2A2A35', paddingVertical: 12, gap: 6 },
+  chart: { flexDirection: 'row', gap: 8, paddingVertical: 12 }, barColumn: { width: 60, alignItems: 'center', gap: 8 },
+  barValue: { color: '#F0F0F5', fontSize: 10, fontVariant: ['tabular-nums'] },
+  barLabel: { color: '#8A8A9A', fontSize: 10 },
+  barTrack: { height: 88, width: 24, backgroundColor: '#141418', justifyContent: 'flex-end', borderRadius: 4, overflow: 'hidden' },
+  bar: { backgroundColor: '#4FC3F7', width: '100%', borderRadius: 4 },
+  track: { height: 6, backgroundColor: '#141418', borderRadius: 3, overflow: 'hidden' },
+  fill: { height: '100%', backgroundColor: '#4FC3F7' },
 })
