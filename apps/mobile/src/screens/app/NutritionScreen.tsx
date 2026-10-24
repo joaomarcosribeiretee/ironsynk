@@ -77,7 +77,7 @@ export function NutritionScreen() {
   })
   const createMeal = useMutation({
     mutationFn: ({ planId, body }: { planId: string; body: MealFormData }) =>
-      api.nutrition.createMeal(planId, { name: body.name, ...(body.targetTimeHour != null ? { targetTimeHour: body.targetTimeHour } : {}) }),
+      api.nutrition.createMeal(planId, { name: body.name, ...(body.timeMinutes != null ? { targetTimeHour: Math.floor(body.timeMinutes / 60) } : {}) }),
     onSuccess: (res, vars) => {
       invalidate()
       qc.invalidateQueries({ queryKey: ['nutrition-plan', vars.planId] })
@@ -86,7 +86,8 @@ export function NutritionScreen() {
     onError: () => showToast('Falha ao criar refeição', 'error'),
   })
   const updateMeal = useMutation({
-    mutationFn: ({ id, planId, body }: { id: string; planId: string; body: MealFormData }) => api.nutrition.updateMeal(id, body),
+    mutationFn: ({ id, body }: { id: string; planId: string; body: MealFormData }) =>
+      api.nutrition.updateMeal(id, { name: body.name, targetTimeHour: body.timeMinutes == null ? null : Math.floor(body.timeMinutes / 60) }),
     onSuccess: (_, vars) => { invalidate(); qc.invalidateQueries({ queryKey: ['nutrition-plan', vars.planId] }) },
     onError: () => showToast('Falha ao atualizar refeição', 'error'),
   })
@@ -236,7 +237,10 @@ export function NutritionScreen() {
       />
       <MealModal
         visible={mealModal.open}
-        editing={mealModal.editing}
+        editing={mealModal.editing && {
+          name: mealModal.editing.name,
+          timeMinutes: mealModal.editing.targetTimeHour == null ? null : mealModal.editing.targetTimeHour * 60,
+        }}
         onClose={() => setMealModal({ open: false, planId: null, editing: null })}
         onSave={handleSaveMeal}
       />

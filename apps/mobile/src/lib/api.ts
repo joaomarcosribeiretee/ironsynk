@@ -597,6 +597,8 @@ export type LoggedMealFoodRecord = {
   foodId: string
   quantityG: number
   isCooked: boolean
+  servingUnit: ServingUnit | null
+  servingQuantity: number | null
   food: FoodRecord
   macros: MacrosRecord
 }
@@ -640,16 +642,8 @@ export type UpdateLoggedMealInput = {
   notes?: string | null
 }
 
-export type AddLoggedMealFoodInput = {
-  foodId: string
-  quantityG: number
-  isCooked?: boolean
-}
-
-export type UpdateLoggedMealFoodInput = {
-  quantityG?: number
-  isCooked?: boolean
-}
+export type AddLoggedMealFoodInput = { foodId: string; quantityG: number; isCooked?: boolean } & PortionInput
+export type UpdateLoggedMealFoodInput = { quantityG?: number; isCooked?: boolean } & PortionInput
 
 export type CreateNutritionPlanInput = {
   name: string

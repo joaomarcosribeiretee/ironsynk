@@ -118,3 +118,34 @@ export function clampPct(consumed: number, target: number | null): number {
   if (!target || target <= 0) return 0
   return Math.min(100, Math.round((consumed / target) * 100))
 }
+
+// Minutes from midnight as "HH:MM".
+export function fmtClock(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
+
+// ── days ──────────────────────────────────────
+// A day is a plain "YYYY-MM-DD" everywhere. "Today" is the device's local day,
+// never the server's UTC one, so late-evening meals land on the right date.
+export function localDateString(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// The day `delta` days away from `iso`, computed in UTC so DST never skips one.
+export function shiftDate(iso: string, delta: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const t = new Date(Date.UTC(y as number, (m as number) - 1, (d as number) + delta))
+  return t.toISOString().slice(0, 10)
+}
+
+// Formatted without Intl so the label reads the same on every device.
+const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+export function formatDateLabel(iso: string | undefined): string {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-').map((part) => Number(part))
+  if (!y || !m || !d) return ''
+  const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()] ?? ''
+  return `${weekday}, ${d} de ${MONTHS[m - 1] ?? ''}`
+}

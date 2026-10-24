@@ -7,34 +7,37 @@ import {
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
-import type { MealRecord } from '../../lib/api'
+import { fmtClock } from '../../lib/nutrition'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
-const fmtHour = (h: number) => `${String(h).padStart(2, '0')}:00`
+// Time travels as minutes from midnight. A plan stores an hour slot, so in
+// 'hour' mode the minutes the native picker offers are dropped on confirm and
+// the field always reads HH:00; free logging keeps the exact minute.
+export type TimeStep = 'hour' | 'minute'
 
-// The plan stores an hour slot (0–23), so the minutes the native picker offers
-// are dropped on confirm and the field always reads HH:00.
-function pickerValue(h: number | null) {
+function pickerValue(minutes: number | null) {
   const d = new Date()
-  d.setHours(h ?? d.getHours(), 0, 0, 0)
+  if (minutes === null) d.setSeconds(0, 0)
+  else d.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0)
   return d
 }
 
-export type MealFormData = { name: string; targetTimeHour?: number | null }
+export type MealFormData = { name: string; timeMinutes: number | null }
 
 type Props = {
   visible: boolean
-  editing?: MealRecord | null
+  editing?: MealFormData | null
+  timeStep?: TimeStep
   onClose: () => void
   onSave: (data: MealFormData) => Promise<void>
 }
 
-export function MealModal({ visible, editing, onClose, onSave }: Props) {
+export function MealModal({ visible, editing, timeStep = 'hour', onClose, onSave }: Props) {
   const isEdit = !!editing
 
   const [name, setName] = useState('')
-  const [hour, setHour] = useState<number | null>(null)
+  const [time, setTime] = useState<number | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -43,9 +46,8 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
   useEffect(() => {
     if (visible) {
       setName(editing?.name ?? '')
-      const h = editing?.targetTimeHour
-      const valid = typeof h === 'number' && h >= 0 && h <= 23 ? h : null
-      setHour(valid)
+      const t = editing?.timeMinutes
+      setTime(typeof t === 'number' && t >= 0 && t < 1440 ? t : null)
       setPickerOpen(false)
       setSaving(false)
       scale.setValue(0.92)
@@ -53,12 +55,14 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
         toValue: 1, damping: 20, stiffness: 200, mass: 0.8, useNativeDriver: true,
       }).start()
     }
-  }, [visible, editing])
+    // Primitive deps: callers may rebuild the editing object on every render.
+  }, [visible, editing?.name, editing?.timeMinutes])
 
   const canSave = name.trim().length > 0
 
   function commit(date?: Date) {
-    if (date) setHour(date.getHours())
+    if (!date) return
+    setTime(date.getHours() * 60 + (timeStep === 'minute' ? date.getMinutes() : 0))
   }
 
   function openPicker() {
@@ -74,7 +78,7 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
     // the modal window has settled, is what keeps it in front.
     requestAnimationFrame(() => {
       DateTimePickerAndroid.open({
-        value: pickerValue(hour),
+        value: pickerValue(time),
         mode: 'time',
         is24Hour: true,
         display: 'default',
@@ -89,7 +93,7 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
     if (!canSave || saving) return
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), targetTimeHour: hour })
+      await onSave({ name: name.trim(), timeMinutes: time })
       onClose()
     } catch {
       setSaving(false)
@@ -124,13 +128,13 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
               onPress={openPicker}
               activeOpacity={0.7}
             >
-              <Ionicons name="time-outline" size={18} color={hour != null ? '#4FC3F7' : '#4A4A5A'} />
-              <Text style={[s.timeValue, hour == null && s.timePlaceholder]}>
-                {hour != null ? fmtHour(hour) : 'Selecionar horário'}
+              <Ionicons name="time-outline" size={18} color={time != null ? '#4FC3F7' : '#4A4A5A'} />
+              <Text style={[s.timeValue, time == null && s.timePlaceholder]}>
+                {time != null ? fmtClock(time) : 'Selecionar horário'}
               </Text>
-              {hour != null ? (
+              {time != null ? (
                 <TouchableOpacity
-                  onPress={() => { setHour(null); setPickerOpen(false) }}
+                  onPress={() => { setTime(null); setPickerOpen(false) }}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Ionicons name="close-circle" size={18} color="#555560" />
@@ -143,7 +147,7 @@ export function MealModal({ visible, editing, onClose, onSave }: Props) {
             {Platform.OS === 'ios' && pickerOpen && (
               <View style={s.pickerPanel}>
                 <DateTimePicker
-                  value={pickerValue(hour)}
+                  value={pickerValue(time)}
                   mode="time"
                   display="spinner"
                   is24Hour

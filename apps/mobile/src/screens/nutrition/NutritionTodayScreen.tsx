@@ -13,27 +13,13 @@ import { api } from '../../lib/api'
 import type { DailyExecution, DailyMeal } from '../../lib/api'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { MacroSummary } from '../../components/MacroSummary'
-import { fmt, sumMacros, servingLabelShort } from '../../lib/nutrition'
+import { fmt, sumMacros, servingLabelShort, formatDateLabel } from '../../lib/nutrition'
 import { showToast } from '../../components/Toast'
 
 type Nav = NativeStackNavigationProp<AppStackParamList>
 type TodayResponse = { data: DailyExecution }
 
 const TODAY_KEY = ['nutrition-today'] as const
-
-// ── date label ────────────────────────────────
-// The API returns a plain "YYYY-MM-DD"; format it without relying on Intl so
-// the header reads the same on every device.
-const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
-const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
-
-function formatDateLabel(iso: string | undefined): string {
-  if (!iso) return ''
-  const [y, m, d] = iso.split('-').map((part) => Number(part))
-  if (!y || !m || !d) return ''
-  const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()] ?? ''
-  return `${weekday}, ${d} de ${MONTHS[m - 1] ?? ''}`
-}
 
 // ── optimistic cache patch ────────────────────
 // Toggling a meal changes both its own state and every derived daily number,

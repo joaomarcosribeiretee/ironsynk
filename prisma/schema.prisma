@@ -464,6 +464,10 @@ model LoggedMealFood {
   quantityG    Float
   isCooked     Boolean @default(false)
 
+  // Same meaning as on MealFood: the wording of the portion, not its weight.
+  servingUnit     String? // "g" | "ml" | "serving"
+  servingQuantity Float? // count in servingUnit
+
   loggedMeal LoggedMeal @relation(fields: [loggedMealId], references: [id], onDelete: Cascade)
   food       Food       @relation(fields: [foodId], references: [id])
 

@@ -4,12 +4,15 @@ import {
   UpdateLoggedMealSchema,
   AddLoggedMealFoodSchema,
   UpdateLoggedMealFoodSchema,
+  DateOnlySchema,
   type LoggedMeal,
   type LoggedMealFood,
 } from '@ironsynk/shared'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
-import { macrosForQuantity, sumMacros, foodView, type FoodRow } from '../../lib/nutrition.js'
+import {
+  macrosForQuantity, sumMacros, foodView, servingUnitView, resolvePortion, type FoodRow,
+} from '../../lib/nutrition.js'
 
 // Free logging: meals recorded straight onto a day. These never read or write
 // Meal/MealLog, so nothing here can shift plan adherence. The planned-diet
@@ -20,6 +23,11 @@ function notFound(reply: FastifyReply, message = 'Not found'): FastifyReply {
 }
 function forbidden(reply: FastifyReply): FastifyReply {
   return reply.status(403).send({ error: { code: 'FORBIDDEN', message: 'You do not own this resource' } })
+}
+function invalidServing(reply: FastifyReply): FastifyReply {
+  return reply.status(400).send({
+    error: { code: 'SERVING_UNAVAILABLE', message: 'This food has no serving size published by its source' },
+  })
 }
 
 // Date-only value in UTC, matching the @db.Date column.
@@ -41,6 +49,8 @@ function loggedFoodView(lf: {
   foodId: string
   quantityG: number
   isCooked: boolean
+  servingUnit: string | null
+  servingQuantity: number | null
   food: FoodRow
 }): LoggedMealFood {
   return {
@@ -49,6 +59,8 @@ function loggedFoodView(lf: {
     foodId: lf.foodId,
     quantityG: lf.quantityG,
     isCooked: lf.isCooked,
+    servingUnit: servingUnitView(lf.servingUnit),
+    servingQuantity: lf.servingQuantity,
     food: foodView(lf.food),
     macros: macrosForQuantity(lf.food, lf.quantityG),
   }
@@ -111,7 +123,12 @@ export async function freeLogRoutes(fastify: FastifyInstance): Promise<void> {
   // GET /log?date=YYYY-MM-DD — a day's logged meals with totals (default today).
   fastify.get('/log', { preHandler: authMiddleware }, async (request, reply) => {
     const { date: dateParam } = request.query as { date?: string }
-    const date = dateOnly(dateParam)
+    // Clients send their local day; the server clock's UTC day is only a fallback.
+    const parsed = DateOnlySchema.optional().safeParse(dateParam)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'date must be YYYY-MM-DD' } })
+    }
+    const date = dateOnly(parsed.data)
 
     const dailyLog = await prisma.dailyNutritionLog.findUnique({
       where: { userId_date: { userId: request.authUser.id, date } },
@@ -192,7 +209,7 @@ export async function freeLogRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.send({ data: { success: true } })
   })
 
-  // POST /log/meals/:id/foods — add a food with a gram quantity.
+  // POST /log/meals/:id/foods — add a food; grams or a serving pair.
   fastify.post('/log/meals/:id/foods', { preHandler: authMiddleware }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = AddLoggedMealFoodSchema.parse(request.body)
@@ -202,29 +219,56 @@ export async function freeLogRoutes(fastify: FastifyInstance): Promise<void> {
     const food = await prisma.food.findUnique({ where: { id: body.foodId } })
     if (!food) return notFound(reply, 'Food not found')
 
+    const portion = resolvePortion(food, body)
+    if (!portion) return invalidServing(reply)
+
     const loggedFood = await prisma.loggedMealFood.create({
-      data: { loggedMealId: id, foodId: body.foodId, quantityG: body.quantityG, isCooked: body.isCooked ?? false },
+      data: {
+        loggedMealId: id,
+        foodId: body.foodId,
+        quantityG: portion.quantityG,
+        isCooked: body.isCooked ?? false,
+        servingUnit: portion.servingUnit,
+        servingQuantity: portion.servingQuantity,
+      },
       include: { food: true },
     })
     return reply.status(201).send({ data: { loggedMealFood: loggedFoodView(loggedFood) } })
   })
 
-  // PUT /log/meal-foods/:id — change quantity / cooked flag.
+  // PUT /log/meal-foods/:id — change portion / cooked flag.
   fastify.put('/log/meal-foods/:id', { preHandler: authMiddleware }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = UpdateLoggedMealFoodSchema.parse(request.body)
 
     const existing = await prisma.loggedMealFood.findUnique({
       where: { id },
-      include: { loggedMeal: { include: { dailyLog: true } } },
+      include: { food: true, loggedMeal: { include: { dailyLog: true } } },
     })
     if (!existing) return notFound(reply, 'Logged meal food not found')
     if (existing.loggedMeal.dailyLog.userId !== request.authUser.id) return forbidden(reply)
 
+    // Same rule as plan meal foods: a bare gram edit drops the old serving
+    // wording so the row never shows a count that no longer matches its weight.
+    const portion =
+      body.servingUnit !== undefined || body.quantityG !== undefined
+        ? resolvePortion(existing.food, {
+          quantityG: body.quantityG ?? existing.quantityG,
+          ...(body.servingUnit !== undefined && body.servingQuantity !== undefined
+            ? { servingUnit: body.servingUnit, servingQuantity: body.servingQuantity }
+            : {}),
+        })
+        : undefined
+    if (portion === null) return invalidServing(reply)
+
     const updated = await prisma.loggedMealFood.update({
       where: { id },
       data: {
-        ...(body.quantityG !== undefined && { quantityG: body.quantityG }),
+        ...(portion && {
+          quantityG: portion.quantityG,
+          servingUnit: portion.servingUnit,
+          servingQuantity: portion.servingQuantity,
+        }),
         ...(body.isCooked !== undefined && { isCooked: body.isCooked }),
       },
       include: { food: true },

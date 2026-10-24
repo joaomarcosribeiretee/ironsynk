@@ -4,14 +4,24 @@ import {
   KeyboardAvoidingView, Platform, Pressable, ActivityIndicator, Dimensions,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
-import type { MealFoodRecord } from '../../lib/api'
+import type { FoodRecord, ServingUnit } from '../../lib/api'
 import { fmt, baseUnitOf } from '../../lib/nutrition'
 import type { PortionPayload } from './FoodSearchModal'
 
 const { width: SCREEN_W } = Dimensions.get('window')
 
+// Any food row already on a meal — planned (MealFood) or freely logged
+// (LoggedMealFood) — carries the same portion fields.
+export type EditablePortion = {
+  id: string
+  quantityG: number
+  servingUnit: ServingUnit | null
+  servingQuantity: number | null
+  food: FoodRecord
+}
+
 type Props = {
-  mealFood: MealFoodRecord | null
+  mealFood: EditablePortion | null
   saving: boolean
   onClose: () => void
   onSave: (id: string, portion: PortionPayload) => Promise<void>

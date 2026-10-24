@@ -442,13 +442,17 @@ export const AddLoggedMealFoodSchema = z.object({
   foodId: z.string().min(1),
   quantityG: z.number().positive(),
   isCooked: z.boolean().optional(),
-})
+  servingUnit: ServingUnitSchema.optional(),
+  servingQuantity: z.number().positive().optional(),
+}).refine(bothOrNeitherServing, servingPairMessage)
 export type AddLoggedMealFoodInput = z.infer<typeof AddLoggedMealFoodSchema>
 
 export const UpdateLoggedMealFoodSchema = z.object({
   quantityG: z.number().positive().optional(),
   isCooked: z.boolean().optional(),
-})
+  servingUnit: ServingUnitSchema.optional(),
+  servingQuantity: z.number().positive().optional(),
+}).refine(bothOrNeitherServing, servingPairMessage)
 export type UpdateLoggedMealFoodInput = z.infer<typeof UpdateLoggedMealFoodSchema>
 
 export const LoggedMealFoodSchema = z.object({
@@ -457,6 +461,8 @@ export const LoggedMealFoodSchema = z.object({
   foodId: z.string(),
   quantityG: z.number(),
   isCooked: z.boolean(),
+  servingUnit: ServingUnitSchema.nullable(),
+  servingQuantity: z.number().nullable(),
   food: FoodSchema,
   macros: MacrosSchema,
 })
