@@ -978,6 +978,7 @@ export function WorkoutExecutionScreen() {
 
   const exercises = session?.exercises ?? []
 
+  // Warmup/feeder excluded from volume (same rule as API finish + WorkoutPostScreen).
   const analyticsData = (() => {
     let totalVolume = 0
     let validSetsCount = 0
@@ -985,9 +986,9 @@ export function WorkoutExecutionScreen() {
       let exVolume = 0
       let exValidSets = 0
       for (const set of ex.sets) {
-        if (set.isChecked) {
+        if (set.isChecked && set.setType === 'WORKING') {
           exVolume += (set.repsCompleted ?? 0) * (set.weightKg ?? 0)
-          if (set.setType === 'WORKING') exValidSets++
+          exValidSets++
         }
       }
       totalVolume += exVolume

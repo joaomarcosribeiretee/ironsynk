@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart'
 import { authRoutes } from './routes/auth/index.js'
 import { profileRoutes } from './routes/profile/index.js'
 import { trainerRoutes } from './routes/trainer/index.js'
-import { exerciseRoutes } from './routes/exercises/index.js' // DEBUG — remove before launch
+import { exerciseRoutes } from './routes/exercises/index.js'
 import { programRoutes } from './routes/programs/index.js'
 import { workoutRoutes } from './routes/workouts/index.js'
 import { trainingExerciseRoutes } from './routes/training-exercises/index.js'
@@ -46,7 +46,7 @@ async function bootstrap(): Promise<void> {
   await server.register(authRoutes, { prefix: '/api/v1/auth' })
   await server.register(profileRoutes, { prefix: '/api/v1/profile' })
   await server.register(trainerRoutes, { prefix: '/api/v1/trainer' })
-  await server.register(exerciseRoutes, { prefix: '/api/v1/exercises' }) // DEBUG — remove before launch
+  await server.register(exerciseRoutes, { prefix: '/api/v1/exercises' })
   await server.register(programRoutes, { prefix: '/api/v1/programs' })
   await server.register(workoutRoutes, { prefix: '/api/v1/workouts' })
   await server.register(trainingExerciseRoutes, { prefix: '/api/v1/training-exercises' })

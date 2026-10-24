@@ -1,4 +1,4 @@
-// DEBUG / ADMIN — remove before launch
+// Exercise bank — list requires auth; mutations are ADMIN only.
 import type { FastifyInstance } from 'fastify'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
@@ -12,7 +12,7 @@ const VALID_MUSCLE_GROUPS = [
 ] as const
 
 export async function exerciseRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { preHandler: authMiddleware }, async (request, reply) => {
     const q = request.query as { muscleGroup?: string; equipment?: string; search?: string; limit?: string; offset?: string }
 
     const limit = Math.min(parseInt(q.limit ?? '50', 10) || 50, 100)
