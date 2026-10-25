@@ -1,3 +1,4 @@
+import type { WorkoutAnalytics, WorkoutAnalyticsQuery } from '@ironsynk/shared'
 import { useAuthStore } from '../store/authStore'
 
 export const BASE_URL = process.env['EXPO_PUBLIC_API_URL'] ?? 'http://localhost:3333'
@@ -422,38 +423,7 @@ export type WorkoutPostRecord = {
 
 // ─── Workout analytics (Profile > Performance dashboard) ────────────────────────
 
-export type WorkoutAnalytics = {
-  summary: {
-    totalWorkouts: number
-    totalMinutes: number
-    totalVolume: number
-    avgDurationMin: number
-  }
-  frequency: {
-    workoutsPerWeek: number
-    currentMonthCount: number
-    weeks: { label: string; count: number }[]
-    consistencyPct: number
-    streakWeeks: number
-  }
-  personalRecords: {
-    total: number
-    latest: { exerciseName: string; weightKg: number; reps: number; estimated1RM: number; achievedAt: string } | null
-    strongest: { exerciseName: string; weightKg: number; reps: number; estimated1RM: number } | null
-  }
-  muscleVolume: { muscleGroup: string; volume: number; setCount: number; pct: number }[]
-  progression: { exerciseId: string; name: string; points: { date: string; best1RM: number }[] }[]
-  exercises: {
-    uniqueCount: number
-    mostTrained: { name: string; sessions: number; totalSets: number } | null
-    top: { name: string; sessions: number; totalSets: number }[]
-  }
-  records: {
-    largestVolume: { value: number; workoutName: string; date: string } | null
-    longestWorkout: { value: number; workoutName: string; date: string } | null
-    mostSets: { value: number; workoutName: string; date: string } | null
-  }
-}
+export type { WorkoutAnalytics } from '@ironsynk/shared'
 
 export type TrainerDashboardData = {
   totalStudents: number
@@ -720,8 +690,8 @@ export const api = {
     },
     get: (userId: string) =>
       request<{ data: { id: string; role: string; profile: ProfileRecord } }>(`/api/v1/profile/${userId}`),
-    stats: () =>
-      request<{ data: { analytics: WorkoutAnalytics } }>('/api/v1/profile/stats'),
+    stats: (filters: WorkoutAnalyticsQuery) =>
+      request<{ data: { analytics: WorkoutAnalytics } }>('/api/v1/profile/stats?' + new URLSearchParams(filters).toString()),
   },
   trainer: {
     dashboard: () =>
