@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
+import { StartSessionSchema, SetTypeSchema, SetTechniqueSchema } from '@ironsynk/shared'
 import { prisma } from '../../lib/prisma.js'
 import { authMiddleware } from '../../middleware/auth.js'
 import {
@@ -10,6 +11,8 @@ import {
   buildExerciseReference,
   isEligibleForPR,
 } from '../../lib/personal-records.js'
+import { getProgramAccess } from '../../lib/program-access.js'
+import { computeSessionTotals } from '../../lib/session-volume.js'
 
 const EXERCISE_SELECT = {
   id: true, name: true, muscleGroup: true, equipment: true, gifUrl: true, videoUrl: true,
@@ -108,98 +111,124 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
 
   // POST /api/v1/sessions/start
   fastify.post('/start', { preHandler: authMiddleware }, async (request, reply) => {
-    const body = z.object({ workoutId: z.string().optional() }).parse(request.body)
+    const body = StartSessionSchema.parse(request.body)
     const userId = request.authUser.id
 
-    const session = await prisma.$transaction(async (tx) => {
-      if (body.workoutId) {
-        const workout = await tx.workout.findUnique({
-          where: { id: body.workoutId },
-          include: {
-            program: { select: { name: true } },
-            exercises: {
-              orderBy: { order: 'asc' },
-              include: { plannedSets: { orderBy: { order: 'asc' } } },
+    // AuthZ before creating a log: owner or assigned athlete only (same as workout read).
+    if (body.workoutId) {
+      const workoutMeta = await prisma.workout.findUnique({
+        where: { id: body.workoutId },
+        select: { programId: true },
+      })
+      if (!workoutMeta) {
+        return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Workout not found' } })
+      }
+      if (!workoutMeta.programId) {
+        return reply.status(403).send({ error: { code: 'FORBIDDEN', message: 'Workout has no program' } })
+      }
+      const access = await getProgramAccess(workoutMeta.programId, userId)
+      if (access === null) {
+        return reply.status(403).send({ error: { code: 'FORBIDDEN' } })
+      }
+    }
+
+    let session
+    try {
+      session = await prisma.$transaction(async (tx) => {
+        if (body.workoutId) {
+          const workout = await tx.workout.findUnique({
+            where: { id: body.workoutId },
+            include: {
+              program: { select: { name: true } },
+              exercises: {
+                orderBy: { order: 'asc' },
+                include: { plannedSets: { orderBy: { order: 'asc' } } },
+              },
             },
-          },
-        })
-        if (!workout) throw new Error('WORKOUT_NOT_FOUND')
+          })
+          if (!workout) throw new Error('WORKOUT_NOT_FOUND')
 
-        const log = await tx.trainingLog.create({
-          data: {
-            userId,
-            workoutId: body.workoutId,
-            isFreeWorkout: false,
-            workoutName: workout.name,
-            programName: workout.program?.name ?? null,
-            startedAt: new Date(),
-          },
-        })
-
-        let exOrder = 0
-        for (const te of workout.exercises) {
-          const execEx = await tx.executionExercise.create({
+          const log = await tx.trainingLog.create({
             data: {
-              trainingLogId: log.id,
-              exerciseId: te.exerciseId,
-              trainingExId: te.id,
-              order: exOrder++,
-              exerciseNotes: te.notes ?? null,
+              userId,
+              workoutId: body.workoutId,
+              isFreeWorkout: false,
+              workoutName: workout.name,
+              programName: workout.program?.name ?? null,
+              startedAt: new Date(),
             },
           })
 
-          if (te.plannedSets.length > 0) {
-            const setsData = te.plannedSets.map((ps, idx) => {
-              const techCfg = initExecTechConfig(
-                ps.technique,
-                ps.techniqueConfig as Record<string, unknown> | null,
-              )
-              return {
-                trainingLogId: log.id,
-                executionExerciseId: execEx.id,
-                trainingExerciseId: te.id,
-                exerciseId: te.exerciseId,
-                setNumber: idx + 1,
-                order: idx,
-                setType: ps.setType,
-                technique: ps.technique,
-                techniqueConfig: (techCfg ?? undefined) as unknown as Prisma.InputJsonValue | undefined,
-                plannedSetId: ps.id,
-                repsCompleted: 0,
-                weightKg: ps.targetWeight ?? 0,
-              }
-            })
-            await tx.setLog.createMany({ data: setsData })
-          } else {
-            await tx.setLog.create({
+          let exOrder = 0
+          for (const te of workout.exercises) {
+            const execEx = await tx.executionExercise.create({
               data: {
                 trainingLogId: log.id,
-                executionExerciseId: execEx.id,
-                trainingExerciseId: te.id,
                 exerciseId: te.exerciseId,
-                setNumber: 1,
-                order: 0,
-                repsCompleted: 0,
-                weightKg: 0,
+                trainingExId: te.id,
+                order: exOrder++,
+                exerciseNotes: te.notes ?? null,
               },
             })
+
+            if (te.plannedSets.length > 0) {
+              const setsData = te.plannedSets.map((ps, idx) => {
+                const techCfg = initExecTechConfig(
+                  ps.technique,
+                  ps.techniqueConfig as Record<string, unknown> | null,
+                )
+                return {
+                  trainingLogId: log.id,
+                  executionExerciseId: execEx.id,
+                  trainingExerciseId: te.id,
+                  exerciseId: te.exerciseId,
+                  setNumber: idx + 1,
+                  order: idx,
+                  setType: ps.setType,
+                  technique: ps.technique,
+                  techniqueConfig: (techCfg ?? undefined) as unknown as Prisma.InputJsonValue | undefined,
+                  plannedSetId: ps.id,
+                  repsCompleted: 0,
+                  weightKg: ps.targetWeight ?? 0,
+                }
+              })
+              await tx.setLog.createMany({ data: setsData })
+            } else {
+              await tx.setLog.create({
+                data: {
+                  trainingLogId: log.id,
+                  executionExerciseId: execEx.id,
+                  trainingExerciseId: te.id,
+                  exerciseId: te.exerciseId,
+                  setNumber: 1,
+                  order: 0,
+                  repsCompleted: 0,
+                  weightKg: 0,
+                },
+              })
+            }
           }
+
+          return log
         }
 
-        return log
+        return tx.trainingLog.create({
+          data: {
+            userId,
+            workoutId: null,
+            isFreeWorkout: true,
+            workoutName: null,
+            programName: null,
+            startedAt: new Date(),
+          },
+        })
+      }, { timeout: 15000 })
+    } catch (err) {
+      if (err instanceof Error && err.message === 'WORKOUT_NOT_FOUND') {
+        return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Workout not found' } })
       }
-
-      return tx.trainingLog.create({
-        data: {
-          userId,
-          workoutId: null,
-          isFreeWorkout: true,
-          workoutName: null,
-          programName: null,
-          startedAt: new Date(),
-        },
-      })
-    }, { timeout: 15000 })
+      throw err
+    }
 
     const full = await prisma.trainingLog.findUnique({
       where: { id: session.id },
@@ -265,8 +294,8 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
       isChecked: z.boolean().optional(),
       notes: z.string().nullable().optional(),
       techniqueConfig: z.record(z.string(), z.unknown()).nullable().optional(),
-      setType: z.enum(['WORKING', 'WARMUP', 'FEEDER']).optional(),
-      technique: z.enum(['NONE', 'DROP_SET', 'BACK_OFF', 'REST_PAUSE', 'CLUSTER_SET', 'MUSCLE_ROUND', 'MYOREP']).optional(),
+      setType: SetTypeSchema.optional(),
+      technique: SetTechniqueSchema.optional(),
     }).parse(request.body)
 
     const check = await ownerCheck(id, request.authUser.id)
@@ -461,19 +490,9 @@ export async function sessionRoutes(fastify: FastifyInstance): Promise<void> {
 
     const now = new Date()
     const durationMin = Math.round((now.getTime() - session.startedAt.getTime()) / 60000)
-    let totalVolume = 0
-    let totalSets = 0
-    let totalValidSets = 0
-
-    for (const ee of session.executionExercises) {
-      for (const s of ee.setLogs) {
-        totalSets++
-        if (s.setType === 'WORKING') totalValidSets++
-        if (s.isChecked && s.repsCompleted && s.weightKg) {
-          totalVolume += s.repsCompleted * s.weightKg
-        }
-      }
-    }
+    const { totalVolume, totalSets, totalValidSets } = computeSessionTotals(
+      session.executionExercises.flatMap((ee) => ee.setLogs),
+    )
 
     // Authoritative PR pass — compare each checked working set against the frozen
     // historical baseline (sessions finished before this one started). This is the

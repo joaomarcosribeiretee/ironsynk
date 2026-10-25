@@ -17,6 +17,41 @@ export const TrainingGoalSchema = z.enum([
 ])
 export type TrainingGoal = z.infer<typeof TrainingGoalSchema>
 
+export const SetTypeSchema = z.enum(['WORKING', 'WARMUP', 'FEEDER'])
+export type SetType = z.infer<typeof SetTypeSchema>
+
+export const SetTechniqueSchema = z.enum([
+  'NONE',
+  'DROP_SET',
+  'BACK_OFF',
+  'REST_PAUSE',
+  'CLUSTER_SET',
+  'MUSCLE_ROUND',
+  'MYOREP',
+  'WARMUP',
+  'FEEDER',
+  'BISET',
+  'SUPERSET',
+])
+export type SetTechnique = z.infer<typeof SetTechniqueSchema>
+
+export const MuscleGroupSchema = z.enum([
+  'CHEST',
+  'BACK',
+  'SHOULDERS',
+  'BICEPS',
+  'TRICEPS',
+  'FOREARMS',
+  'QUADS',
+  'HAMSTRINGS',
+  'GLUTES',
+  'CALVES',
+  'ABS',
+  'FULL_BODY',
+  'OTHER',
+])
+export type MuscleGroup = z.infer<typeof MuscleGroupSchema>
+
 export const DietGoalSchema = z.enum(['BULK', 'CUT', 'MAINTENANCE', 'RECOMP', 'HEALTH'])
 export type DietGoal = z.infer<typeof DietGoalSchema>
 
@@ -189,6 +224,12 @@ export const ExerciseReferenceSchema = z.object({
   bestWeightByReps: z.record(z.string(), z.number()),
 })
 export type ExerciseReference = z.infer<typeof ExerciseReferenceSchema>
+
+/** Start a free workout (no workoutId) or a program workout session. */
+export const StartSessionSchema = z.object({
+  workoutId: z.string().min(1).optional(),
+})
+export type StartSessionInput = z.infer<typeof StartSessionSchema>
 
 // ─────────────────────────────────────────────
 // NUTRITION
