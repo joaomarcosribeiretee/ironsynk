@@ -13,6 +13,7 @@ import type { AppStackParamList } from '../../navigation/AppNavigator'
 import { useAuthStore } from '../../store/authStore'
 import { api } from '../../lib/api'
 import type { TrainerProfileRecord, ProfileRecord, ProgramRecord, TrainingGoal, NutritionPlanRecord, DailyTotals } from '../../lib/api'
+import { socialKeys } from '../../lib/socialQueries'
 import { WorkoutPostCard } from '../../components/WorkoutPostCard'
 import { PerformanceDashboard } from '../../components/PerformanceDashboard'
 
@@ -34,11 +35,6 @@ const DIET_GOAL_LABELS: Record<string, string> = {
 const SEX_LABELS: Record<string, string> = {
   male: 'Masculino', female: 'Feminino', other: 'Outro',
 }
-
-// Phase 5 — social data
-const MOCK_SOCIAL = { following: 0, followers: 0 }
-// Phase 2 — training data
-const MOCK_WORKOUTS = 0
 
 // ─── Shared primitives ─────────────────────────────────────────────────
 
@@ -498,6 +494,14 @@ export function ProfileScreen() {
   const trainerProfile = user?.trainerProfile
   const isTrainer = user?.role === 'TRAINER'
 
+  // Own social counters — the same endpoint another athlete's profile reads.
+  const socialQuery = useQuery({
+    queryKey: socialKeys.profile(user?.id ?? ''),
+    queryFn: () => api.social.getProfile(user!.id),
+    enabled: !!user?.id,
+  })
+  const socialCounts = socialQuery.data?.data.profile.counts ?? { posts: 0, followers: 0, following: 0 }
+
   const [athleteTab, setAthleteTab] = useState<AthleteTab>('historico')
   const [trainerTab, setTrainerTab] = useState<TrainerTab>('alunos')
 
@@ -590,18 +594,34 @@ export function ProfileScreen() {
               <View style={s.heroStats}>
                 {!isTrainer && (
                   <View style={s.heroStat}>
-                    <Text style={s.heroStatNum}>{MOCK_WORKOUTS}</Text>
+                    <Text style={s.heroStatNum}>{socialCounts.posts}</Text>
                     <Text style={s.heroStatLbl}>Treinos</Text>
                   </View>
                 )}
-                <View style={s.heroStat}>
-                  <Text style={s.heroStatNum}>{MOCK_SOCIAL.followers}</Text>
+                <TouchableOpacity
+                  style={s.heroStat}
+                  activeOpacity={0.75}
+                  disabled={!user?.id}
+                  onPress={() =>
+                    user?.id &&
+                    navigation.navigate('FollowList', { userId: user.id, kind: 'followers' })
+                  }
+                >
+                  <Text style={s.heroStatNum}>{socialCounts.followers}</Text>
                   <Text style={s.heroStatLbl}>Seguidores</Text>
-                </View>
-                <View style={s.heroStat}>
-                  <Text style={s.heroStatNum}>{MOCK_SOCIAL.following}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.heroStat}
+                  activeOpacity={0.75}
+                  disabled={!user?.id}
+                  onPress={() =>
+                    user?.id &&
+                    navigation.navigate('FollowList', { userId: user.id, kind: 'following' })
+                  }
+                >
+                  <Text style={s.heroStatNum}>{socialCounts.following}</Text>
                   <Text style={s.heroStatLbl}>Seguindo</Text>
-                </View>
+                </TouchableOpacity>
               </View>
             </View>
           </View>

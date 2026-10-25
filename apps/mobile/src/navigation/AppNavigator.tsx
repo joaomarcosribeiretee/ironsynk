@@ -17,6 +17,11 @@ import { ProgramDetailScreen } from '../screens/workout/ProgramDetailScreen'
 import { WorkoutExecutionScreen } from '../screens/workout/WorkoutExecutionScreen'
 import { WorkoutPostScreen } from '../screens/workout/WorkoutPostScreen'
 import { WorkoutSessionScreen } from '../screens/workout/WorkoutSessionScreen'
+import { PostDetailScreen } from '../screens/social/PostDetailScreen'
+import { UserProfileScreen } from '../screens/social/UserProfileScreen'
+import { UserSearchScreen } from '../screens/social/UserSearchScreen'
+import { FollowListScreen } from '../screens/social/FollowListScreen'
+import { NotificationsScreen } from '../screens/social/NotificationsScreen'
 import { NutritionTodayScreen } from '../screens/nutrition/NutritionTodayScreen'
 import { MealDetailScreen } from '../screens/nutrition/MealDetailScreen'
 import { NutritionPlanViewScreen } from '../screens/nutrition/NutritionPlanViewScreen'
@@ -49,6 +54,12 @@ export type AppStackParamList = {
     exercises: ExecutionExerciseRecord[]
   }
   WorkoutSession: { sessionId: string }
+  // Social — reachable from the feed, a post card or a notification.
+  PostDetail: { postId: string; focusComment?: boolean }
+  UserProfile: { userId: string }
+  UserSearch: undefined
+  FollowList: { userId: string; kind: 'followers' | 'following'; name?: string }
+  Notifications: undefined
   // Two ways to track a day, each with its own destination: NutritionToday
   // follows the active plan, NutritionLog records what was actually eaten.
   NutritionToday: undefined
@@ -81,6 +92,11 @@ export function AppNavigator() {
       <Stack.Screen name="WorkoutExecution" component={WorkoutExecutionScreen} />
       <Stack.Screen name="WorkoutPost" component={WorkoutPostScreen} />
       <Stack.Screen name="WorkoutSession" component={WorkoutSessionScreen} />
+      <Stack.Screen name="PostDetail" component={PostDetailScreen} />
+      <Stack.Screen name="UserProfile" component={UserProfileScreen} />
+      <Stack.Screen name="UserSearch" component={UserSearchScreen} />
+      <Stack.Screen name="FollowList" component={FollowListScreen} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="NutritionToday" component={NutritionTodayScreen} />
       <Stack.Screen name="NutritionLog" component={NutritionLogScreen} />
       <Stack.Screen name="NutritionPlanView" component={NutritionPlanViewScreen} />

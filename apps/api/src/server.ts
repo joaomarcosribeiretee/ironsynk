@@ -11,6 +11,7 @@ import { trainingExerciseRoutes } from './routes/training-exercises/index.js'
 import { plannedSetRoutes } from './routes/planned-sets/index.js'
 import { sessionRoutes } from './routes/sessions/index.js'
 import { postRoutes } from './routes/posts/index.js'
+import { socialRoutes } from './routes/social/index.js'
 import { nutritionRoutes } from './routes/nutrition/index.js'
 import { uploadRoutes, ensurePostMediaBucket } from './routes/uploads/index.js'
 import { supabaseAdmin } from './lib/supabase.js'
@@ -53,6 +54,7 @@ async function bootstrap(): Promise<void> {
   await server.register(plannedSetRoutes, { prefix: '/api/v1/planned-sets' })
   await server.register(sessionRoutes, { prefix: '/api/v1/sessions' })
   await server.register(postRoutes, { prefix: '/api/v1/posts' })
+  await server.register(socialRoutes, { prefix: '/api/v1/social' })
   await server.register(nutritionRoutes, { prefix: '/api/v1/nutrition' })
   await server.register(uploadRoutes, { prefix: '/api/v1/uploads' })
 
